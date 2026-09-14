@@ -11,9 +11,18 @@
  * строки ниже (4.9) - код, а не память: они здесь только как читаемый список для витрины (лог/ledger),
  * и `fitBlock` их не пускает в блок хода ни при каких обстоятельствах - см. тест "builtin never renders".
  *
+ * `fitBlock` И `webKeyFor` ЖИВУТ В extension/memory.js, А ЗДЕСЬ ТОЛЬКО РЕЭКСПОРТИРУЮТСЯ. Расширение -
+ * единственный, кто умеет читать `web:<origin>` живьём (десктопный агент видит окно браузера, `win32:chrome`,
+ * а не адрес внутри него), и оно не может импортировать что-либо выше своей папки. Ровно тот же выбор, что
+ * у checksOf в extension/checks.js: одна реализация, а не две мнения о том, как укладывается запись в
+ * бюджет.
+ *
  * ЧЕГО ЗДЕСЬ НЕТ: обращения к базе, к экрану, к модели. На входе - то, что попросили запомнить и что уже
  * накопилось; на выходе - решение (можно/нет) и текст блока для хода. Всё.
  */
+
+import { fitBlock, KEY_BUDGET, webKeyFor } from '../extension/memory.js';
+export { fitBlock, KEY_BUDGET, webKeyFor };
 
 /** Четыре провенанса, ровно в этом порядке везде, где порядок имеет смысл (4.4). */
 export const PROVENANCE = ['derived', 'taught', 'learned', 'builtin'];
@@ -26,8 +35,7 @@ export const PROVENANCE_RULES = {
   builtin: { recomputable: false, approval: false },
 };
 
-/** 4.10: 600 символов на ключ, не больше 6 ключей за ход. */
-export const KEY_BUDGET = 600;
+/** 4.10: не больше 6 ключей за ход. KEY_BUDGET (600 символов на ключ) - см. импорт выше. */
 export const MAX_KEYS_PER_TURN = 6;
 
 /** 4.5: то же правило, что у рекордера для имени контрола (RecordName, agent 0.13.0) — та же причина. */
@@ -51,25 +59,6 @@ export function parseKey(key) {
   if (!id) return null;
   if (platform === 'web' ? !WEB_ID_RE.test(id) : /[\s/?#]/.test(id)) return null;
   return { platform, id };
-}
-
-/**
- * Ключ `web:<origin>` из настоящего URL — origin, без пути и без запроса (4.3), той же дисциплины, что
- * `PageUrl`/`Bare` в mouseflow-agent.ps1, но короче: там остаётся путь, здесь — только хозяин страницы.
- * @param {string} url
- * @returns {string|null}
- */
-export function webKeyFor(url) {
-  const said = String(url == null ? '' : url).trim();
-  if (!said) return null;
-  let parsed;
-  try {
-    parsed = new URL(said.includes('://') ? said : `https://${said}`);
-  } catch {
-    return null;
-  }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-  return `web:${parsed.host}`;
 }
 
 const COORD_RE = /-?\d{2,5}\s*,\s*-?\d{2,5}/;
@@ -127,47 +116,6 @@ export function writeMemory({ key, provenance, body, name, secret, version, runI
       state: provenance === 'learned' ? 'pending' : 'live',
     },
   };
-}
-
-/** Как одна запись печатается в блок хода — `§ <провенанс> [версия|runId]   <текст>` (4.4). */
-function lineFor(e) {
-  const tag = e.provenance + (e.version != null ? ` v${e.version}` : '') + (e.runId ? ` ${e.runId}` : '');
-  return `§ ${tag}   ${e.body}`;
-}
-
-/**
- * Уложить живые записи одного ключа в бюджет (4.10). `taught` не вытесняется никогда; `derived`
- * пересчитывается на чтении и не накапливается, так что и его вытеснять не нужно; вытесняется только
- * `learned`, и самое старое первым. Builtin и `rejected`/`pending` сюда не попадают вовсе — их место не
- * в блоке хода (4.9, 4.4).
- * @param {object[]} entries
- * @param {number} [budget]
- * @returns {{text: string, used: number, evicted: object[]}}
- */
-export function fitBlock(entries, budget = KEY_BUDGET) {
-  const live = (entries || []).filter((e) => e && e.provenance !== 'builtin' && (e.state == null || e.state === 'live'));
-  const taught = live.filter((e) => e.provenance === 'taught');
-  const derived = live.filter((e) => e.provenance === 'derived');
-  const learned = live
-    .filter((e) => e.provenance === 'learned')
-    .slice()
-    .sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
-
-  const evicted = [];
-  let kept = [...taught, ...derived, ...learned];
-  let text = kept.map(lineFor).join('\n');
-
-  while (text.length > budget && learned.length) {
-    const gone = learned.shift();
-    kept = kept.filter((e) => e !== gone);
-    evicted.push(gone);
-    text = kept.map(lineFor).join('\n');
-  }
-  /* Осталось только taught/derived, и всё равно не влезает - не портить их молча вытеснением, которого
-   * 4.4 для них не разрешает; обрезать текст целиком, как `Clip` в ps1, а не одну запись наугад. */
-  if (text.length > budget) text = text.slice(0, budget - 1) + '…';
-
-  return { text, used: text.length, evicted };
 }
 
 /**

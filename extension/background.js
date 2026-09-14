@@ -23,6 +23,11 @@ import {
 /* Проверки, которые решает страница: факты собирает content.js, вердикт выносится здесь, сводка и вид
  * кадра считаются теми же функциями, которыми их считает сервер (он импортирует их отсюда). */
 import { checkSaid, checksOf, judgeDom, kindOf, saidOf, whyNotCheckable } from './checks.js';
+/* Память приложений, только читающая половина (MEMORY-PLAN.md §4.3/§4.6) - расширение не пишет `taught`
+ * (это дело формы на Activity), только читает уже проверенное через GET /api/memory и укладывает в бюджет
+ * хода тем же fitBlock, которым это делают десктопные драйверы. См. заголовок extension/memory.js про то,
+ * почему это лежит здесь, а не в api/. */
+import { fitBlock, webKeyFor } from './memory.js';
 
 /* Kept in step with the manifest by hand, and asserted in the tests: the popup compares the two to
  * tell the user when the worker it is talking to is an older build. A stale constant here would make
@@ -310,6 +315,25 @@ function siteNotes(url) {
   const host = hostOf(url) || '';
   const found = SITE_NOTES.find((s) => host === s.host || host.endsWith('.' + s.host));
   return found ? found.notes : null;
+}
+
+/* Статичные подсказки (SITE_NOTES, выше) и запомненное про этот origin (MEMORY-PLAN.md §4.6) - ОДНИМ
+ * СПИСКОМ, потому что для модели это один и тот же вопрос: «что здесь уже известно». Разница между «код
+ * так решил заранее» и «кто-то так запомнил» видна в самих строках памяти (`§ taught …`), а не в том, из
+ * какого массива она приехала.
+ *
+ * `memoryByKey` - ПАРАМЕТР, А НЕ ЧТЕНИЕ agent.memoryByKey ИЗНУТРИ, при том что на каждом настоящем вызове
+ * это ровно то же самое (см. значение по умолчанию). Тестовый файл здесь не поднимает chrome целиком, как
+ * check-extension.mjs делает для маршрутизации сообщений (README и заголовок того файла об этом говорят
+ * прямо: путь, а не факт существования функции) - а живого таба для read_page у него и не может быть.
+ * Явный параметр делает эту функцию проверяемой без стенда: карта передаётся готовой, а не собирается
+ * заново. Экспортирована ровно для теста, ничего в поведении это не меняет. */
+export function notesFor(url, memoryByKey = agent.memoryByKey) {
+  const out = siteNotes(url) || [];
+  const key = webKeyFor(url);
+  const entries = key && memoryByKey ? memoryByKey.get(key) : null;
+  const fit = entries && entries.length ? fitBlock(entries) : null;
+  return fit && fit.text ? [...out, fit.text] : (out.length ? out : null);
 }
 
 async function activeTab() {
@@ -1053,6 +1077,31 @@ async function syncToken() {
   return typeof token === 'string' && token.startsWith('mf_') ? token : null;
 }
 
+/* Память приложений - тем же токеном, что и всё остальное здесь: whoIsCalling (api/_session.js) уже
+ * принимает device-токен наравне с сессионной кукой страницы, так что это не второй способ входа, а тот
+ * же самый. MEMORY-PLAN.md §4.3/§4.6: расширение - единственный, кто видит `web:<origin>` живьём, десктопный
+ * агент видит только окно браузера. */
+const MEMORY_URL = APP_URL + '/api/memory';
+
+/** Один запрос за прогон, не на каждое чтение страницы - память не меняется от хода к ходу, а сеть стоит
+ * времени, которое сама память должна сберегать, а не отнимать. Отказ (не в паре, сеть легла, таблицы нет
+ * на этом деплое) - пустая карта: то же самое, что «на аккаунте пока ничего не запомнено». */
+async function loadMemory(token) {
+  const byKey = new Map();
+  if (!token) return byKey;
+  try {
+    const res = await fetch(MEMORY_URL, { headers: { authorization: 'Bearer ' + token } });
+    if (!res.ok) return byKey;
+    const body = await res.json().catch(() => null);
+    for (const entry of (body && body.entries) || []) {
+      if (!byKey.has(entry.key)) byKey.set(entry.key, []);
+      byKey.get(entry.key).push(entry);
+    }
+  } catch (_) { /* offline, or this deployment has no app_memory yet - an empty map answers the same */ }
+  return byKey;
+}
+
+
 /* What to do with what the bridge minted. Shared by both halves of `auth/auto` so the tab it opened is
  * closed on every path out, including the ones that failed. */
 async function finishAuto(res, closeTabId) {
@@ -1498,6 +1547,7 @@ const agent = {
   trace: [],      // one entry per tool call: page, outcome, timing - see tracedTool
   startedAt: null,
   opts: DEFAULT_SETTINGS,
+  memoryByKey: new Map(),   // что запомнено про открытые сейчас origin'ы - загружается один раз, в agentStart
 };
 
 /* The tab the agent is working in.
@@ -1816,8 +1866,8 @@ async function runAgentTool(name, input) {
       }
 
       if (!best) return { ok: false, error: 'could not read the page' };
-      // Conventions of this particular app, if we know any.
-      const notes = siteNotes(best.page && best.page.url);
+      // Conventions of this particular app, if we know any - built in or remembered.
+      const notes = notesFor(best.page && best.page.url);
       if (notes) best.page.notes = notes;
       /* Frame 0 is the main frame, and a perfectly valid target. `|| null` collapsed it to
        * null - and null means "unknown" to send(), which then broadcasts to EVERY frame. A
@@ -1971,7 +2021,7 @@ async function runAgentTool(name, input) {
       let after = null;
       if (res.page) {
         agent.snapshotId = res.page.snapshotId || agent.snapshotId;
-        const notes = siteNotes(res.page.url);
+        const notes = notesFor(res.page.url);
         if (notes) res.page.notes = notes;
         after = res.page;
       }
@@ -2052,6 +2102,7 @@ async function agentStart(goal, from) {
   await chrome.action.setPopup({ popup: '' });
 
   const authToken = await syncToken();
+  agent.memoryByKey = await loadMemory(authToken);
 
   /* План спрашивается ДО прогона и только когда человек попросил остановки. Не смогли - прогон идёт без
    * шлюза: план это удобство, а не условие, и отказать в работе из-за необязательного шага было бы хуже

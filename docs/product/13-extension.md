@@ -164,6 +164,25 @@ Care went into the details rather than into hesitating: before a one-way click i
 checks what the goal named — recipient, amount, destination, which item — against what is actually on screen,
 and stops if any of them differs.
 
+## What it already knows about a page
+
+Two kinds of hint ride along with every `read_page` answer, under `notes` — the same list either way, so
+the agent reads one thing rather than deciding which of two to trust:
+
+- **Built in.** A short, hand-written table of app conventions that cost real turns to learn — Gmail's Cc
+  shortcut, where its reply box sits, its own pop-out that swallows the page underneath it. Matched by host,
+  never changes on its own.
+- **Remembered.** Whatever has been taught about this exact origin on **Activity → What MouseFlow has
+  learned** — see [26 — Activity](26-activity.md). The extension is the only part of MouseFlow that ever
+  sees which web page is actually open; the desktop agent sees a browser **window**, never the address inside
+  it, so a fact under a `web:<origin>` key can only ever reach a run through here. One request per run, not
+  per page read — memory does not change mid-run, and asking again on every `read_page` would spend a turn's
+  worth of time for an answer that cannot have changed.
+
+Nothing is invented on the page's side: the redaction that keeps a coordinate, a password field or a typed
+value out of memory happens once, where a fact is written (`api/_memory.mjs`), and the extension only ever
+renders what already passed it.
+
 ## Checking, not looking — `dom` is the strongest evidence there is
 
 For a web product this is the QA surface, and not because it is more convenient: **the evidence is of a

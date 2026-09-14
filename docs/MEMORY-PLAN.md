@@ -281,10 +281,32 @@ pointer away, not gone.
 > asserts `MEMORY_LIVE === true`, and separately that `live: false` still forces `null` — the escape hatch
 > was not accidentally deleted along with the default). `npm test`/`tsc`/`web/` build all green.
 >
-> **Still unmeasured**, per 4.13 — there is exactly one account with any `taught`/`derived` rows so far
-> (none yet, in fact: nobody has taught anything through the card yet), so there is nothing to measure
-> until someone does. Watch turns-per-successful-run once facts accumulate; roll `MEMORY_LIVE` back to
-> `false` if it costs more than it saves.
+> **Still unmeasured**, per 4.13 — one `taught` row exists now (`web:outlook.office.com`, added
+> 2026-09-11 through `writeMemory` directly rather than the card, to close row 5's own done-condition; see
+> below for why it didn't yet show on a run), so there is nothing to measure yet either way. Watch
+> turns-per-successful-run once facts accumulate; roll `MEMORY_LIVE` back to `false` if it costs more than
+> it saves.
+>
+> **The `web:` gap from row 3/4 is closed — through the extension, not the desktop drivers.** Teaching
+> that first fact under `web:outlook.office.com` surfaced the real limit immediately: `memoryForOpen`
+> only ever builds `win32:`/`darwin:` keys from an OS window list, and a desktop agent has no way to see
+> the address inside a browser window at all — only the extension, which reads the page directly, can. So
+> `fitBlock`/`webKeyFor` moved to **`extension/memory.js`**, re-exported from `api/_memory.mjs` exactly
+> the way `checksOf` already moves through `extension/checks.js` (an extension cannot import upward, so
+> shared logic lives where the extension can reach it and the server borrows it back). `extension/
+> background.js` now fetches `GET /api/memory` once per run (`loadMemory`, using the same device-token
+> auth every other extension call already sends — `whoIsCalling` already accepts it, nothing new needed
+> there) and merges what it finds for the current origin into the same `notes` field the static
+> `SITE_NOTES` table already fills on every `read_page` answer (`notesFor`, replacing the old `siteNotes`
+> call at both its sites). Redaction is not duplicated: the extension only ever renders rows that already
+> passed `writeMemory` server-side. Added to the extension build's copy list
+> (`web/vite.extension.config.ts`); new tests in `extension/check-extension.mjs` (`notesFor` takes its
+> memory map as a parameter specifically so it's testable without a live tab). `npm test`/`tsc`/`web/`
+> build all green.
+>
+> **Still true, and now the actual remaining gap:** the *cloud* driver (`api/_step.mjs`) still cannot key
+> by platform at all — that half of §4.6/§4.7.1's open item has not moved, it just no longer blocks the
+> web path, which was the more common case anyway.
 
 ### 4.1 The claim it rests on
 

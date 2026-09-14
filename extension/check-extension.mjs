@@ -1797,5 +1797,33 @@ group('всё, что импортирует копируемый файл, са
     missing.length === 0, missing.join('; '));
 }
 
+group('память приложений на странице: то, что запомнили, попадает в те же notes, что и статичные подсказки');
+{
+  /* memoryByKey - ПАРАМЕТРОМ, а не через agent.memoryByKey: живого таба для read_page у этого стенда нет
+   * и не будет, а notesFor устроена так, что для этого и не нужен - см. её комментарий в background.js. */
+  const taught = [{ provenance: 'taught', body: 'the compose box opens at the bottom, not the top', state: 'live' }];
+
+  check('своя страница - только запомненное, SITE_NOTES тут не при чём',
+    JSON.stringify(background.notesFor('https://example.com/inbox', new Map([['web:example.com', taught]])))
+      === JSON.stringify(['§ taught   the compose box opens at the bottom, not the top']));
+
+  check('известный хост без памяти - только статичные подсказки',
+    Array.isArray(background.notesFor('https://mail.google.com/mail/u/0', new Map()))
+      && background.notesFor('https://mail.google.com/mail/u/0', new Map()).some((n) => /Control\+Shift\+C/.test(n)));
+
+  check('известный хост И память - оба вместе, память последней строкой',
+    (() => {
+      const notes = background.notesFor('https://mail.google.com/mail/u/0', new Map([['web:mail.google.com', taught]]));
+      return notes.length > 1 && notes[notes.length - 1].includes('compose box');
+    })());
+
+  check('ни того, ни другого - null, а не пустой массив',
+    background.notesFor('https://nothing-known.example', new Map()) === null);
+
+  let survivedBadUrl = false;
+  try { background.notesFor('not a url at all', new Map()); survivedBadUrl = true; } catch (_) { /* fails the check below */ }
+  check('плохой URL не бросает - память просто не находится', survivedBadUrl);
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

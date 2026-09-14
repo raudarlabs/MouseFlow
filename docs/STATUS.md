@@ -209,9 +209,12 @@ Part of it will be cut. Do not add screens to it. Two consequences for whoever p
 3. **The name.** `MouseFlow` describes the mechanism rather than the outcome, and there is an established
    product called Mouseflow (mouseflow.com, behaviour analytics — worth verifying) whose adjacency is a real
    collision for the documentation product. Cheap to change now, expensive later.
-4. **The web memory key** — [`MEMORY-PLAN.md`](MEMORY-PLAN.md) §4.3. Proposed default: two tiers,
-   `win32:chrome` for the browser shell and `web:<origin>` for the page. Needs a yes or a different answer
-   before that plan's step 3.
+4. **The web memory key — half answered by building it, on 2026-09-11.** `web:<origin>` for the page is
+   live: the extension reads it (`extension/memory.js`, `notesFor` in `background.js`), because it is the
+   only part of MouseFlow that ever sees the address inside a browser window — a desktop agent sees the
+   window, never the URL. `win32:chrome` for the browser shell itself was **not** built — nothing yet asks
+   for a fact about the shell rather than the page, so there was nothing to wire it to. Still open if that
+   tier is wanted.
 5. **Both `db/022_queue_machine.sql` and `db/023_app_memory.sql` were applied on 2026-09-11**, from a Mac
    session that had `.env.local` — `npm run migrate` ran both in one pass (022 had never run either, on
    any machine), `npm run migrate -- --list` confirms all 23 as `applied`. Pinning a case to a machine and

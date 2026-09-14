@@ -64,6 +64,8 @@ const COPY = [
    * тронули, и с того коммита собранный воркер не поднимался вовсе - импорт вёл в никуда. Нашла это
    * проверка замыкания в extension/check-extension.mjs, добавленная из-за procedure.js. */
   'checks.js',
+  /* Читается background.js - fitBlock/webKeyFor для web:<origin>, см. extension/memory.js. */
+  'memory.js',
   'icons',
 ];
 
