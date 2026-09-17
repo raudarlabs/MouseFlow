@@ -437,6 +437,18 @@ they cost very different amounts:
 | **A — a thread is a goal you can pick up again** | The row carries the goal and its attachments; opening it fills the composer, and *Run again* / *Change and run* are the two actions. Each run is still its own row in Logs | Small. No schema, no protocol: the goal is already stored, `relaunch()` already does the move |
 | **B — a thread is a conversation with state** | Follow-up turns against the same thread ("now do the same for October"), model context carried between them | Large. A `thread_id` on `user_run`, a decision about what the model is shown from previous turns, and the same question answered again in the extension and in the desktop driver |
 
+**Done 2026-09-18, and one thing in the description above turned out to be wrong.** The plan said *two
+actions — Run again / Change and run*. There is **one**, and it is the right number: an immediate re-run is
+a run started without reading what is about to go, which is precisely the bug this page already fixed once
+(Enter doing something other than the button said). Between that run and this one the machine has changed —
+other windows are open, other mail has arrived. "Repeat" means read it and press the button, and a single
+action that fills the composer means both repeating and changing.
+
+Two details that only appear once it is built: reopening **replaces** the composer rather than adding to it,
+because a mixture of the old task and whatever was half-typed cannot be read before pressing Run; and the
+goal has to be split back into text and attachments, or somebody who wanted to change one word gets three
+screens of CSV in the field.
+
 **Do A first**, and do not let it drift into B by accident. A is a move of what exists into the shape people
 recognise; B is a second kind of memory beside `app_memory`, and this codebase already has one rule about
 that (QA-ROADMAP §0 principle 3: one implementation, many readers). If B turns out to be wanted, it should
@@ -749,7 +761,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 | # | What | Why now | How | Done when |
 |---|---|---|---|---|
 | ~~5~~ | **§5.6** a door to Connections in P1 — **done 2026-09-18** | Smaller than it read: the button existed, was called *Open the guide*, and was missing entirely on the stale-agent case | Renamed to match the sentence; shown on every desktop refusal. No nav row — four screens is a decision | `agent/test-contract.mjs`, 3 checks |
-| 6 | **§5.5-A** Create as a list of threads | The owner's shape, and most of it exists: the goal is stored, `relaunch()` already moves it into the composer, `EarlierPanel` already lists past runs | Move the list left, make a row open its goal **and its attachments**, two actions: *Run again* / *Change and run*. **Not** conversation state — that is 5.5-B and it is a different project | A past task is one click from running again, without going through Logs |
+| ~~6~~ | **§5.5-A** Create as a list of threads — **done 2026-09-18** | The owner's shape, and most of it existed already | The list moved to the left of the thread; a row reopens its goal **and its attachments** (`splitGoal`, the inverse of the join). **One** action, not two — see §5.5 for why an immediate re-run was not added | `agent/test-contract.mjs`; DOM order verified live |
 | 7 | **§5.1** cut Skills into Library (P2) and Runs (P1) | The last screen still marked `both`, and the only thing standing between here and two coherent products | Split the view; `SkillWizard` stays one component | Neither half uses the other's vocabulary |
 | 8 | **§5.2** the P2 dashboard asks `?half=did` | Was a page split; is now one query parameter, because the Dashboard moved whole | One line in `InsightsView`, plus the `HALF` constant that is already named | The dashboard runs no query against `user_run` |
 | 9 | **§5.3** restore `/docs` and `/chat` as first-class P2 routes | A document is P2's output and is reachable only through the Gallery's second shelf | Undo two redirects; both screens exist | A document opens without going through the Gallery |

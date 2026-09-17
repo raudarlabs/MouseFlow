@@ -58,7 +58,7 @@ import {
   type DictatedRun, dictatedSkillIdFor, hasSkillForRun, saveDictatedAsGoalSkill,
 } from '@/features/record/save-as-skill';
 import {
-  type Attached, FILES_MAX, GOAL_MAX, goalWith, readTextFile, sizeSaid,
+  type Attached, FILES_MAX, GOAL_MAX, goalWith, readTextFile, sizeSaid, splitGoal,
 } from './attach';
 import { langName, useDictation } from './dictation';
 import { SaveDictatedSkill } from './SaveDictatedSkill';
@@ -202,6 +202,27 @@ export const CreateView = () => {
      * того, что человек ему дал, и выглядящий при этом нормально. */
     if (refused.length) setAttachProblem(refused.join(' · '));
   }, [files.length]);
+
+  /* ОТКРЫТЬ ПРОШЛУЮ ЗАДАЧУ - одно действие на оба намерения, «повторить» и «изменить»: цель ложится в
+   * композер, приложенное возвращается чипами, и человек либо жмёт кнопку, либо правит слово и жмёт.
+   *
+   * ВТОРОЙ КНОПКИ «запустить сразу» НЕТ, и это не экономия. Прогон, начатый без прочтения того, что сейчас
+   * уйдёт, - ровно то, что этот файл однажды уже чинил (Enter делал не то, что написано на кнопке). Между
+   * тем прогоном и этим машина изменилась: другие окна открыты, другая почта пришла. «Повторить» - это
+   * прочитать и нажать, и одна кнопка обе эти вещи и означает.
+   *
+   * Разбор назад - splitGoal: без него в поле легла бы вся цель вместе с заборчиками файлов, и тот, кто
+   * хотел поменять одно слово, получил бы три экрана csv в композере.
+   *
+   * ЗАМЕЩАЕТ, а не дописывает - и набранное, и приложенное. Композер после этого показывает ТУ задачу, а
+   * не смесь её с тем, что лежало раньше: смесь нельзя прочитать, а прочитать перед запуском - это всё,
+   * что стоит между человеком и прогоном по его настоящему рабочему столу. */
+  const reopen = useCallback((said: string) => {
+    const back = splitGoal(said);
+    setGoal(back.typed);
+    setFiles(back.files);
+    setAttachProblem(null);
+  }, []);
 
   /* Цель ЦЕЛИКОМ - то, что напечатано, плюс приложенное. Ровно эта строка уходит в прогон, ложится в
    * user_run.goal и читается моделью на каждом шаге, поэтому и план, и запуск, и «уже спланировано»
@@ -842,12 +863,34 @@ export const CreateView = () => {
   const act = () => (wants === 'run' ? send() : makePlan());
 
   return (
-    /* Two columns on a wide window: what is happening now, and what happened before. The shell gives this
+    /* Two columns on a wide window: what happened before, and what is happening now. The shell gives this
      * route a header and nothing else, so each column owns its own height and scrolls on its own.
      *
-     * The right one used to hold a thumbnail of the desktop - see EarlierPanel for why it does not any
-     * more. Below xl there is no second column at all, and the history moves to the top of the thread. */
+     * СПИСОК ЗАДАЧ СЛЕВА, а не справа - решение владельца 2026-09-18: «как у Клода, переключение между
+     * приложениями, а снизу список тасков, которые создавались». Это не перестановка ради моды. Колонка
+     * справа была ОСТАТКОМ от панели Live Context, которая там стояла раньше; список прошлых задач - это
+     * навигация, а навигация в этом приложении уже слева, и стоять ей по обе стороны от работы незачем.
+     * Рядом с боковым меню он читается как его продолжение: продукты, экраны, задачи.
+     *
+     * Ниже xl второй колонки нет вовсе, и история переезжает наверх ленты - там же, где была. */
     <div className={cn('flex gap-4', page.height)}>
+      {/* История прогонов. Своя высота и свой скроллер, чтобы длинный список не тянул ленту.
+        *
+        * Одинаковая для обоих исполнителей, в отличие от того, что здесь стояло раньше: прогон в браузере
+        * и прогон на машине - это одна и та же просьба, записанная одной и той же строкой, и делить их
+        * колонкой значило бы прятать половину своей истории за положением тумблера. */}
+      <div className="hidden w-[22rem] shrink-0 py-4 ps-5 xl:flex xl:flex-col">
+        <EarlierPanel
+          runs={runs}
+          flows={flows}
+          hide={earlierHide}
+          onAskAgain={reopen}
+          onSaveAsSkill={(run, goal) => setSaving({ run, goal })}
+          onRename={renameRun}
+          onDelete={deleteRun}
+        />
+      </div>
+
       <div className="flex min-w-0 flex-1 flex-col">
       <Thread>
         {/* ЧТО БЫЛО РАНЬШЕ - наверху ленты, из записи на аккаунте, а не из второй копии рядом с ней.
@@ -868,7 +911,7 @@ export const CreateView = () => {
             flows={flows}
             hide={earlierHide}
             openByDefault={turns.length === 0}
-            onAskAgain={setGoal}
+            onAskAgain={reopen}
             onSaveAsSkill={(run, goal) => setSaving({ run, goal })}
             onRename={renameRun}
             onDelete={deleteRun}
@@ -1607,23 +1650,6 @@ export const CreateView = () => {
           </Typography>
         )}
       </Composer>
-      </div>
-
-      {/* История прогонов. Своя высота и свой скроллер, чтобы длинный список не тянул ленту.
-        *
-        * Одинаковая для обоих исполнителей, в отличие от того, что здесь стояло раньше: прогон в браузере
-        * и прогон на машине - это одна и та же просьба, записанная одной и той же строкой, и делить их
-        * колонкой значило бы прятать половину своей истории за положением тумблера. */}
-      <div className="hidden w-[24rem] shrink-0 py-4 pr-5 xl:flex xl:flex-col">
-        <EarlierPanel
-          runs={runs}
-          flows={flows}
-          hide={earlierHide}
-          onAskAgain={setGoal}
-          onSaveAsSkill={(run, goal) => setSaving({ run, goal })}
-          onRename={renameRun}
-          onDelete={deleteRun}
-        />
       </div>
 
       {saving && (

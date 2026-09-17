@@ -1090,6 +1090,26 @@ group('приложенные файлы - часть того, о чём поп
     /sizeSaid\(one\.bytes\)/.test(create) && /one\.clipped \? ' · clipped' : ''/.test(create));
   check('и каждый файл снимается по отдельности',
     /was\.filter\(\(f\) => f\.id !== one\.id\)/.test(create));
+
+  /* НЕВИДИМЫХ ЗНАКОВ В ИСХОДНИКЕ НЕТ. Нулевой байт попал сюда буквальным символом при первой записи -
+   * строка читалась как `head.includes('')`, а это истинно для любого текста, то есть проверка молча
+   * стала бы «всё двоичное». Второй раз за день: тот же капкан был с BOM в web/src/lib/csv.ts. */
+  const src = read('web/src/features/create/attach.ts');
+  check('нулевой байт записан escape-последовательностью, а не самим знаком',
+    src.includes("const NUL = '\\u0000';") && src.includes('head.includes(NUL)')
+      && !src.includes(String.fromCharCode(0)), 'attach.ts');
+
+  /* ОБРАТНАЯ ОПЕРАЦИЯ. Прошлую задачу открывают, чтобы повторить или поправить: без разбора назад в поле
+   * ложится весь текст вместе с заборчиками, и тот, кто хотел поменять слово, получает три экрана csv. */
+  const back = attach.splitGoal(said);
+  check('цель разбирается назад на набранное и приложенное',
+    back.typed === 'send the September invoices' && back.files.length === 1
+      && back.files[0].name === 'invoices.csv' && back.files[0].text === one.text, JSON.stringify(back));
+  check('и собирается обратно в ту же строку - прогон уйдёт тот же',
+    attach.goalWith(back.typed, back.files) === said);
+  check('а цель без приложенного остаётся собой',
+    attach.splitGoal('just a goal').typed === 'just a goal'
+      && attach.splitGoal('just a goal').files.length === 0);
 }
 
 group('кнопка говорит, что произойдёт, и Enter делает то же самое');
