@@ -11,6 +11,10 @@
  */
 import { type Flow, push } from '@/lib/api';
 import { SKILL_ROLE } from '@/lib/flow-role';
+/* Тир 1 артефакта - та же функция, что выводит его для записи, и та же форма. См. SPLIT-PLAN §4.1: до
+ * этого процедура была только у `recorded`, а кейс строится только на `created`, так что проверкам
+ * было негде лечь на том скилле, который проверяют. */
+import { procedureFromSteps } from '../../../../api/_procedure.mjs';
 import { fmtMs, summarize } from '@/lib/macro';
 import type { Recording } from '@/lib/store';
 
@@ -92,6 +96,7 @@ export async function saveAsGoalSkill(
     ? ` Asks for ${said.params.map((p) => p.name).join(', ')}.`
     : '';
   const description = (`Carries out: ${said.goal.split('\n')[0]}`.slice(0, 300) + asks).slice(0, 400);
+  const procedure = procedureFromSteps(said.steps, { origins: where.slice(0, 12) });
 
   const body = await push({
     flows: [{
@@ -121,6 +126,17 @@ export async function saveAsGoalSkill(
         /* Свидетельство, а не то, что повторяется: шаги записи, из которой это сделано. structureOf()
          * показывает их как «что сделал один удачный прогон». */
         steps: said.steps.slice(0, 200),
+        /* ТИР 1: ТО ЖЕ САМОЕ, НО КАК АРТЕФАКТ, А НЕ КАК ПОЛЕ ЭТОГО СКИЛЛА.
+         *
+         * Не второй список и не второе мнение: `procedureFromSteps` отображает ровно те шаги, что строкой
+         * выше, в форму `mouseflow.skill/2`. Зачем тогда обе: `steps` читает structureOf() этого продукта,
+         * а `procedure` - то, что уезжает ВМЕСТЕ со скиллом в галерею, в SKILL.md и к чужому агенту, и то,
+         * рядом с чем лежит `verification`. До этого процедура была только у записей, то есть у скиллов,
+         * которые кейс как раз отказывается проверять (SPLIT-PLAN §4.1).
+         *
+         * `null`, если не осталось ни одной фразы - поле тогда не пишется вовсе: пустой каркас обещал бы
+         * читателю тир, которого нет. */
+        ...(procedure ? { procedure } : {}),
         /* Откуда взялось. Запись живёт своей жизнью и может быть удалена - скилл от этого не пустеет, но
          * знать происхождение полезно, и это единственная связь между ними. */
         fromRecording: rec.id,

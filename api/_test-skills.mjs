@@ -23,7 +23,7 @@ import {
   importSkills,
   skillFromRecording,
 } from '../extension/skills.js';
-import { hasProcedure, procedureFrom, stepsSaid, STEPS_MAX } from '../extension/procedure.js';
+import { hasProcedure, procedureFrom, procedureFromSteps, stepsSaid, STEPS_MAX } from '../extension/procedure.js';
 
 let pass = 0;
 let fail = 0;
@@ -328,6 +328,64 @@ group('сервер процедуру не выводит - он её чита�
   });
   check('а написанное человеком описание побеждает оба счёта',
     stated.description.startsWith('9 events · 2 clicks · 4.0s'), stated.description);
+}
+
+/* -------------------------------------------------------------------------------------------------
+ * СКИЛЛ-ЦЕЛЬ ТОЖЕ НЕСЁТ ПРОЦЕДУРУ - и это та самая стена из SPLIT-PLAN §4.1.
+ *
+ * До этого `procedure` была только у `kind: 'recorded'`, а кейс строится ТОЛЬКО на `kind: 'created'`
+ * (api/cases.js: «that skill is a recording - it is replayed, not decided»). То есть поле
+ * `verification`, на котором держится вся история «один артефакт служит обоим продуктам», физически не
+ * могло оказаться на том скилле, который проверяют. Здесь проверяется, что теперь может.
+ */
+group('скилл-цель несёт тот же тир 1, что и запись, - отображением, а не вторым выводом');
+{
+  /* Ровно то, что кладёт визард: `what` расшифровки как name, контрол как input. */
+  const KEPT = [
+    { name: 'Open the invoice list', input: null },
+    { name: 'Type the customer name', input: 'Search' },
+    { name: 'Click Send', input: 'Send' },
+  ];
+
+  const made = procedureFromSteps(KEPT, { origins: ['Outlook', 'Excel'] });
+  check('шаги - те же фразы, что оставил автор', stepsSaid(made).join(' | ')
+    === 'Open the invoice list | Type the customer name | Click Send', stepsSaid(made).join(' | '));
+  check('и пронумерованы подряд', made.steps.map((s) => s.n).join(',') === '1,2,3');
+  check('это процедура по счёту hasProcedure', hasProcedure(made) === true);
+  check('whenToUse называет места и чем кончается', /Use it in Outlook, Excel\./.test(made.whenToUse)
+    && /It ends by: click Send\./.test(made.whenToUse), made.whenToUse);
+  /* ТА ЖЕ ФУНКЦИЯ, ЧТО У ЗАПИСИ: две редакции этой строки разошлись бы в первую неделю. */
+  const fromEvents = procedureFrom(WEB_EVENTS, { origins: ['mail.google.com'], params: [] });
+  check('и строится тем же правилом, что у записи', /^Use it in mail\.google\.com\./.test(fromEvents.whenToUse),
+    fromEvents.whenToUse);
+
+  check('ничего не выдумано: pitfalls и verification пусты',
+    made.pitfalls.length === 0 && made.verification.length === 0);
+
+  /* НИ ОДНОЙ ФРАЗЫ - НИ ОДНОЙ ПРОЦЕДУРЫ, а не пустой каркас: поле, которое hasProcedure сам не признаёт
+   * процедурой, обещало бы читателю тир, которого нет. */
+  check('без единой фразы - null, а не пустой каркас',
+    procedureFromSteps([{ name: '', input: 'x' }, { input: 'y' }], { origins: ['A'] }) === null);
+  check('и пустой вход - тоже null', procedureFromSteps([], {}) === null && procedureFromSteps(null) === null);
+
+  check('и потолок шагов тот же', procedureFromSteps(
+    Array.from({ length: STEPS_MAX + 10 }, (_, i) => ({ name: `Step ${i + 1}`, input: null })), {},
+  ).steps.length === STEPS_MAX);
+
+  /* И ГЛАВНОЕ: скилл, который кейс ПРИНИМАЕТ, теперь может нести проверки - в той же форме, которую
+   * судит readExpects. Пустой список он по-прежнему отвергает словами, и это правильно. */
+  const created = {
+    id: 'gs_1', name: 'Send the invoice', kind: 'created', source: 'desktop', origins: ['Outlook'],
+    payload: {
+      version: 1, kind: 'created', goalTemplate: 'Send the invoice to {{who}}',
+      steps: KEPT, procedure: { ...made, verification: [{ check: 'present', name: 'Sent', why: 'the mail left' }] },
+    },
+  };
+  check('structureOf считает шаги скилла-цели по процедуре',
+    structureOf(created).steps.length === 3 || /3 steps/.test(structureOf(created).description),
+    structureOf(created).description);
+  const judged = readExpects(created.payload.procedure.verification, checksFor('desktop'));
+  check('а его verification проходит тот же суд, что и у записи', judged.why === '', judged.why);
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

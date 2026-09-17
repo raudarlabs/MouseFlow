@@ -117,6 +117,27 @@ function sentenceFor(event, paramFor) {
   return verb ? verb.charAt(0).toUpperCase() + verb.slice(1) : null;
 }
 
+/* WHERE THIS APPLIES, AND WHAT IT ENDS BY DOING - the two facts somebody deciding whether to run this
+ * actually needs. Absent when there are no origins, rather than a sentence that says nothing: a
+ * `whenToUse` reading "Use it." is worse than no field, because a reader spends attention on it before
+ * discovering it is empty.
+ *
+ * The LAST step, not the first. The first is almost always "open the page", which the origins have
+ * already said; the last is the outcome, and the outcome is what makes this decidable - "it ends by
+ * clicking Send" is the difference between running it and not. Skipped when there is only one step,
+ * because then the procedure and this sentence would say the same thing twice.
+ *
+ * ОДНА ФУНКЦИЯ НА ОБА ВЫВОДА - её зовут и procedureFrom (запись), и procedureFromSteps (написанный
+ * скилл). Два продукта читают `whenToUse` как одну и ту же строку, и две её редакции разошлись бы в
+ * первую же неделю. */
+function whenToUseFrom(list, steps) {
+  const origins = (Array.isArray(list) ? list : []).map((one) => clean(one)).filter(Boolean).slice(0, 3);
+  if (!origins.length) return null;
+  const ends = steps.length > 1 ? clean(steps[steps.length - 1] && steps[steps.length - 1].said) : '';
+  return `Use it in ${origins.join(', ')}.`
+    + (ends ? ` It ends by: ${ends.charAt(0).toLowerCase()}${ends.slice(1)}.` : '');
+}
+
 /* ------------------------------------------------------------------ the procedure */
 
 /**
@@ -174,12 +195,7 @@ export function procedureFrom(events, meta) {
    * already said; the last is the outcome, and the outcome is what makes this decidable - "it ends by
    * clicking Send" is the difference between running it and not. Skipped when there is only one step,
    * because then the procedure and this sentence would say the same thing twice. */
-  const origins = (Array.isArray(about.origins) ? about.origins : [])
-    .map((one) => clean(one)).filter(Boolean).slice(0, 3);
-  const ends = steps.length > 1 ? steps[steps.length - 1].said : '';
-  const whenToUse = origins.length
-    ? `Use it in ${origins.join(', ')}.${ends ? ` It ends by: ${ends.charAt(0).toLowerCase()}${ends.slice(1)}.` : ''}`
-    : null;
+  const whenToUse = whenToUseFrom(about.origins, steps);
 
   return {
     whenToUse,
@@ -201,6 +217,58 @@ export function procedureFrom(events, meta) {
      * So the field exists to be FILLED - by the author, or by the case flow, in the `expects` shape from
      * api/_case.mjs - and `readExpects` there stays the one judge of whether an entry is valid. This side
      * transports; it does not judge. */
+    verification: [],
+  };
+}
+
+/* ------------------------------------- the same tier 1, for a skill that was WRITTEN rather than recorded
+ *
+ * ЗАЧЕМ ВТОРОЙ ВЫВОД, А НЕ ВЫЗОВ ПЕРВОГО. `procedureFrom` выше читает события РАСШИРЕНИЯ: `click`,
+ * `blank`, `navigate`, `tag`, `selector`, `field`. Скилл-цель (`kind: 'created'`) делается визардом из
+ * ДЕСКТОПНОЙ записи, где событие - это пять колонок `.mmmacro` плюс `#ctx`, а действия зовутся `press`,
+ * `release`, `move`. Прогнать одно через другое можно, и получится «Press. Release. Move.» - тот самый
+ * журнал, вместо которого весь этот файл и написан.
+ *
+ * И ВЫВОДИТЬ ЗАНОВО НЕ ИЗ ЧЕГО: у скилла-цели предложения УЖЕ ЕСТЬ. Визард показывает строки расшифровки
+ * (api/_transcript.js), человек отмечает те, что оставляет, и они уезжают в payload.steps как
+ * `{ name, input }`, где `name` - это `what` расшифровки, то есть законченная фраза. Значит честный
+ * вывод здесь - ОТОБРАЖЕНИЕ уже написанного в форму артефакта, а не второе мнение о том же самом:
+ * процедура говорит ровно то, что автор оставил, и ни словом больше.
+ *
+ * ПОЧЕМУ ЭТО ВООБЩЕ НУЖНО (SPLIT-PLAN §4.1). До этого `procedure` была только у `kind: 'recorded'`, а
+ * кейс строится только на `created` - то есть поле `verification`, на котором держится вся история «один
+ * артефакт служит обоим продуктам», физически не могло оказаться на скилле, который проверяют. Теперь
+ * может: у написанного скилла есть tier 1, и `verification` у него есть куда лечь.
+ */
+
+/**
+ * @param {{name?: string, input?: string}[]} said  шаги скилла - `payload.steps`, как их оставил автор
+ * @param {{origins?: string[]}} [meta]
+ * @returns {{ whenToUse: string|null, steps: object[], pitfalls: object[], verification: object[] }|null}
+ */
+export function procedureFromSteps(said, meta) {
+  const list = Array.isArray(said) ? said : [];
+  const about = meta && typeof meta === 'object' ? meta : {};
+
+  const steps = [];
+  for (const one of list) {
+    const sentence = clean(one && one.name).slice(0, SAID_MAX);
+    if (!sentence) continue;
+    steps.push({ n: steps.length + 1, said: sentence });
+    if (steps.length >= STEPS_MAX) break;
+  }
+  /* НИ ОДНОГО ШАГА - НИ ОДНОЙ ПРОЦЕДУРЫ. `null`, а не пустой каркас с whenToUse: `hasProcedure` ниже
+   * считает процедурой только то, в чём есть шаги, и класть в скилл объект, который сам же не признаёт
+   * процедурой, значит обещать читателю тир, которого нет. */
+  if (!steps.length) return null;
+
+  return {
+    whenToUse: whenToUseFrom(about.origins, steps),
+    steps,
+    /* По тем же двум причинам, что и у procedureFrom выше: pitfalls наполняет память приложений, а
+     * verification - автор или кейс, в форме `expects` из api/_case.mjs. Здесь не выдумывается ни то,
+     * ни другое. */
+    pitfalls: [],
     verification: [],
   };
 }

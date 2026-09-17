@@ -204,6 +204,38 @@ decision, and steps 4–8 do not depend on this repair landing first. The claim 
 (`extension/procedure.js:11`, `docs/product/06-skills.md`) should be softened the day a choice is made, and
 not before: it describes the intent correctly and the code will follow it.
 
+#### A was chosen (owner, 2026-09-17) — and A turned out to be a mapping, not a derivation
+
+Implementing it found the second wall immediately: **`procedureFrom` cannot be pointed at a created skill's
+recording.** It reads *extension* events — `click`, `blank`, `navigate`, `tag`, `selector`, `field` — and a
+created skill is made by the wizard from a **desktop** recording, whose events are `.mmmacro` five-column
+lines with `press`/`release`/`move`. Running one through the other yields "Press. Release. Move." — the log
+this whole file exists to replace.
+
+And nothing needed deriving, because **the sentences already existed**. The wizard shows the transcript's
+lines (`api/_transcript.js`), the person ticks the ones to keep, and they are stored as
+`payload.steps = { name, input }[]` where `name` is the transcript's `what` — a finished sentence, curated
+by the author. So the honest form of A is to **map what the author already kept into the artifact's shape**,
+not to have a second opinion about the same recording.
+
+*Shipped:* `procedureFromSteps` in `extension/procedure.js` (beside `procedureFrom`, sharing one
+`whenToUseFrom` so the two cannot word that sentence differently), re-exported through the new
+`api/_procedure.mjs` + `.d.mts` — the same web → `api/_*.mjs` → `extension/*.js` chain that `checksOf` and
+`fitBlock` already use, because the web app must not import `extension/` directly. Attached at save in
+`saveAsGoalSkill`. 11 new checks in `api/_test-skills.mjs`, including the one that matters: a `created`
+skill's `verification` passes the same `readExpects` that judges a case's.
+
+*Deliberately not attached* to `saveDictatedAsGoalSkill`: a dictated skill's steps are tool names
+(`"1. click"`), not sentences, and manufacturing prose from them would put the log back into the document.
+Absent is not false.
+
+*What remains of step 1:* nothing writes `verification` yet. `extension/procedure.js` already names the
+intended writer — *"the field exists to be FILLED — by the author, or by the case flow, in the `expects`
+shape from `api/_case.mjs`"* — so the other half is: when a case is created on a skill, seed its checks from
+the skill's `procedure.verification` when the caller passed none, and write the checks back onto the skill
+so the next case, and anyone who installs it from the gallery, starts from them. That closes the loop with
+no new question asked of anybody.
+
 ### 4.2 `api/mcp.js` is both products in one file
 
 2 628 lines: P2's tool catalogue *and* P1's whole worker/step protocol. Nothing is wrong with it today —
@@ -477,7 +509,8 @@ commit, and one concrete thing named for the owner to check.
 | # | What | Proof | Done when |
 |---|---|---|---|
 | 0 | Housekeeping: `db/022_queue_machine.sql`'s header still says "НЕ ПРИМЕНЕНА" — it was applied 2026-09-11 | grep | the file no longer contradicts `npm run migrate -- --list` |
-| 1 | **§4.1** wire `procedure.verification` → `readExpects` | `api/_test-skills.mjs`, `api/_test-case.mjs`, mutation-proven | one `/2` skill's own checks decide a case's verdict |
+| 1a | **§4.1** a created skill carries tier 1 (`procedureFromSteps`) — **done 2026-09-17** | `api/_test-skills.mjs`, 11 checks | the kind a case accepts can carry `verification` at all |
+| 1b | **§4.1** the case flow fills and seeds `verification` | `api/_test-case.mjs`, mutation-proven | one skill's own checks decide a case's verdict, and a case's checks come back to the skill |
 | 2 | **§4.2** split `api/mcp.js` into catalogue + worker | `npm test`, routes pin untouched | filename answers "which product" |
 | 3 | **§4.3** `insights` halves (`did` / `ran`) | `api/_test-insights.mjs` | `?half=did` touches no `user_run` |
 | 4 | The product axis: `web/src/lib/product.ts`, one definition read by sidebar, titles, onboarding | pin: nothing decides a screen's product twice | switching product changes the whole shell, in one place |
