@@ -1083,9 +1083,19 @@ export const CreateView = () => {
             <div className="flex flex-wrap items-center gap-3 rounded-md border-stroke border bg-surface-card2 px-3 py-2.5 text-[0.86rem] text-ink-secondary">
               <span className="max-w-[64ch]">{blocked}</span>
               <Button variant="ghost" size="sm" onClick={() => void check()}>Check again</Button>
-              {target === 'desktop' && !health && (
+              {/* КНОПКА НАЗЫВАЕТСЯ ТЕМ ЖЕ СЛОВОМ, ЧТО И ТЕКСТ НАД НЕЙ, и стоит там же, где текст её зовёт.
+                *
+                * Обе фразы выше говорят «Connections», а кнопка говорила «Open the guide» - то есть
+                * называла другое место. В приложении из восьми экранов это сходило с рук: Connections
+                * висел в меню, и найти его можно было и без кнопки. В приложении из четырёх экранов
+                * пункта нет, и эта кнопка - единственная дверь, кроме пилюли агента в шапке.
+                *
+                * И показывается она при ЛЮБОМ отказе настольного пути, а не только когда агента нет.
+                * Устаревший агент - это `health` есть, кнопки не было, а фраза всё равно отсылала в
+                * Connections: предложение, называющее место, куда отсюда не попасть. */}
+              {target === 'desktop' && (
                 <Button variant="ghost" size="sm" onClick={() => void navigate({ to: '/connect' })}>
-                  Open the guide
+                  Open Connections
                 </Button>
               )}
             </div>

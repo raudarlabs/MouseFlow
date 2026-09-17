@@ -446,16 +446,23 @@ sideways out of the run table.
 *Done when:* a past task is one click from being run again or edited, from the same list, without going
 through Logs — and the list is the thing you see first on Create, not a panel on the right.
 
-### 5.6 Connections has no door in P1 (found 2026-09-18, by looking)
+### 5.6 Connections has no door in P1 (found 2026-09-18, by looking — and smaller than it first read)
 
 With P1 trimmed to four screens, `/connect` is in none of them. It is reachable from the agent pill in the
 header and from the settings dialog, and the "no local agent is answering" notice says *Open Connections* —
-a sentence naming a place the menu does not have. It worked while the app had eight screens and one of them
-was always a click away; in a four-screen shell it is the only screen a new person actually needs on their
-first day, because nothing runs until the agent is installed.
+a sentence naming a place the menu does not have.
 
-*Do:* either a nav row of its own in P1, or a button in that notice that opens it. One line either way; the
-decision is whether install belongs in the menu forever or only until it is done.
+**Corrected on inspection, and the correction is the useful part.** The notice already had a button to
+`/connect`; it was labelled **"Open the guide"**, which names a different thing from the sentence above it,
+and it appeared **only when there was no agent at all**. The stale-agent case — `health` present but too old
+to see or act — carries a sentence that also says *Connections has the command*, and had no button under it.
+So the gap was never "no door"; it was a door with the wrong name on it, and a second case with no door at
+all. In an eight-screen app that cost nothing, because Connections was in the menu; at four screens the
+button is the only way there short of the header pill.
+
+*Done 2026-09-18:* the button says **Open Connections**, and it appears on every desktop refusal rather than
+only on the absent one. **No nav row** — four screens is a decision, and the header pill is the permanent
+door for a machine that is already connected; what was missing was the door at the moment of the problem.
 
 ### 5.4 The cross-links that would tear
 
@@ -741,7 +748,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 
 | # | What | Why now | How | Done when |
 |---|---|---|---|---|
-| 5 | **§5.6** a door to Connections in P1 | Four screens, and none of them is the one a new person needs on day one. The notice already says *Open Connections* and names a place the menu does not have | A nav row, or a button inside that notice | Nothing has to be found in a dialog before the first run |
+| ~~5~~ | **§5.6** a door to Connections in P1 — **done 2026-09-18** | Smaller than it read: the button existed, was called *Open the guide*, and was missing entirely on the stale-agent case | Renamed to match the sentence; shown on every desktop refusal. No nav row — four screens is a decision | `agent/test-contract.mjs`, 3 checks |
 | 6 | **§5.5-A** Create as a list of threads | The owner's shape, and most of it exists: the goal is stored, `relaunch()` already moves it into the composer, `EarlierPanel` already lists past runs | Move the list left, make a row open its goal **and its attachments**, two actions: *Run again* / *Change and run*. **Not** conversation state — that is 5.5-B and it is a different project | A past task is one click from running again, without going through Logs |
 | 7 | **§5.1** cut Skills into Library (P2) and Runs (P1) | The last screen still marked `both`, and the only thing standing between here and two coherent products | Split the view; `SkillWizard` stays one component | Neither half uses the other's vocabulary |
 | 8 | **§5.2** the P2 dashboard asks `?half=did` | Was a page split; is now one query parameter, because the Dashboard moved whole | One line in `InsightsView`, plus the `HALF` constant that is already named | The dashboard runs no query against `user_run` |
