@@ -164,6 +164,46 @@ the products are separately named and separately sold, the gap becomes a promise
 from that field, through `readExpects`, with no second definition of what a check is. Proven by execution in
 `api/_test-skills.mjs` + `api/_test-case.mjs`, mutation-proven as everything else here.
 
+#### Correction, found on 2026-09-17 while starting this very step — it is worse than "nothing reads it"
+
+The two halves are not merely unconnected. **They are on opposite sides of a wall, and no reader can be
+wired between them as written above.**
+
+| | Carries `procedure` | Can a case be built on it? |
+|---|---|---|
+| `kind: 'recorded'` — `skillFromRecording`, `extension/skills.js:186-203` | **yes** (`verification` always `[]` at derivation) | **no** — `api/cases.js` `skillFor` refuses it: *"that skill is a recording - it is replayed, not decided, so nothing in it can check anything"* |
+| `kind: 'created'` — `saveAsGoalSkill` / `saveDictatedAsGoalSkill`, `web/src/features/record/save-as-skill.ts:102,177` | **no** — it carries `goalTemplate`, `success`, `params`, `steps`, `fromRecording`/`fromRun` | yes, and it is the only kind that can |
+
+So the only skills that *can* carry `procedure.verification` are exactly the skills a case *refuses*, and the
+only skills a case accepts have no `procedure` at all. Wiring a reader would have produced dead code that
+looked like a bridge. **One of the two ends has to move first — which is a product decision, not a
+refactor.**
+
+What a `created` skill does carry is `success` — "Признак готовности. **Проверяется, а не исполняется**"
+(`save-as-skill.ts:113-118`), kept deliberately apart from `goalTemplate` so the model checks the condition
+instead of performing it. That is verification in prose: the same idea as `procedure.verification`, one tier
+less structured, on the other side of the wall.
+
+**Three ways to close it, for the owner to choose (§11.8):**
+
+- **A — give `created` skills a procedure too.** Derive it server-side from `fromRecording` when the wizard
+  saves (the wizard itself cannot: `GoalSkillSource` is deliberately four fields and holds no events —
+  *"fabricating an empty `events` array … would be a lie the next reader has to disprove"*). Honest, and it
+  makes one artifact genuinely serve both products. Costs a derivation path on the server.
+- **B — treat `success` as the seed.** When a case is built on a created skill and no checks were given,
+  show that sentence and ask the person to turn it into checks. Smallest change, keeps a person in the loop,
+  but turning prose into structured checks either falls to them or needs a model call (`api/compose.js` is
+  the precedent).
+- **C — let the wizard ask for checks directly** and write them into `procedure.verification` on the
+  created skill. The wizard already collects a name, a goal, params, steps and `success`; one more field is
+  cheap, and it puts the checks where the artifact claims they live. Costs one more question at the moment
+  somebody is already answering five.
+
+Until one is chosen, **step 1 is blocked and the rest of the sequence is not** — steps 0, 2 and 3 need no
+decision, and steps 4–8 do not depend on this repair landing first. The claim in the documentation
+(`extension/procedure.js:11`, `docs/product/06-skills.md`) should be softened the day a choice is made, and
+not before: it describes the intent correctly and the code will follow it.
+
 ### 4.2 `api/mcp.js` is both products in one file
 
 2 628 lines: P2's tool catalogue *and* P1's whole worker/step protocol. Nothing is wrong with it today —
@@ -489,3 +529,6 @@ that is half-built today. Steps 4–8 are the split proper. Steps 9–12 finish 
 7. **Does dictation keep an on-device fallback** (§7), or does the product simply say that audio goes to
    OpenAI and leave it at that? Keeping both is one switch and one sentence; keeping neither is simpler to
    explain but reverses a promise the code currently makes.
+8. **Which side of the wall moves — A, B or C in §4.1's correction?** This one blocks step 1, and step 1 is
+   the repair the whole "one artifact, two products" claim rests on. It is a product decision because each
+   answer changes what the person is asked for and when.
