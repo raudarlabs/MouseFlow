@@ -26,6 +26,8 @@ import { AdminUsers } from '@/features/admin/AdminUsers';
 import { AdminUser } from '@/features/admin/AdminUser';
 import { AdminModels } from '@/features/admin/AdminModels';
 import { InsightsView } from '@/features/insights/InsightsView';
+import { PRODUCTS } from '@/lib/product';
+import { storedProduct } from '@/shell/useProduct';
 import { DocsView } from '@/features/docs/DocsView';
 import { TeamView } from '@/features/team/TeamView';
 import { ErrorBoundary, startReporting } from '@/lib/sentry';
@@ -47,8 +49,13 @@ const routes = [
   createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    // Landing on Record: the thing most visits came to do.
-    beforeLoad: () => { throw redirect({ to: '/record' }); },
+    /* ДОМОЙ ТОГО ПРОДУКТА, КОТОРЫЙ ВЫБРАН, а не на постоянный /record.
+     *
+     * Здесь стоял один адрес, и это было верно, пока продукт был один. С двумя это единственное место,
+     * где «какой продукт по умолчанию» и «выбор этого браузера» встречаются: человек, переключивший
+     * продукт и открывший приложение с закладки на корень, должен попадать в выбранный, а не обратно.
+     * Сам выбор - в web/src/shell/useProduct.ts, значение по умолчанию - в web/src/lib/product.ts. */
+    beforeLoad: () => { throw redirect({ to: PRODUCTS[storedProduct()].home }); },
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/record', component: RecordView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/create', component: CreateView }),
@@ -109,11 +116,12 @@ const routes = [
     createRoute({ getParentRoute: () => adminRoute, path: '/models', component: AdminModels }),
   ]),
   /* Every link written before this rewrite used a hash - #record, #skills, #gallery. Kept working rather
-   * than silently landing people on the fallback. */
+   * than silently landing people on the fallback. И приземляются они туда же, куда корень: в выбранный
+   * продукт, а не в тот, который был единственным, когда эта строка писалась. */
   createRoute({
     getParentRoute: () => rootRoute,
     path: '$',
-    beforeLoad: () => { throw redirect({ to: '/record' }); },
+    beforeLoad: () => { throw redirect({ to: PRODUCTS[storedProduct()].home }); },
   }),
 ];
 

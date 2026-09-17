@@ -10,6 +10,10 @@ import { cn } from '@insightis/ui/cn';
 import { Typography } from '@insightis/ui/Typography';
 import { AGENT_WANTS, type LoopbackTrouble } from '@/lib/agent';
 import { watchForNewBuild } from '@/lib/build';
+/* Заголовок берётся оттуда же, откуда боковое меню берёт пункты, а тур - свои шаги. Здесь стоял
+ * собственный список из десяти маршрутов, и он уже расходился с меню: /docs пробыл в меню один день,
+ * а заголовок для него остался. См. web/src/lib/product.ts. */
+import { titleAt } from '@/lib/product';
 import { askAgent, useAgent } from '@/lib/store';
 import { AccountProvider, isAuthPath, isPublicPath } from './AccountProvider';
 import { AppSidebar } from './AppSidebar';
@@ -19,20 +23,6 @@ import { OnboardingTour } from './OnboardingTour';
  * than on the Record page because signing in on another machine can land anywhere, and waiting for somebody to
  * visit the right page before their recordings appear is the same bug in a longer form. */
 import { Reconciler } from '@/features/record/Reconciler';
-
-const TITLES: Record<string, string> = {
-  '/record': 'Record',
-  '/create': 'Create the flow',
-  '/activity': 'Activity',
-  '/skills': 'Skills',
-  '/tests': 'Tests',
-  '/gallery': 'Gallery',
-  '/dashboard': 'Dashboard',
-  '/team': 'Teams',
-  // Still routed, because it was live and is linked from outside the app.
-  '/insights': 'Dashboard',
-  '/connect': 'Connections',
-};
 
 const Shell = () => {
   /* Sign-in, sign-up and reset are whole pages, not screens inside the app: a sidebar to a product you have
@@ -113,7 +103,7 @@ const ShellFrame = () => {
           * положили: h-16 - это ровно те 4rem, которые вычитает Surface, и разойтись им больше негде. */}
         <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-stroke border-b bg-surface-page/85 px-5 backdrop-blur">
           <Typography variant="h1" weight="semibold" className="text-[0.98rem]">
-            {TITLES[path] ?? 'MouseFlow'}
+            {titleAt(path)}
           </Typography>
 
           {/* Beside the agent pill, because they answer the same question - "is what I am looking at

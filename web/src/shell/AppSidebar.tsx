@@ -5,12 +5,18 @@
  * was a second door to a room that already has one. Record's own button does it, on the page that shows
  * what is being recorded. Below the places: what it is costing you, in hours, and who you are.
  *
+ * ПУНКТЫ БОЛЬШЕ НЕ ЖИВУТ ЗДЕСЬ. Их список - в web/src/lib/product.ts, потому что у каждого экрана есть
+ * ещё заголовок и шаг тура, и три списка маршрутов, обязанных совпадать, уже один раз разошлись. Здесь
+ * остались ЗНАЧКИ: они представление, и тащить lucide в общий файл значило бы сделать его несбираемым
+ * вне браузера, а он читается сюитой напрямую. Что значок есть у каждого пункта меню, проверяется -
+ * см. web/check-web.mjs.
+ *
  * Every row is RAIL square: one declared size, used by the nav, the collapse toggle and the avatar alike.
  * They each sized themselves before - 34px, 32px, 24px - which is why the collapsed rail looked ragged.
  *
  * Collapsing is remembered - it is a preference about this screen rather than about this visit.
  */
-import { Link, useRouterState } from '@tanstack/react-router';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   Activity,
   FlaskConical,
@@ -24,45 +30,38 @@ import {
   Users,
   Wallet,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@insightis/ui/Badge';
 import { cn } from '@insightis/ui/cn';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@insightis/ui/DropdownMenu';
 import { Typography } from '@insightis/ui/Typography';
 import { hoursOf } from '@/lib/api';
+import { PRODUCTS, PRODUCT_IDS, type Product, screensFor } from '@/lib/product';
 import { useActivityCount } from '@/features/activity/ActivityView';
 import { useAccount } from '@/shell/AccountProvider';
+import { chooseProduct, useProduct } from '@/shell/useProduct';
 
 const TIGHT = 'mouseflow.side.tight';
 
-const NAV = [
-  { to: '/record', label: 'Record', icon: CircleDot },
-  /* Beta on Create alone: of the five things this product does, it is the one that acts on a real machine
-   * from a model's decisions, so it is the one that can be wrong in a way that costs something. Saying so is
-   * more use than a uniform confidence nobody believes. */
-  { to: '/create', label: 'Create', icon: Sparkles, beta: true },
-  /* После Create и до Skills - в порядке, в котором человек встречает вещи: попросил, смотрит, что стало.
-   * Счётчик у пункта - только идущее и ждущее, никогда история: число, растущее с каждым прогоном, было бы
-   * шумом, а число «сейчас» - это то единственное, ради чего сюда идут не глядя. */
-  { to: '/activity', label: 'Activity', icon: Activity, live: true },
-  { to: '/skills', label: 'Skills', icon: FolderOpen },
-  /* СРАЗУ ЗА SKILLS, потому что кейс делается из скилла и читается рядом с ним: «что у меня есть» и «что из
-   * этого проверяется каждую ночь» - два вопроса, которые задают друг за другом. Счётчика у пункта нет
-   * нарочно: число кейсов не меняется само, а число упавших ночей - это то, за чем идут на страницу
-   * смотреть ряд точек, а не цифру в меню. */
-  { to: '/tests', label: 'Tests', icon: FlaskConical },
-  // Asking about the numbers happens on the page that shows them, not at its own address.
-  { to: '/dashboard', label: 'Dashboard', icon: ChartNoAxesColumn },
-  /* A place rather than a setting. It was the fourth pane of the settings dialog, which was the right size
-   * for a roster you fill in once and the wrong one for what it now is: several teams, people being added
-   * and moved, invitations to chase, and a dashboard scoped to each. A dialog also cannot be linked to,
-   * and "open Teams" is what an invitation email has to be able to say. */
-  { to: '/team', label: 'Teams', icon: Users },
-  /* Last, and now it is the library rather than only the gallery: two shelves, other people's published
-   * flows and the process documents written from your own recordings. Documents had a nav row of its own for
-   * a day - the question a person brings is one, "what is already made and can I use it", and answering it
-   * from two menu entries was the mistake. */
-  { to: '/gallery', label: 'Gallery', icon: LayoutGrid },
-] as const;
+/* Значок на пункт меню, по маршруту. Единственное, что осталось здесь от прежнего списка: остальное -
+ * ярлык, заголовок, бета, счётчик, шаг тура - переехало в product.ts, где у него один экземпляр. */
+const ICONS: Record<string, LucideIcon> = {
+  '/record': CircleDot,
+  '/create': Sparkles,
+  '/activity': Activity,
+  '/skills': FolderOpen,
+  '/tests': FlaskConical,
+  '/dashboard': ChartNoAxesColumn,
+  '/team': Users,
+  '/gallery': LayoutGrid,
+};
 
 /* One row height, one glyph box, one gap - so a lucide glyph that draws lighter than its neighbours still
  * occupies the same square, and the collapsed rail is a column of identical buttons rather than a stack of
@@ -87,6 +86,12 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
   const liveCount = useActivityCount();
   const { account, runs } = useAccount();
   const path = useRouterState({ select: (s) => s.location.pathname });
+  /* `product` - чему подчиняется меню сейчас (адрес сильнее выбора), `chosen` - что отмечено галочкой в
+   * переключателе. Разные вещи: на общем экране адрес ничего не говорит, и галочка обязана остаться там,
+   * куда её поставили. */
+  const { product, chosen } = useProduct();
+  const navigate = useNavigate();
+  const nav = screensFor(product);
 
   const toggle = useCallback((next: boolean) => {
     setTight(next);
@@ -118,19 +123,66 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
       )}
     >
       <div className={cn('mb-1 flex items-center gap-1 pb-1', tight ? 'justify-center' : 'ps-2.5')}>
-        {/* gap-2.5, the nav's gap: at gap-2 the wordmark started two pixels left of every label below it. */}
-        <Link to="/record" className="flex min-w-0 items-center gap-2.5 text-ink-primary" title="MouseFlow">
-          <svg viewBox="0 0 24 24" aria-hidden className={cn(GLYPH, 'text-logo-mark')}>
-            {/* Centred on 12,12. It used to span y 3..19 in a 24 box - a whole unit high - which is
-                invisible on its own and obvious in the extension's rail beside four centred glyphs. */}
-            <path d="M5 4l14 8-6 1.6L10.5 20z" fill="currentColor" />
-          </svg>
-          {!tight && (
-            <Typography variant="span" weight="semibold" className="truncate">
-              MouseFlow
-            </Typography>
-          )}
-        </Link>
+        {/* ЗНАК И ПЕРЕКЛЮЧАТЕЛЬ - ОДНА КНОПКА, а не знак плюс что-то рядом.
+          *
+          * Имя продукта стоит там, где раньше стояло слово MouseFlow, потому что это и есть ответ на
+          * вопрос «где я»: два продукта живут в одном приложении, и человек, открывший его, должен
+          * видеть, в котором. Знак остаётся слева и по-прежнему ведёт домой - но домой ТОГО продукта,
+          * который выбран, а не на постоянный /record.
+          *
+          * Свёрнутой полосой остаётся только знак: имя в четырнадцать пикселей не помещается, а
+          * переключатель, у которого не видно, что выбрано, хуже его отсутствия. */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              /* Первый шаг тура целится сюда. Значение - не маршрут, потому что это и не маршрут: у
+               * переключателя нет своего адреса, а подсветка меряет элемент, а не ссылку. */
+              data-tour="product"
+              title={'Two products in one app: ' + PRODUCTS[chosen].name + '. Click to switch.'}
+              className={cn(
+                'flex min-w-0 items-center gap-2.5 rounded-md text-ink-primary hover:bg-state-hover',
+                tight ? 'size-9 justify-center' : 'h-9 px-2.5 py-0',
+              )}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden className={cn(GLYPH, 'text-logo-mark')}>
+                {/* Centred on 12,12. It used to span y 3..19 in a 24 box - a whole unit high - which is
+                    invisible on its own and obvious in the extension's rail beside four centred glyphs. */}
+                <path d="M5 4l14 8-6 1.6L10.5 20z" fill="currentColor" />
+              </svg>
+              {!tight && (
+                <>
+                  <Typography variant="span" weight="semibold" className="truncate text-[0.92rem]">
+                    {PRODUCTS[chosen].name}
+                  </Typography>
+                  <ChevronsUpDown className="size-3.5 shrink-0 text-ink-inactive" />
+                </>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-[17rem]">
+            <DropdownMenuRadioGroup
+              value={chosen}
+              onValueChange={(next) => {
+                const id = next as Product;
+                chooseProduct(id);
+                /* И сразу домой выбранного продукта. Без этого переключение с экрана, принадлежащего
+                 * другой половине, не меняло бы ничего видимого: адрес сильнее выбора, так что меню
+                 * осталось бы прежним, и кнопка читалась бы как сломанная. */
+                void navigate({ to: PRODUCTS[id].home });
+              }}
+            >
+              {PRODUCT_IDS.map((id) => (
+                <DropdownMenuRadioItem key={id} value={id} className="py-2">
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="font-semibold text-ink-primary">{PRODUCTS[id].name}</span>
+                    <span className="text-[0.78rem] text-ink-inactive">{PRODUCTS[id].blurb}</span>
+                  </span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {!tight && (
           <button
@@ -158,8 +210,9 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
       )}
 
       <nav className={cn('flex shrink-0 flex-col gap-0.5', tight && 'items-center')}>
-        {NAV.map((row) => {
-          const { to, label, icon: Icon } = row;
+        {nav.map((row) => {
+          const { to, label } = row;
+          const Icon = ICONS[to] ?? LayoutGrid;
           const on = path.startsWith(to);
           return (
             <Link
@@ -180,12 +233,12 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
               {!tight && (
                 <>
                   <span className="truncate">{label}</span>
-                  {'beta' in row && row.beta && (
+                  {row.beta && (
                     <Badge variant="attention" size="xs" rounded="full" className="ms-auto shrink-0">
                       Beta
                     </Badge>
                   )}
-                  {'live' in row && row.live && liveCount > 0 && (
+                  {row.live && liveCount > 0 && (
                     <span className="ms-auto shrink-0 rounded-full bg-brand-primary/12 px-1.5 py-px text-[0.68rem] font-semibold text-brand-primary tabular-nums">
                       {liveCount}
                     </span>

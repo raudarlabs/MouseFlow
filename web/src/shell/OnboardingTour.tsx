@@ -19,8 +19,10 @@
  * and skippable at every step, because somebody who knows what they are looking at should not have to
  * click through six panels to reach it.
  */
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { setPref } from '@/lib/api';
+import { PRODUCTS, type Product, tourFor } from '@/lib/product';
+import { useProduct } from '@/shell/useProduct';
 import { useAccount } from '@/shell/AccountProvider';
 import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
@@ -64,49 +66,43 @@ interface Step {
   body: string;
 }
 
-/* Said in the order the product is used, and each one says what the thing IS rather than which button to
- * press: a tour that reads like a list of controls teaches nothing that the controls do not already say. */
-const STEPS: Step[] = [
+/* ЧЕМ ЗАКАНЧИВАЕТСЯ ТУР - одинаково для обоих продуктов, и это единственный шаг, который что-то
+ * оставляет после себя. Агент нужен обоим: одному - чтобы двигать мышь, другому - чтобы смотреть на
+ * экран, пока её двигает человек. */
+const INSTALL: Step = {
+  target: null,
+  title: 'One thing to install',
+  body: 'The agent is the half that works outside the browser — it is what records your clicks and moves '
+    + 'the mouse for you. It runs only on this machine, answers only this app, and takes one command to '
+    + 'install. That command is on the next screen.',
+};
+
+/* ШАГИ СОБИРАЮТСЯ ИЗ ЭКРАНОВ ТОГО ПРОДУКТА, В КОТОРОМ ЧЕЛОВЕК СТОИТ, а не лежат здесь списком.
+ *
+ * Здесь был свой список из шести шагов с маршрутами внутри - третья копия набора экранов после меню и
+ * заголовков, - и он уже отстал: тур водил по Record, Create, Skills, Gallery и Dashboard в приложении,
+ * где к тому времени появились Activity и Tests. Ни одна проверка этого не видела, потому что сравнивать
+ * было не с чем.
+ *
+ * Первым шагом - сам переключатель: два продукта в одном приложении - это первое, чего не ожидают, и
+ * узнать об этом из подсветки дешевле, чем наткнуться на половину меню и решить, что чего-то не хватает.
+ */
+const stepsFor = (product: Product): Step[] => [
   {
-    target: '/record',
-    title: 'Record what you do',
-    body: 'Press Record, work the way you normally would, and stop when you are done. Every click is kept '
-      + 'with the name of the thing you clicked — "Send", not "1074, 159". Typing is kept as the fact that '
-      + 'you typed and when, never as the words.',
+    target: 'product',
+    title: 'Two products, one app',
+    body: PRODUCTS.do.name + ' — ' + PRODUCTS.do.blurb + ' ' + PRODUCTS.make.name + ' — '
+      + PRODUCTS.make.blurb + ' You are in ' + PRODUCTS[product].name
+      + '; this button switches, and nothing you have made belongs to one half only.',
   },
-  {
-    target: '/create',
-    title: 'Or say what you want done',
-    body: 'Describe the job in a sentence and it works from a picture of your screen — so it reaches a '
-      + 'spreadsheet, a folder or any window, not only a browser tab. It is the newest part, which is why '
-      + 'it is marked Beta.',
-  },
-  {
-    target: '/skills',
-    title: 'Keep the good ones as skills',
-    body: 'A recording you keep becomes a skill: run it again whenever the same job comes back, or hand it '
-      + 'to Create as one step of something larger.',
-  },
-  {
-    target: '/gallery',
-    title: 'Start from someone else’s work',
-    body: 'Skills other people have shared. Take one, and it is yours to run and to change — a good way to '
-      + 'see what this can do before recording anything at all.',
-  },
-  {
-    target: '/dashboard',
-    title: 'See where the time went',
-    body: 'What your recordings add up to: which applications the work happens in, how long each stretch '
-      + 'took, and what keeps repeating — which is usually the thing worth automating next.',
-  },
-  {
-    target: null,
-    title: 'One thing to install',
-    body: 'The agent is the half that works outside the browser — it is what records your clicks and moves '
-      + 'the mouse for you. It runs only on this machine, answers only this app, and takes one command to '
-      + 'install. That command is on the next screen.',
-  },
+  ...tourFor(product).map((screen) => ({
+    target: screen.to,
+    title: screen.tour!.title,
+    body: screen.tour!.body,
+  })),
+  INSTALL,
 ];
+
 
 interface Props {
   /** Opens the Connections screen for the last step. */
@@ -117,6 +113,10 @@ interface Rect { top: number; left: number; width: number; height: number }
 
 export const OnboardingTour = ({ onOpenConnections }: Props) => {
   const { account, flows, loaded } = useAccount();
+  /* Тур водит по тому продукту, в котором человек стоит. Пересобирается при переключении - иначе
+   * подсветка указывала бы на пункт, которого в меню больше нет. */
+  const { product } = useProduct();
+  const steps = useMemo(() => stepsFor(product), [product]);
 
   /* Whether this person has seen it, asked of the ACCOUNT first and the browser second.
    *
@@ -146,8 +146,8 @@ export const OnboardingTour = ({ onOpenConnections }: Props) => {
     return () => window.removeEventListener('mouseflow:tour', again);
   }, []);
 
-  const step = STEPS[index];
-  const last = index === STEPS.length - 1;
+  const step = steps[index];
+  const last = index === steps.length - 1;
 
   /* Measured, and re-measured whenever anything that moves the sidebar happens: the rail collapses under
    * 820px and by hand, and a highlight at a remembered coordinate is a highlight around nothing. */
@@ -201,7 +201,7 @@ export const OnboardingTour = ({ onOpenConnections }: Props) => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { finish(); return; }
       if (e.key === 'ArrowRight' || e.key === 'Enter') {
-        setIndex((i) => (i < STEPS.length - 1 ? i + 1 : i));
+        setIndex((i) => (i < steps.length - 1 ? i + 1 : i));
       }
       if (e.key === 'ArrowLeft') setIndex((i) => (i > 0 ? i - 1 : i));
     };
@@ -261,7 +261,7 @@ export const OnboardingTour = ({ onOpenConnections }: Props) => {
         style={{ top: panelTop, left: panelLeft }}
       >
         <Typography variant="span" className="text-ink-inactive text-xs">
-          {index + 1} of {STEPS.length}
+          {index + 1} of {steps.length}
         </Typography>
         <Typography variant="h2" weight="semibold" className="mt-1 text-[1.05rem]">
           {step.title}

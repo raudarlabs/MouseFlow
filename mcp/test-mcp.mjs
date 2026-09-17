@@ -16,6 +16,10 @@ import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+/* Экраны приложения спрашиваются у их ОДНОГО определения, а не вычитываются из разметки бокового меню.
+ * Три проверки ниже читали `to: '/team'` прямо в AppSidebar.tsx - и перестали что-либо значить в тот
+ * день, когда список пунктов оттуда уехал: меню собирается из этого файла (SPLIT-PLAN §9, шаг 4). */
+import { SCREENS, screensFor } from '../web/src/lib/product.ts';
 
 let pass = 0;
 let fail = 0;
@@ -763,15 +767,21 @@ const teamApi = read('../api/team.js');
 const scopeSrc = read('../api/_team-scope.js');
 
 check('/team is a route of its own', /path: '\/team'/.test(mainTsx));
-check('and it is in the sidebar, not buried in a dialog', /to: '\/team'/.test(sidebar));
+check('and it is in the sidebar, not buried in a dialog',
+  SCREENS.some((s) => s.to === '/team' && s.nav));
 /* ПОРЯДОК ЦЕЛИКОМ, а не «галерея последняя»: он говорит, в каком порядке об этих экранах думают.
    /docs стоял здесь один день и ушёл: список документов стал вкладкой Галереи, потому что вопрос у
    человека один - «что уже сделано и можно взять», - и отвечать на него двумя пунктами меню было ошибкой.
-   Пин на порядке существует ровно затем, чтобы и добавление, и удаление были видны в диффе теста. */
+   Пин на порядке существует ровно затем, чтобы и добавление, и удаление были видны в диффе теста.
+
+   Спрашивается у определения, а не у разметки: меню теперь СОБИРАЕТСЯ из него, и regexp по AppSidebar.tsx
+   с тех пор находил бы ноль пунктов и проходил бы, ничего не сравнив. Порядок здесь - объединение двух
+   продуктов в порядке объявления, то есть ровно сегодняшнее меню; по каждому продукту в отдельности он
+   закреплён в web/check-web.mjs. */
 const NAV_ORDER = '/record,/create,/activity,/skills,/tests,/dashboard,/team,/gallery';
+const navNow = SCREENS.filter((s) => s.nav).map((s) => s.to).join();
 check('порядок в сайдбаре тот, о котором договорились, и Gallery последняя',
-  [...sidebar.matchAll(/to: '(\/[a-z]+)'/g)].map((m) => m[1]).join() === NAV_ORDER,
-  [...sidebar.matchAll(/to: '(\/[a-z]+)'/g)].map((m) => m[1]).join());
+  navNow === NAV_ORDER, navNow);
 /* И у каждого пункта есть маршрут: пункт, ведущий в никуда, - это 404 из собственной навигации. */
 for (const to of NAV_ORDER.split(',')) {
   check(`${to} - настоящий маршрут`, mainTsx.includes(`path: '${to}'`), to);
@@ -5408,9 +5418,11 @@ group('тест-кейс: утверждения заранее, вердикт 
     /update user_schedule set deleted_at = now\(\)[\s\S]{0,240}CASE_KEY/.test(door));
 
   /* СТРАНИЦА. Две карточки в форме Skills, ряд точек, и слова - из общего словаря. */
+  /* Сразу за Skills - в меню СВОЕГО продукта: кейс делается из скилла и читается рядом с ним. */
   check('страница - маршрут и пункт меню сразу за Skills',
     /path: '\/tests'/.test(read('../web/src/main.tsx'))
-      && /to: '\/tests', label: 'Tests'/.test(read('../web/src/shell/AppSidebar.tsx')));
+      && screensFor('do').findIndex((s) => s.to === '/tests')
+        === screensFor('do').findIndex((s) => s.to === '/skills') + 1);
   check('две карточки в том же ободке, что у библиотеки',
     (page.match(/const CARD = 'rounded-xl border-stroke border bg-surface-card p-4'/g) || []).length === 1
       && (page.match(/<section className=\{CARD\}>/g) || []).length === 2);
