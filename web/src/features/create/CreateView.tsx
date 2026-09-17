@@ -58,6 +58,8 @@ import {
 } from '@/features/record/save-as-skill';
 import { langName, useDictation } from './dictation';
 import { SaveDictatedSkill } from './SaveDictatedSkill';
+import { PRODUCTS } from '@/lib/product';
+import { useProduct } from '@/shell/useProduct';
 import { useAccount } from '@/shell/AccountProvider';
 import { usePageChrome } from '@/shell/Surface';
 import { type Plan, askForPlan } from '@/lib/plan';
@@ -139,9 +141,24 @@ export const CreateView = () => {
   >(null);
   const navigate = useNavigate();
 
+  /* ЧЕМ ЭТОТ ПРОДУКТ УМЕЕТ ДЕЙСТВОВАТЬ - спрашивается у продукта, а не решается здесь. Первый продукт
+   * предлагает только локального агента (см. PRODUCTS.do.runsIn и комментарий там), и тогда выбора нет:
+   * запомненное «в браузере» в такой сборке пришлось бы или молча исполнить агентом, или показать
+   * переключатель на одну кнопку. */
+  const { product } = useProduct();
+  const runners = PRODUCTS[product].runsIn;
   const [target, setTarget] = useState<Target>(() => {
-    try { return localStorage.getItem(KEY) === 'desktop' ? 'desktop' : 'browser'; } catch (_) { return 'browser'; }
+    let was: Target = 'browser';
+    try { was = localStorage.getItem(KEY) === 'desktop' ? 'desktop' : 'browser'; } catch (_) { /* private mode */ }
+    /* Запомненное уважается только если продукт его предлагает - иначе первый же прогон пошёл бы не туда,
+     * куда показывает страница. */
+    return runners.includes(was) ? was : runners[0];
   });
+  /* И если продукт сменили, пока страница открыта. Переключение продукта уводит на его домашний экран, так
+   * что случай редкий, - но состояние «на экране агент, в памяти расширение» жить не должно. */
+  useEffect(() => {
+    setTarget((was) => (runners.includes(was) ? was : runners[0]));
+  }, [runners]);
   /* ЦЕЛЬ, ПРИНЕСЁННАЯ СО СТРАНИЦЫ ACTIVITY (Relaunch). Прочитана один раз и сразу стёрта: вернуться на Create
    * через час и найти в композере вчерашнюю цель - это композер, который подставляет то, о чём не просили.
    * sessionStorage, а не адресная строка: цель это текст на несколько строк, и в URL ему не место. */
@@ -1238,16 +1255,20 @@ export const CreateView = () => {
         footer={
           <>
             {/* The choice of executor lives with the message it applies to, not in a mode above the page:
-                the same goal typed against the browser and against the desktop is two different requests. */}
+                the same goal typed against the browser and against the desktop is two different requests.
+                Продукт, предлагающий одного исполнителя, не показывает его вовсе: сегментный контрол с
+                одной кнопкой - это не выбор, а мебель. */}
+            {runners.length > 1 && (
             <Segmented<Target>
               value={target}
               disabled={running}
               onChange={(id) => { setTarget(id); void check(); }}
-              options={[
+              options={([
                 { id: 'browser', label: 'In this browser', title: 'The extension drives a tab. Steadier, and cannot leave the browser.' },
                 { id: 'desktop', label: 'On this computer', title: 'The local agent drives the whole desktop from a picture of the screen.' },
-              ]}
+              ] as { id: Target; label: string; title: string }[]).filter((o) => runners.includes(o.id))}
             />
+            )}
 
             {/* ОГРАНИЧЕНИЕ, а не контекст - и название теперь это говорит.
                 *

@@ -31,6 +31,9 @@ export type Product = 'do' | 'make';
 /** Чей это экран. `'both'` - разрезается отдельным шагом плана, см. заголовок. */
 export type Owner = Product | 'both';
 
+/** Чем этот продукт вообще умеет действовать. */
+export type Runner = 'browser' | 'desktop';
+
 export interface ProductInfo {
   id: Product;
   /** Рабочее имя. SPLIT-PLAN §11.1. */
@@ -39,6 +42,8 @@ export interface ProductInfo {
   blurb: string;
   /** Куда приводит выбор этого продукта. */
   home: string;
+  /** Исполнители, которые этот продукт предлагает. Первый - тот, с которого начинают. */
+  runsIn: Runner[];
 }
 
 export const PRODUCTS: Record<Product, ProductInfo> = {
@@ -47,6 +52,16 @@ export const PRODUCTS: Record<Product, ProductInfo> = {
     name: 'Do it for me',
     blurb: 'Describe the job. The machine carries it out on your computer, and proves it still works.',
     home: '/create',
+    /* ТОЛЬКО ЛОКАЛЬНЫЙ АГЕНТ - решение владельца от 2026-09-18, и слово «пока» в нём было.
+     *
+     * Расширение и агент - два разных исполнителя с разными обещаниями: расширение целится в элементы
+     * страницы и не может выйти из браузера, агент видит весь экран. Выбор между ними стоял под каждым
+     * сообщением, и в продукте про проверки это выбор, которого человек делать не должен: «проверь, что
+     * выставление счёта ещё работает» проверяет то, что происходит на машине, а не во вкладке.
+     *
+     * Один исполнитель - и переключателя нет вовсе: сегментный контрол с одной кнопкой это не выбор, а
+     * мебель. Всё остальное на Create уже ветвится по исполнителю, поэтому слова меняются сами. */
+    runsIn: ['desktop'],
   },
   make: {
     id: 'make',
@@ -54,6 +69,8 @@ export const PRODUCTS: Record<Product, ProductInfo> = {
     blurb: 'Record what you already do. It becomes a tool other agents can call and a document people '
       + 'can read.',
     home: '/record',
+    /* Оба: запись в браузере - это и есть расширение, и оно у второго продукта не вспомогательное. */
+    runsIn: ['browser', 'desktop'],
   },
 };
 
@@ -125,18 +142,22 @@ export const SCREENS: Screen[] = [
   },
   /* После Create и до Skills - в порядке, в котором человек встречает вещи: попросил, смотрит, что стало.
    * Счётчик у пункта - только идущее и ждущее, никогда история: число, растущее с каждым прогоном, было
-   * бы шумом, а число «сейчас» - это то единственное, ради чего сюда идут не глядя. */
+   * бы шумом, а число «сейчас» - это то единственное, ради чего сюда идут не глядя.
+   *
+   * ИМЯ - LOGS, решение владельца от 2026-09-18. «Activity» описывало страницу, пока она была одной из
+   * восьми; в приложении, где кроме неё осталось три экрана, это журнал - то место, куда идут узнать, что
+   * именно произошло и почему. Адрес переехал на /logs, старый перенаправляет: он был живым. */
   {
-    to: '/activity',
-    label: 'Activity',
-    title: 'Activity',
+    to: '/logs',
+    label: 'Logs',
+    title: 'Logs',
     owner: 'do',
     nav: true,
     live: true,
     tour: {
-      title: 'Watch it happen',
-      body: 'What is running now, what is waiting for an answer, and everything that has already run — '
-        + 'with the reason it ended the way it did, not just a tick or a cross.',
+      title: 'Read what happened',
+      body: 'Every run, with what was asked, what it did step by step, how long it took and how it ended '
+        + '— and the frames it kept, so a failure comes with the evidence rather than with a claim.',
     },
   },
   /* Разорван пополам шагом 5 плана: библиотека потоков - это 'make', «запусти это» и расписания - 'do'.
@@ -161,19 +182,34 @@ export const SCREENS: Screen[] = [
         + 'saw, so a failure comes with the evidence rather than with a claim.',
     },
   },
-  // Asking about the numbers happens on the page that shows them, not at its own address.
-  { to: '/dashboard', label: 'Dashboard', title: 'Dashboard', owner: 'both', nav: true,
+  /* Asking about the numbers happens on the page that shows them, not at its own address.
+   *
+   * И это экран ТОЛЬКО второго продукта, решение владельца от 2026-09-18. Дашборд отвечает на вопрос «на
+   * что ушла неделя» - вопрос человека о своей работе, а не о прогонах; §5.2 плана собиралась разрезать
+   * его пополам, и половина «как отработал агент» в приложении про проверки не нужна: то же самое, только
+   * с доказательствами, есть в Logs. `?half=` из шага 3 при этом не зря: он и делает дашборд однопродуктовым
+   * без переписывания. */
+  { to: '/dashboard', label: 'Dashboard', title: 'Dashboard', owner: 'make', nav: true,
     tour: {
       title: 'See where the time went',
       body: 'What your recordings add up to: which applications the work happens in, how long each '
         + 'stretch took, and what keeps repeating — which is usually the thing worth automating next.',
     } },
   /* A place rather than a setting. It was the fourth pane of the settings dialog, which was the right size
-   * for a roster you fill in once and the wrong one for what it now is. */
-  { to: '/team', label: 'Teams', title: 'Teams', owner: 'both', nav: true },
+   * for a roster you fill in once and the wrong one for what it now is.
+   *
+   * ВРЕМЕННО НЕ В ПЕРВОМ ПРОДУКТЕ - решение владельца от 2026-09-18, и слово «пока» в нём было. Стоит
+   * записать, что это стоит: в сборке, запертой на первый продукт, страница команд становится
+   * недостижимой - из диалога настроек её убрали, когда она стала местом. Пока продукт один и сборка
+   * обычная, туда попадают, переключившись. */
+  { to: '/team', label: 'Teams', title: 'Teams', owner: 'make', nav: true },
   /* Last, and now it is the library rather than only the gallery: two shelves, other people's published
-   * flows and the process documents written from your own recordings. */
-  { to: '/gallery', label: 'Gallery', title: 'Gallery', owner: 'both', nav: true,
+   * flows and the process documents written from your own recordings.
+   *
+   * ЧЕЙ ЭТО ЭКРАН - открытый вопрос §11.2 плана, и владелец ответил на него 2026-09-18: второго продукта.
+   * Обе полки - и чужие опубликованные потоки, и документы - это «что уже сделано и можно взять», то есть
+   * мастерская, а не проверки. */
+  { to: '/gallery', label: 'Gallery', title: 'Gallery', owner: 'make', nav: true,
     tour: {
       title: 'Start from someone else’s work',
       body: 'Skills other people have shared. Take one, and it is yours to run and to change — a good way '
@@ -188,11 +224,16 @@ export const SCREENS: Screen[] = [
    * возвращает ему собственный адрес. Объявлен и сейчас - у живого маршрута обязан быть экран, иначе
    * заголовок для него однажды напишут вторым списком. */
   { to: '/chat', label: 'Assistant', title: 'Assistant', owner: 'make', nav: false },
+  /* Прежний адрес журнала. Перенаправляет на /logs и остаётся объявленным: он был живым, на него ссылались
+   * из чата и из писем расписаний, и закладка, отвечающая 404, - худший ответ, чем приводящая куда надо. */
+  { to: '/activity', label: 'Logs', title: 'Logs', owner: 'do', nav: false },
   /* Страница О ПРОДУКТЕ, а не экран внутри него: читается без аккаунта. Принадлежит 'make' - это то, ради
    * чего чужой агент сюда подключается. */
   { to: '/mcp', label: 'MCP', title: 'MCP', owner: 'make', nav: false },
-  /* Старый адрес дашборда. Оставлен живым: на него ссылается опубликованный обзор дорожной карты. */
-  { to: '/insights', label: 'Dashboard', title: 'Dashboard', owner: 'both', nav: false },
+  /* Старый адрес дашборда. Оставлен живым: на него ссылается опубликованный обзор дорожной карты. Продукт
+   * у него тот же, что у /dashboard, - иначе одна и та же страница переключала бы оболочку по-разному в
+   * зависимости от того, каким адресом на неё зашли. */
+  { to: '/insights', label: 'Dashboard', title: 'Dashboard', owner: 'make', nav: false },
 ];
 
 /** Экран, которому принадлежит этот адрес. Самое длинное совпадение по префиксу, потому что `/docs/x`

@@ -18,7 +18,6 @@
  */
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
-  Activity,
   FlaskConical,
   ChartNoAxesColumn,
   ChevronsUpDown,
@@ -26,6 +25,7 @@ import {
   FolderOpen,
   LayoutGrid,
   PanelLeft,
+  ScrollText,
   Sparkles,
   Users,
   Wallet,
@@ -55,7 +55,7 @@ const TIGHT = 'mouseflow.side.tight';
 const ICONS: Record<string, LucideIcon> = {
   '/record': CircleDot,
   '/create': Sparkles,
-  '/activity': Activity,
+  '/logs': ScrollText,
   '/skills': FolderOpen,
   '/tests': FlaskConical,
   '/dashboard': ChartNoAxesColumn,

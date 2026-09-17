@@ -59,7 +59,16 @@ const routes = [
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/record', component: RecordView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/create', component: CreateView }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/activity', component: ActivityView }),
+  /* ЖУРНАЛ. Переехал с /activity на /logs вместе с переименованием экрана: в приложении, где кроме него
+   * осталось три экрана, это журнал, а не «активность». */
+  createRoute({ getParentRoute: () => rootRoute, path: '/logs', component: ActivityView }),
+  /* Прежний адрес - перенаправлением, а не удалением: он был живым, на него ссылались из чата и из
+   * писем расписаний. Тот же приём, что у /insights и /chat. */
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/activity',
+    beforeLoad: () => { throw redirect({ to: '/logs' }); },
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/skills', component: SkillsView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/tests', component: TestsView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/gallery', component: GalleryView }),

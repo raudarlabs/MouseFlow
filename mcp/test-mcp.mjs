@@ -778,7 +778,7 @@ check('and it is in the sidebar, not buried in a dialog',
    с тех пор находил бы ноль пунктов и проходил бы, ничего не сравнив. Порядок здесь - объединение двух
    продуктов в порядке объявления, то есть ровно сегодняшнее меню; по каждому продукту в отдельности он
    закреплён в web/check-web.mjs. */
-const NAV_ORDER = '/record,/create,/activity,/skills,/tests,/dashboard,/team,/gallery';
+const NAV_ORDER = '/record,/create,/logs,/skills,/tests,/dashboard,/team,/gallery';
 const navNow = SCREENS.filter((s) => s.nav).map((s) => s.to).join();
 check('порядок в сайдбаре тот, о котором договорились, и Gallery последняя',
   navNow === NAV_ORDER, navNow);
@@ -5211,7 +5211,7 @@ group('Activity отвечает целиком: идёт, ждёт, было - 
     /useSyncExternalStore\(subscribe, snapshot, snapshot\)/.test(live) && /if \(!listeners\.size && timer\)/.test(live));
   check('и сайдбар считает только идущее и ждущее, никогда историю',
     /job\.state === 'claimed' \|\| job\.state === 'queued'/.test(page) && /liveCount > 0 &&/.test(sidebar));
-  check('пункт стоит после Create и до Skills', /'\/record,\/create,\/activity,\/skills/.test(read('./test-mcp.mjs')));
+  check('пункт стоит после Create и до Skills', /'\/record,\/create,\/logs,\/skills/.test(read('./test-mcp.mjs')));
 
   /* ТРИ ОСИ, А НЕ ОДИН ПЕРЕКЛЮЧАТЕЛЬ: «failed» и «by itself» это разные вопросы, и один сегментный контрол
    * заставлял выбирать между ними. */
