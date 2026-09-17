@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>MouseFlow roadmap — 18 September 2026</title>
+<style>
+:root, .md-doc {
+  --md-ink: #f9fafb;
+  --md-body: #f4f4f5;
+  --md-secondary: #d1d5db;
+  --md-brand: #148f8d;
+  --md-brand-2: #2fa29b;
+  --md-brand-3: #14a8af;
+  --md-card: #17171e;
+  --md-page: #0f0e14;
+  --md-card-2: #21212c;
+  --md-stroke: #2a2834;
+  --md-table-header: #2a2834;
+}
+@media print {
+:root, .md-doc {
+  --md-ink: #0f172a;
+  --md-body: #334155;
+  --md-secondary: #5a6a80;
+  --md-brand: #07807e;
+  --md-brand-2: #066867;
+  --md-brand-3: #0d8e97;
+  --md-card: #ffffff;
+  --md-page: #f8fafc;
+  --md-card-2: #f1f5f9;
+  --md-stroke: #e2e8f0;
+  --md-table-header: #eaeff5;
+}
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 3rem 1.25rem 4rem;
+  background: var(--md-page);
+  -webkit-font-smoothing: antialiased;
+}
+
+.md-page {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 2.5rem 3rem 3rem;
+  border: 1px solid var(--md-stroke);
+  border-radius: 1rem;
+  background: var(--md-card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+}
+
+.md-footer {
+  max-width: 48rem;
+  margin: 1rem auto 0;
+  color: var(--md-secondary);
+  font-family: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.md-footer a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-footer a:hover { color: var(--md-brand-3); }
+
+@media (max-width: 640px) {
+  body { padding: 1rem 0.75rem 2rem; }
+  .md-page { padding: 1.5rem 1.25rem 2rem; }
+}
+
+@media print {
+  body { padding: 0; background: #ffffff; }
+  .md-page {
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+    background: #ffffff;
+    box-shadow: none;
+  }
+  .md-footer { display: none; }
+}
+
+
+.md-doc {
+  background: var(--md-card);
+  color: var(--md-body);
+  font-family: "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.md-doc > *:first-child { margin-top: 0; }
+.md-doc > *:last-child { margin-bottom: 0; }
+
+.md-doc h1,
+.md-doc h2,
+.md-doc h3,
+.md-doc h4,
+.md-doc h5,
+.md-doc h6 {
+  margin: 1.75em 0 0.6em;
+  color: var(--md-ink);
+  font-weight: 600;
+  line-height: 1.3;
+  scroll-margin-top: 5rem;
+}
+
+.md-doc h1 { margin-top: 0; font-size: 1.875rem; letter-spacing: -0.01em; }
+.md-doc h2 {
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--md-stroke);
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+.md-doc h3 { font-size: 1.25rem; }
+.md-doc h4 { font-size: 1.0625rem; }
+.md-doc h5 { font-size: 0.9375rem; }
+.md-doc h6 { color: var(--md-secondary); font-size: 0.875rem; }
+
+.md-doc p { margin: 0.85em 0; }
+
+.md-doc strong { color: var(--md-ink); font-weight: 600; }
+.md-doc em { font-style: italic; }
+.md-doc del { color: var(--md-secondary); text-decoration: line-through; }
+
+.md-doc a {
+  color: var(--md-brand-3);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.md-doc a:hover { color: var(--md-brand-2); }
+
+.md-doc ul,
+.md-doc ol { margin: 0.85em 0; padding-left: 1.5rem; }
+.md-doc ul { list-style: disc; }
+.md-doc ol { list-style: decimal; }
+.md-doc li { margin: 0.25em 0; }
+.md-doc li > ul,
+.md-doc li > ol { margin: 0.25em 0; }
+.md-doc li::marker { color: var(--md-secondary); }
+.md-doc li:has(> input[type="checkbox"]),
+.md-doc li:has(> p:first-child > input[type="checkbox"]:first-child),
+.md-doc li.task-list-item { list-style: none; margin-left: -1.25rem; }
+.md-doc input[type="checkbox"] { margin-right: 0.5rem; accent-color: var(--md-brand); }
+
+.md-doc blockquote {
+  margin: 1em 0;
+  padding: 0.15em 0 0.15em 1rem;
+  border-left: 3px solid var(--md-brand-2);
+  color: var(--md-secondary);
+}
+.md-doc blockquote > *:first-child { margin-top: 0; }
+.md-doc blockquote > *:last-child { margin-bottom: 0; }
+
+.md-doc code {
+  padding: 0.15em 0.4em;
+  border-radius: 0.25rem;
+  background: var(--md-card-2);
+  color: var(--md-body);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.md-doc pre {
+  margin: 1.15em 0;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--md-stroke);
+  border-radius: 0.75rem;
+  background: var(--md-page);
+  line-height: 1.55;
+}
+.md-doc pre code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 0.8125rem;
+}
+
+.md-doc hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--md-stroke);
+}
+
+.md-doc table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 1.15em 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.md-doc th,
+.md-doc td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--md-stroke);
+  text-align: left;
+  vertical-align: top;
+}
+.md-doc th {
+  background: var(--md-table-header);
+  color: var(--md-ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.md-doc tbody tr:nth-child(even) td { background: var(--md-page); }
+
+.md-doc img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.md-doc kbd {
+  padding: 0.1em 0.4em;
+  border: 1px solid var(--md-stroke);
+  border-bottom-width: 2px;
+  border-radius: 0.25rem;
+  background: var(--md-card);
+  font-family: inherit;
+  font-size: 0.8em;
+}
+
+</style>
+</head>
+<body>
+<article class="md-page md-doc">
+<h1 id="doc-mouseflow-roadmap-18-september-2026">MouseFlow — roadmap, 18 September 2026</h1>
+<p>Two products from one engine. Full reasoning in <code>docs/SPLIT-PLAN.md</code>; this is the short version, most important first, proposals at the foot.</p>
+<hr>
+<h2 id="doc-done-1718-september">Done (17–18 September)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>What</th>
+<th>Proof</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1a–1b</td>
+<td>A skill carries <code>procedure.verification</code>; a case seeds its checks from the skill and writes them back</td>
+<td>29 checks, 8 mutations</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>api/mcp.js</code> split into catalogue + worker — the filename answers &quot;which product&quot;</td>
+<td>4 mutations</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>/api/insights?half=did|ran|both</code>. <code>did</code> builds no query naming <code>user_run</code></td>
+<td>131 checks, 13 mutations</td>
+</tr>
+<tr>
+<td>4</td>
+<td>The product axis — <code>web/src/lib/product.ts</code>, one list read by sidebar, header and tour</td>
+<td>45 checks, 20 mutations</td>
+</tr>
+<tr>
+<td>4a</td>
+<td>Two builds from one repo: <code>npm run build:halves</code>, <code>npm run dev:halves</code> (4410 / 4411)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>4b</td>
+<td>P1 trimmed to <strong>Create, Logs, Skills, Tests</strong>; Gallery, Dashboard and Teams to P2; one executor, the local agent</td>
+<td>—</td>
+</tr>
+<tr>
+<td>4c</td>
+<td>Activity → <strong>Logs</strong> at <code>/logs</code>: table, named columns, sticky header, Export CSV, Refresh</td>
+<td>CSV pinned by execution</td>
+</tr>
+<tr>
+<td>4d</td>
+<td>Create in the shape of the references; <strong>text files attach to a goal</strong></td>
+<td>12 checks</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="doc-next-in-order">Next, in order</h2>
+<h3 id="doc-5-a-door-to-connections-in-p1">5 · A door to Connections in P1</h3>
+<p><strong>Why.</strong> Four screens, and none of them is the one a new person needs on day one. The &quot;no agent&quot; notice already says <em>Open Connections</em> — naming a place the menu does not have.</p>
+<p><strong>How.</strong> A nav row of its own, or a button inside that notice. One line either way.</p>
+<p><strong>Done when.</strong> Nothing has to be found in a dialog before the first run.</p>
+<h3 id="doc-6-create-as-a-list-of-threads">6 · Create as a list of threads</h3>
+<p><strong>Why.</strong> The owner&#39;s shape, and most of it exists: the goal is stored, <code>relaunch()</code> already moves it into the composer, <code>EarlierPanel</code> already lists past runs.</p>
+<p><strong>How.</strong> Move the list left; a row opens its goal <strong>and its attachments</strong>; two actions — <em>Run again</em> and <em>Change and run</em>. <strong>Not</strong> conversation state: that is a different project (see proposals).</p>
+<p><strong>Done when.</strong> A past task is one click from running again, without going through Logs.</p>
+<h3 id="doc-7-cut-skills-into-library-p2-and-runs-p1">7 · Cut Skills into Library (P2) and Runs (P1)</h3>
+<p><strong>Why.</strong> The last screen still marked <code>both</code>, and the only thing between here and two coherent products.</p>
+<p><strong>How.</strong> Split the view; <code>SkillWizard</code> stays one component, imported by whichever product shows it.</p>
+<p><strong>Done when.</strong> Neither half uses the other&#39;s vocabulary.</p>
+<h3 id="doc-8-the-p2-dashboard-asks-halfdid">8 · The P2 dashboard asks <code>?half=did</code></h3>
+<p><strong>Why.</strong> Was a page split; is now one query parameter, because the Dashboard moved to P2 whole.</p>
+<p><strong>How.</strong> One line in <code>InsightsView</code>, using the <code>HALF</code> constant that is already named there.</p>
+<p><strong>Done when.</strong> The dashboard runs no query against <code>user_run</code>.</p>
+<h3 id="doc-9-restore-docs-and-chat-as-first-class-p2-routes">9 · Restore <code>/docs</code> and <code>/chat</code> as first-class P2 routes</h3>
+<p><strong>Why.</strong> A document is P2&#39;s output and is reachable only through the Gallery&#39;s second shelf.</p>
+<p><strong>How.</strong> Undo two redirects; both screens exist already.</p>
+<p><strong>Done when.</strong> A document opens without going through the Gallery.</p>
+<h3 id="doc-10-partition-limits">10 · Partition <code>LIMITS</code></h3>
+<p><strong>Why.</strong> Two products, one budget: a chat turn and a run share a ceiling today.</p>
+<p><strong>How.</strong> A partition of keys in <code>api/_spend.mjs</code>. No schema change.</p>
+<p><strong>Done when.</strong> One product&#39;s spend cannot exhaust the other&#39;s.</p>
+<h3 id="doc-11-mcp-profiles-p1s-7-p2s-7-the-shared-4">11 · MCP profiles — P1&#39;s 7, P2&#39;s 7, the shared 4</h3>
+<p><strong>Why.</strong> A P2 connector seeing <code>mouseflow_run</code> is a product leak. The tool list is one array, so it is cheap.</p>
+<p><strong>How.</strong> Subset the array by profile.</p>
+<p><strong>Done when.</strong> A P2 connector never sees <code>mouseflow_run</code>.</p>
+<h3 id="doc-12---record-only-agent-both-halves">12 · <code>--record-only</code> agent, both halves</h3>
+<p><strong>Why.</strong> P2&#39;s pitch is &quot;it only watches&quot;, and today that is a claim rather than a flag.</p>
+<p><strong>How.</strong> One flag hung on <code>Input.refusal()</code>; the C# compiled for real, not read.</p>
+<p><strong>Done when.</strong> A record-only agent refuses every injection action, and says so in words.</p>
+<h3 id="doc-13-transcription-route">13 · Transcription route</h3>
+<p><strong>Why.</strong> Dictation quality was the ask, and the choice reverses a promise the code makes — so the route and the sentence saying where the audio goes ship together.</p>
+<p><strong>How.</strong> Copy the shape of <code>api/claude.js</code>: key on the server, upload capped, its own <code>LIMITS</code> key.</p>
+<p><strong>Done when.</strong> A goal can be dictated, and the UI says where the audio goes <strong>before</strong> the microphone is armed.</p>
+<h3 id="doc-14-one-messenger-channel-telegram-with-the-pairing-rule">14 · One messenger channel (Telegram), with the pairing rule</h3>
+<p><strong>Why.</strong> Cheaper than a PWA and brings push for free. The queue already does the hard half — a phone is one more thing that inserts a row.</p>
+<p><strong>How.</strong> One ingress that turns a message into a <code>run_queue</code> row and posts the outcome back. Unknown senders are <strong>paired, not served</strong>, until approved by code — lifted from OpenClaw, because knowing a bot&#39;s handle should not be enough to queue work on somebody&#39;s computer.</p>
+<p><strong>Done when.</strong> A goal sent from a phone runs on the desk, and an unapproved sender cannot queue anything.</p>
+<h3 id="doc-15-split-the-docs-set-into-two-indexes">15 · Split the docs set into two indexes</h3>
+<p><strong>Why.</strong> Each product&#39;s documentation should read as one product&#39;s.</p>
+<p><strong>How.</strong> Two indexes over the existing pages.</p>
+<p><strong>Done when.</strong> <code>agent/check-promises.mjs</code> still green.</p>
+<hr>
+<h2 id="doc-proposals-worth-doing-nobody-has-asked-yet">Proposals — worth doing, nobody has asked yet</h2>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Why it is below the line</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Threads with conversation state</strong></td>
+<td>A second kind of memory beside <code>app_memory</code>, and a <code>thread_id</code> answered again in the extension and the desktop driver. Wanted only if step 6 shows people asking follow-ups</td>
+</tr>
+<tr>
+<td><strong>The PWA</strong></td>
+<td>Still right for a phone that is not a chat app. Behind the messenger because that costs a bot token and this costs a mobile layout</td>
+</tr>
+<tr>
+<td><strong>Packaging the Windows agent on .NET 10</strong></td>
+<td>Technically settled: yes, .NET 10, Windows first. Commercially not — nothing measured says the installer is what loses people. Ask one buyer before buying a certificate</td>
+</tr>
+<tr>
+<td><strong>Attachments with their own field</strong></td>
+<td>Today an attached file is part of the goal, capped at 4000 characters because that is what the queue path stores. A real field would cross the queue, three loops and the extension — worth it when somebody hits the cap for a real reason</td>
+</tr>
+<tr>
+<td><strong>Replacing <code>@insightis/ui</code></strong></td>
+<td>228 vendored files from another Devart product. The name never reaches a built bundle and source maps are not published, so the exposure is the repository and the Sentry project — not the client. Only needed if sources are ever handed over</td>
+</tr>
+<tr>
+<td><strong>Housekeeping</strong></td>
+<td><code>db/022_queue_machine.sql</code>&#39;s header still says &quot;НЕ ПРИМЕНЕНА&quot;; it was applied on 11 September</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="doc-decisions-that-made-the-plan-smaller">Decisions that made the plan smaller</h2>
+<ul>
+<li>The <strong>Dashboard, Gallery and Teams</strong> moved to the second product <strong>whole</strong> — so the dashboard split became one query parameter instead of splitting a 2 331-line view. Step 3 is what made that possible.</li>
+<li>The <strong>first product runs on the local agent alone</strong> — no executor choice left to design around.</li>
+<li><strong>The Gallery question is answered</strong> (it was open question §11.2): it is the second product&#39;s.</li>
+</ul>
+<h2 id="doc-still-only-the-owner-can-answer">Still only the owner can answer</h2>
+<ol>
+<li>The product names — <em>Do it for me</em> / <em>Make it reusable</em> are working titles, in one place, one edit to change.</li>
+<li>Which messenger first, and whether a chat account may drive a desktop at all.</li>
+<li>Do threads carry conversation state?</li>
+<li>Does Connections stay in P1&#39;s menu forever, or only until the agent is installed?</li>
+<li>Does P2 ship a record-only agent by default?</li>
+<li>Does dictation keep an on-device fallback, or simply say the audio goes to OpenAI?</li>
+<li>When to pay for packaging and a code-signing certificate.</li>
+</ol>
+
+</article>
+<p class="md-footer">MouseFlow roadmap — 18 September 2026 · <a href="https://transformpipe.com/?from=file">made with TransformPipe</a></p>
+</body>
+</html>
