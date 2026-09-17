@@ -224,40 +224,25 @@ Two small things remain *of that plan*, and neither blocks anything:
 
 ### The real queue, in order — all of it now lives in [`SPLIT-PLAN.md`](SPLIT-PLAN.md) §9
 
-**Pick it up at step 5.** The sequence there is numbered and each row carries its own done-condition;
-what follows is only the shape of it, so a fresh session knows where it is standing.
+**Pick it up at step 5.** §9 was rewritten on 2026-09-18 and is now three tables: what is done, what is next
+in order with a reason on every row, and proposals nobody has asked for yet. What follows is only the shape,
+so a fresh session knows where it is standing.
 
-1. ~~**Step 1b — the case flow fills `verification`.**~~ **Done 2026-09-17.** A case seeds its checks from
-   the skill's `procedure.verification` when its author passed none, and writes them back when they did —
-   at both doors, page and MCP tool, through three shared functions in `api/_procedure.mjs`. Step 1 is
-   closed; **pick up at step 2** (splitting `api/mcp.js`), which needs no decision from anybody.
-2. ~~**Step 2**~~ **done 2026-09-17**: `api/mcp.js` is the route alone (350 lines), mounting
-   `_mcp-tools.mjs` and `_mcp-worker.mjs`.
-3. ~~**Step 3**~~ **done 2026-09-17**: `/api/insights?half=did|ran|both`. `both` is the default and is what
-   every existing caller already got; `did` builds no query naming `user_run`, `ran` writes no digest. The
-   one query that read **both** tables — `applications` — is cut along the seam that was already inside it,
-   with the addition moved into JavaScript rather than copied into a second statement. **The first saving is
-   already banked:** the extension panel's account card read one field out of the whole dashboard and now
-   asks for `half=ran` alone. Lists of blocks live in `api/_half.mjs`, read by the route, the dev fixture and
-   the suite. **Step 4 is next** — the product axis (`web/src/lib/product.ts`), and it needs no decision.
-4. ~~**Step 4**~~ **done 2026-09-18**: `web/src/lib/product.ts` — one list of screens carrying address,
-   label, title, owner, nav and tour copy, read by the sidebar, the header and the first-run tour. Before
-   it the set of screens was written down four times and the product in none of them. The sidebar now
-   carries a switcher, and **the address beats the stored choice**, so a shared link to `/tests` shows that
-   product's menu rather than yesterday's.
-   **And, asked for on the day: two separate builds.** `cd web && npm run build:halves` produces `dist-do`
-   and `dist-make` — each with one menu and no switcher; `npm run dev:halves` puts both on 4410 and 4411
-   with the mock API, to look at side by side. Not two *bundles* yet: both still ship every screen, and
-   that is steps 5–8.
-4a. **The owner trimmed the first product, 2026-09-18** — and it settles part of steps 5–7. Gallery,
-   Dashboard and Teams are the second product's; Teams "for now". Activity became **Logs** at `/logs`
-   (`/activity` redirects), reshaped into a table with named columns, a sticky header, Export CSV and
-   Refresh, after the audit log in our own MCPGateway. And the first product offers **one executor**, the
-   local agent — no extension. First product: Create, Logs, Skills, Tests.
-5. **Steps 5–8 — the split proper**: cutting Skills in half, restoring `/docs` and `/chat`, and serving
-   each product its own subset of MCP tools. §5.2 is now smaller than planned — the Dashboard moved whole
-   rather than being cut.
-6. **Steps 9–12** — a `--record-only` agent, dictation outside the app, the spend partition, the docs set.
+1. **Steps 1–4 are closed** (2026-09-17 and 18): the `verification` bridge, the `api/mcp.js` split, the
+   `insights` halves, and the product axis — plus, on the 18th, two separate builds (`npm run dev:halves`),
+   the P1 trim, Logs, and Create's new shape with text files attachable to a goal.
+2. **Next, 5–9 — the split proper:** a door to Connections in P1, Create as a list of threads, cutting
+   Skills, the P2 dashboard asking `?half=did`, and restoring `/docs` and `/chat`.
+3. **Then 10–15:** the spend partition, MCP profiles, `--record-only`, the transcription route, one
+   messenger channel, and the docs split.
+4. **Proposals at the foot of §9:** conversation threads, the PWA, packaging the Windows agent on .NET 10,
+   attachments with a field of their own, replacing the vendored design system.
+
+**Two decisions of 2026-09-18 made the plan smaller, not larger.** The Dashboard, the Gallery and Teams
+moved to the second product **whole**, so §5.2 stopped being a page split and became one query parameter —
+which step 3 is what made possible. And the first product runs on the local agent alone, so there is no
+executor choice left to design around.
+
 
 **Asked and answered on 2026-09-17, written into the plan rather than started:** whether moving the Windows
 agent to **.NET 10** is worth it. Yes, but it is not a separate task — it is §6.3's packaging job with a
