@@ -271,6 +271,24 @@ route (the expected-routes pin in `mcp/test-mcp.mjs` stays as it is).
 *Done when:* `npm test` is green with the file split and the pin untouched, and a reader can answer "which
 product does this code serve" from the filename.
 
+#### Shipped 2026-09-17 — 2 651 lines became 350 + 1 310 + 1 007
+
+`api/mcp.js` is now the route and nothing else: it mounts `_mcp-tools.mjs` (the catalogue and `callTool`)
+and `_mcp-worker.mjs` (claim/step/report/state/crash). **No behaviour changed** — the code moved, and the
+seam it moved along was the one the file already marked with a comment.
+
+**The two halves share exactly two identifiers**, found by measuring rather than guessing: `BROWSER_GOAL`
+and `scheduleId`. Both went to the **existing** `api/_queue.mjs`, because putting either into one half would
+make the other import it — and a half that imports its opposite is a filename that has stopped answering
+the question this step exists to answer. That is pinned: neither half may `from './_mcp-…'` the other.
+
+**The 92 pins in `mcp/test-mcp.mjs` that read `api/mcp.js` now read all three.** They assert *this code
+exists and says this*, not *it lives in this file*; binding them to a filename would break them on every
+later step of this plan while guarding nothing. What the split itself promises is guarded by a new pin of
+its own — no tool schema in the worker, no worker protocol in the catalogue, nothing decided in the route —
+and that pin was first written loose enough to catch the **comments** that explain the split, which is the
+"check code, not prose about code" rule catching its own author.
+
 ### 4.3 `api/insights.js` answers both products in one response
 
 One route, one read-only transaction, computing both *what the person did* (`applications`, `attention`,
@@ -533,7 +551,7 @@ commit, and one concrete thing named for the owner to check.
 | 0 | Housekeeping: `db/022_queue_machine.sql`'s header still says "НЕ ПРИМЕНЕНА" — it was applied 2026-09-11 | grep | the file no longer contradicts `npm run migrate -- --list` |
 | 1a | **§4.1** a created skill carries tier 1 (`procedureFromSteps`) — **done 2026-09-17** | `api/_test-skills.mjs`, 11 checks | the kind a case accepts can carry `verification` at all |
 | 1b | **§4.1** the case flow fills and seeds `verification` — **done 2026-09-17** | `api/_test-case.mjs`, 18 checks, 8 mutations | one skill's own checks decide a case's verdict, and a case's checks come back to the skill |
-| 2 | **§4.2** split `api/mcp.js` into catalogue + worker | `npm test`, routes pin untouched | filename answers "which product" |
+| 2 | **§4.2** split `api/mcp.js` into catalogue + worker — **done 2026-09-17** | `npm test`, routes pin untouched, 4 mutations | filename answers "which product" |
 | 3 | **§4.3** `insights` halves (`did` / `ran`) | `api/_test-insights.mjs` | `?half=did` touches no `user_run` |
 | 4 | The product axis: `web/src/lib/product.ts`, one definition read by sidebar, titles, onboarding | pin: nothing decides a screen's product twice | switching product changes the whole shell, in one place |
 | 5 | **§5.1** cut Skills into Library (P2) and Runs (P1) | tsc + build; screenshots regenerated | neither half mentions the other's vocabulary |

@@ -470,7 +470,19 @@ check('and what the agent said about itself is recorded, because later nothing c
   JSON.stringify(built.payload.recorder));
 
 group('the HTTPS route: one account, and no way to name another');
-const route = readFileSync(fileURLToPath(new URL('../api/mcp.js', import.meta.url)), 'utf8');
+/* МОДУЛЬ ТЕПЕРЬ ТРИ ФАЙЛА, И ПИНЫ ЧИТАЮТ ЕГО ЦЕЛИКОМ (SPLIT-PLAN §4.2, шаг 2).
+ *
+ * api/mcp.js разрезан на каталог тулов (_mcp-tools.mjs), воркерский протокол (_mcp-worker.mjs) и сам
+ * маршрут. Код не менялся - он переехал, - а утверждения ниже говорят «этот код есть и он такой», а не
+ * «он лежит в этом файле». Поэтому здесь склейка: пин, привязанный к имени файла, сломался бы на каждом
+ * последующем шаге плана, ничего при этом не охраняя. То, что половины РАЗДЕЛЕНЫ, охраняется отдельным
+ * пином ниже - он и есть настоящий страж этого шага. */
+const mcpWhole = (rel) => (String(rel).endsWith('api/mcp.js')
+  ? ['../api/mcp.js', '../api/_mcp-tools.mjs', '../api/_mcp-worker.mjs']
+    .map((f) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8')).join('\n')
+  : readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8'));
+
+const route = mcpWhole('../api/mcp.js');
 check('the caller is resolved by credential, once', /whoIsCalling\(req, sql\)/.test(route));
 check('and a missing credential is a 401 that says where auth lives',
   /WWW-Authenticate/.test(route) && /resource_metadata/.test(route));
@@ -681,7 +693,7 @@ check('vite is told it may reach outside web/, or dev would refuse to serve it',
 
 group('what the app tells people about MCP');
 const facts = readFileSync(fileURLToPath(new URL('../web/src/features/mcp/facts.ts', import.meta.url)), 'utf8');
-const mcpRoute = readFileSync(fileURLToPath(new URL('../api/mcp.js', import.meta.url)), 'utf8');
+const mcpRoute = mcpWhole('../api/mcp.js');
 const named = (text) => new Set([...text.matchAll(/name: '(mouseflow_[a-z_]+)'/g)].map((m) => m[1]));
 const served = named(mcpRoute);
 const described = named(facts);
@@ -1917,10 +1929,10 @@ group('a run is told what the account did just before it');
 /* BOTH DRIVERS, or the two paths teach the model different habits about the same account. The cloud one
  * reads it from the account; the browser one passes what the app is already holding. */
 check('the cloud driver reads the account own runs, and only those',
-  /where user_id = \$\{who\.id\} and deleted_at is null and kind = 'agent'/.test(read('../api/mcp.js'))
-    && /limit \$\{EARLIER_RUNS\}/.test(read('../api/mcp.js')));
+  /where user_id = \$\{who\.id\} and deleted_at is null and kind = 'agent'/.test(mcpWhole('../api/mcp.js'))
+    && /limit \$\{EARLIER_RUNS\}/.test(mcpWhole('../api/mcp.js')));
 check('and never fails a run over background it could not fetch',
-  /\.catch\(\(\) => null\);/.test(read('../api/mcp.js')));
+  /\.catch\(\(\) => null\);/.test(mcpWhole('../api/mcp.js')));
 check('the browser driver passes what it already has',
   /earlier: runs\.filter\(\(run\) => run\.kind === 'agent'\)/.test(read('../web/src/features/create/CreateView.tsx')));
 /* A wave rebuilds the conversation from scratch, so background not kept on the loop would vanish in wave two
@@ -2564,7 +2576,7 @@ check('a deployment with no model key says so rather than reporting a crash',
  * command - which both can do - nothing went wrong; the first goal skill queued on a machine running both
  * would have gone to whichever long-poll landed first. */
 group('the queue hands a job only to something that can do it');
-const mcpApi = read('../api/mcp.js');
+const mcpApi = mcpWhole('../api/mcp.js');
 check('the claim asks what the claimer is',
   /const claimerIsWorker = String\(\(req\.body && req\.body\.kind\) \|\| ''\) === 'worker'/.test(mcpApi));
 /* Two things qualify, and both DECLARE it: a worker, which runs the loop on the machine, and an agent that
@@ -3495,7 +3507,7 @@ group('синхронизация не воскрешает удалённое �
   check('origins ограничены и по длине', /\.map\(\(o\) => text\(o, 200\)\)/.test(sync));
 
   /* Писателей у payload двое, и потолок стоял у одного. */
-  const mcpApi = read('../api/mcp.js');
+  const mcpApi = mcpWhole('../api/mcp.js');
   check('второй писатель payload знает тот же потолок',
     /import \{ PAYLOAD_MAX_BYTES \} from '\.\/_payload\.mjs';/.test(mcpApi)
       && /if \(encoded\.length > PAYLOAD_MAX_BYTES\)/.test(mcpApi));
@@ -3541,7 +3553,7 @@ group('потолок на общий ключ считается в базе, �
     check(`${route} спрашивает общий потолок`, /overSpend\(/.test(src), 'нет вызова');
     check(`${route} больше не считает в памяти`, !/rateLimited|function tooMany/.test(src));
   }
-  const mcpApi = read('../api/mcp.js');
+  const mcpApi = mcpWhole('../api/mcp.js');
   check('и самый дорогой маршрут - тоже', /overSpend\(sql, who\.id, 'step'\)/.test(mcpApi));
   /* Через тот же fail(), что и всякая другая неудача этого маршрута: своя уборка была бы третьей версией
    * того же самого и первой, про которую забудут. */
@@ -3789,7 +3801,7 @@ group('выключатель означает то, что про него на
 
   /* Маршрут крашей обосновывался тем, что приходящее «уже привязано к аккаунту», и не привязывал: в Sentry
    * все краши всех агентов лежали одной кучей. */
-  check('форварднутый краш несёт, чей он', /user: \{ id: who\.id \},/.test(read('../api/mcp.js')));
+  check('форварднутый краш несёт, чей он', /user: \{ id: who\.id \},/.test(mcpWhole('../api/mcp.js')));
   check('но только id, не почту - sendDefaultPii здесь выключен намеренно',
     /user: said && said\.user && said\.user\.id \? \{ id: String\(said\.user\.id\)/.test(read('../api/_report.js')));
 }
@@ -4617,7 +4629,7 @@ group('запись режется сама, в обычные записи - с
  * пустоту, а расписания начнут «работать» на спящем ноутбуке только в отчётах. */
 group('расписания тикают опросом агента, а не кроном в облаке');
 {
-  const route = read('../api/mcp.js');
+  const route = mcpWhole('../api/mcp.js');
   const migration = read('../db/018_user_schedule.sql');
   const vercel = read('../vercel.json');
 
@@ -4784,7 +4796,7 @@ group('цель, назвавшая время, откладывается в р
   const step = read('../api/_step.mjs');
   const engine = read('../web/src/lib/desktop-engine.ts');
   const create = read('../web/src/features/create/CreateView.tsx');
-  const route = read('../api/mcp.js');
+  const route = mcpWhole('../api/mcp.js');
   const appRoute = read('../api/schedules.js');
   const describes = read('../web/src/features/create/describe.ts');
 
@@ -4854,7 +4866,7 @@ group('цель, назвавшая время, откладывается в р
  * проверяется проводка, которой страница узнаёт о прогонах, которых не начинала. */
 group('прогон, который машина делает сама, виден на странице Create и объявляется как свой');
 {
-  const route = read('../api/mcp.js');
+  const route = mcpWhole('../api/mcp.js');
   const create = read('../web/src/features/create/CreateView.tsx');
   const client = read('../web/src/lib/api.ts');
   const mock = read('../web/src/dev/mock-api.ts');
@@ -4917,7 +4929,7 @@ group('утверждение проверяется машиной, и «не �
   const step = read('../api/_step.mjs');
   const engine = read('../web/src/lib/desktop-engine.ts');
   const sync = read('../api/sync.js');
-  const route = read('../api/mcp.js');
+  const route = mcpWhole('../api/mcp.js');
   const migration = read('../db/019_run_checks.sql');
   const pkg = read('../package.json');
 
@@ -5023,7 +5035,7 @@ group('кадр сохраняется там, где он что-то дока�
   const rules = read('../api/_artifact.mjs');
   const step = read('../api/_step.mjs');
   const engine = read('../web/src/lib/desktop-engine.ts');
-  const route = read('../api/mcp.js');
+  const route = mcpWhole('../api/mcp.js');
   const door = read('../api/artifacts.js');
   const migration = read('../db/020_run_artifact.sql');
   const erase = read('../api/account.js');
@@ -5120,7 +5132,7 @@ group('Activity отвечает целиком: идёт, ждёт, было - 
   const page = read('../web/src/features/activity/ActivityView.tsx');
   const words = read('../web/src/features/activity/status.ts');
   const live = read('../web/src/lib/live.ts');
-  const route = read('../api/mcp.js');
+  const route = mcpWhole('../api/mcp.js');
   const client = read('../web/src/lib/api.ts');
   const sidebar = read('../web/src/shell/AppSidebar.tsx');
   const mock = read('../web/src/dev/mock-api.ts');
@@ -5247,7 +5259,7 @@ group('Activity отвечает целиком: идёт, ждёт, было - 
 group('тест-кейс: утверждения заранее, вердикт по записанным шагам, одно правило на всех');
 {
   const rules = read('../api/_case.mjs');
-  const route = read('../api/mcp.js');
+  const route = mcpWhole('../api/mcp.js');
   const door = read('../api/cases.js');
   const queue = read('../api/_queue.mjs');
   const sched = read('../api/schedules.js');
@@ -5348,7 +5360,7 @@ group('тест-кейс: утверждения заранее, вердикт 
   check('имя шага читается в обеих формах, какие пишут три драйвера',
     /const named = \(step\) => str\(step && \(step[.]tool \|\| step[.]name\)\);/.test(rules));
   check('и та же поправка в отчёте тула - иначе он молчал бы о веб-кейсах',
-    /\(step[.]tool \|\| step[.]name\) === 'expect'/.test(read('../api/mcp.js')));
+    /\(step[.]tool \|\| step[.]name\) === 'expect'/.test(mcpWhole('../api/mcp.js')));
   /* ЧИСЛО СЧИТАЕТСЯ ТАМ, ГДЕ ШАГИ НА РУКАХ, и в перечень кейсов не едет: шаги весят до сотен килобайт. */
   check('и считается только у раскрытого прогона, не в перечне',
     /[.][.][.]\(withSteps \? \{ late: lateBound\(row[.]steps, expects\) \} : \{\}\)/.test(read('../api/cases.js')));
@@ -5451,7 +5463,7 @@ group('тест-кейс: утверждения заранее, вердикт 
 group('веб-QA: проверки уровня dom, кейсы в браузере и условие исполнения своей поверхности');
 {
   const rules = read('../extension/checks.js');
-  const route = read('../api/mcp.js');
+  const route = mcpWhole('../api/mcp.js');
   const sync = read('../api/sync.js');
   const door = read('../api/cases.js');
   const page = read('../web/src/features/tests/TestsView.tsx');
@@ -5871,6 +5883,35 @@ group('кейс можно привязать к машине, и до мигр�
     /says so in the answer/.test(cases27));
   check('и номер 022 занят ровно одним файлом',
     readdirSync(new URL('../db/', import.meta.url)).filter((n) => n.startsWith('022_')).length === 1);
+}
+
+group('ДВЕ ПОЛОВИНЫ ОДНОГО МАРШРУТА ЛЕЖАТ ОТДЕЛЬНО (SPLIT-PLAN §4.2, шаг 2)');
+{
+  const tools = readFileSync(fileURLToPath(new URL('../api/_mcp-tools.mjs', import.meta.url)), 'utf8');
+  const worker = readFileSync(fileURLToPath(new URL('../api/_mcp-worker.mjs', import.meta.url)), 'utf8');
+  const mount = readFileSync(fileURLToPath(new URL('../api/mcp.js', import.meta.url)), 'utf8');
+
+  /* НА ВОПРОС «ЧЕЙ ЭТО ПРОДУКТ» ОТВЕЧАЕТ ИМЯ ФАЙЛА - это и есть условие готовности шага. */
+  check('каталог тулов не содержит воркерского протокола',
+    !/async function workerRoute/.test(tools) && !/worker === 'claim'/.test(tools)
+      && !/action === 'claim'/.test(tools));
+  check('а воркерский протокол не содержит ни одного тула',
+    !/inputSchema:/.test(worker) && !/function callTool/.test(worker));
+  check('и маршрут только монтирует обе половины, ничего не решая сам',
+    /from '\.\/_mcp-tools\.mjs'/.test(mount) && /from '\.\/_mcp-worker\.mjs'/.test(mount)
+      && !/inputSchema:/.test(mount) && !/async function workerRoute/.test(mount));
+
+  /* НИ ОДНА ПОЛОВИНА НЕ ИМПОРТИРУЕТ ДРУГУЮ. Именно это делает разрез настоящим: стоит одной потянуть
+   * другую, и отдать продукту отдельный деплой снова станет нельзя - ради чего шаг и делался. */
+  /* ИМПОРТ, А НЕ УПОМИНАНИЕ. Первая версия этой проверки искала имя файла где угодно и краснела на
+   * комментариях, которые сами же и объясняют разрез, - то есть ловила прозу о коде вместо кода. */
+  check('половины не знают друг о друге',
+    !/from '\.\/_mcp-worker\.mjs'/.test(tools) && !/from '\.\/_mcp-tools\.mjs'/.test(worker));
+  /* Общий словарь очереди - в _queue.mjs, а не в одной из половин. */
+  check('а общее у них - словарь очереди, и он лежит третьим',
+    /from '\.\/_queue\.mjs'/.test(tools) && /from '\.\/_queue\.mjs'/.test(worker)
+      && /export const BROWSER_GOAL/.test(
+        readFileSync(fileURLToPath(new URL('../api/_queue.mjs', import.meta.url)), 'utf8')));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

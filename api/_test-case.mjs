@@ -316,7 +316,9 @@ group('КРУГ МЕЖДУ КЕЙСОМ И СКИЛЛОМ - чеки едут т
 
   /* ДВЕ ДВЕРИ, ОДНО ПОВЕДЕНИЕ. Дверь, которая сеет, и дверь, которая не сеет, - это два разных
    * представления о том, что такое кейс, ровно как и два разных судьи. */
-  const mcp = readFileSync(new URL('./mcp.js', import.meta.url), 'utf8');
+  /* Каталог тулов, а не mcp.js: половины разъехались по файлам на шаге 2 (SPLIT-PLAN §4.2), и дверь
+   * тула теперь живёт здесь. */
+  const mcp = readFileSync(new URL('./_mcp-tools.mjs', import.meta.url), 'utf8');
   check('и тул сеет той же функцией, что страница',
     /const sow = seedFrom\(args && args\.expects, entry\);/.test(mcp)
       && /readExpects\(sow\.list, checksFor\(on\)\)/.test(mcp));
