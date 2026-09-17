@@ -9,7 +9,8 @@ what to do next, and what only the owner can supply.
 
 **Where the work is now.** The QA roadmap is closed (§3). The **memory of applications** is built and live
 behind a flag that is now on (§2a). The current work is the **split into two products**, and it has its own
-document — read it before doing anything to the product's shape.
+document — read it before doing anything to the product's shape. **Step 1 of that sequence is closed as of
+2026-09-17; the next is step 2.**
 
 **The five planning documents, and which to read when:**
 
@@ -225,12 +226,10 @@ Two small things remain *of that plan*, and neither blocks anything:
 **Pick it up at step 1b.** The sequence there is numbered and each row carries its own done-condition;
 what follows is only the shape of it, so a fresh session knows where it is standing.
 
-1. **Step 1b — the case flow fills `verification`.** Step 1a gave a written skill a procedure, so the field
-   finally has somewhere to live on the kind of skill a case accepts. Nothing writes it yet.
-   `extension/procedure.js` names the writer it expects, in its own words: *"the field exists to be FILLED —
-   by the author, or by the case flow, in the `expects` shape from `api/_case.mjs`"*. So: seed a case's
-   checks from the skill when the caller passed none, and write the case's checks back onto the skill, so
-   the next case — and anyone who installs it from the gallery — starts from them.
+1. ~~**Step 1b — the case flow fills `verification`.**~~ **Done 2026-09-17.** A case seeds its checks from
+   the skill's `procedure.verification` when its author passed none, and writes them back when they did —
+   at both doors, page and MCP tool, through three shared functions in `api/_procedure.mjs`. Step 1 is
+   closed; **pick up at step 2** (splitting `api/mcp.js`), which needs no decision from anybody.
 2. **Steps 2 and 3 — the two files that answer for both products.** `api/mcp.js` is 2 628 lines holding
    product 2's tool catalogue *and* product 1's whole worker protocol; `api/insights.js` computes both
    "what the person did" and "how the agent performed" in one transaction. Both are pure refactors, both

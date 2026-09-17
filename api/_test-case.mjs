@@ -10,10 +10,12 @@
  *
  * Run: node api/_test-case.mjs
  */
+import { readFileSync } from 'node:fs';
 import {
   CASE_KEY, EXPECTS_MAX, VERDICTS, caseGoal, caseIdOf, caseVerdict, expectLine, lateBound, readExpects,
   repairsOf, stripCase, tallyOf, verdictSaid,
 } from './_case.mjs';
+import { checksOnSkill, procedureWith, seedFrom } from './_procedure.mjs';
 
 let pass = 0;
 let fail = 0;
@@ -241,6 +243,87 @@ group('И ПРИВЯЗКА НЕ СЛОВО БЕЗ ПОСЛЕДСТВИЙ: про
    * зелёное в серое: отчёт число называет, вердикт считается по доказательствам. */
   check('вердикт от запоздавшей проверки не меняется',
     caseVerdict({ outcome: 'ok', checks: checks(2), steps: [] }) === 'pass');
+}
+
+group('КРУГ МЕЖДУ КЕЙСОМ И СКИЛЛОМ - чеки едут туда и обратно (SPLIT-PLAN §9, шаг 1b)');
+{
+  const expect = (why) => ({ check: 'text_contains', name: 'Status', text: 'Sent', why });
+  const withProcedure = (verification) => ({
+    client_id: 'sk1', name: 'Send it', kind: 'created', source: 'desktop',
+    payload: { procedure: { whenToUse: 'w', steps: [{ name: 'Click Send' }], pitfalls: [], verification } },
+  });
+
+  /* СВОИ ЧЕКИ ВАЖНЕЕ ЧУЖИХ. Автор кейса, написавший проверки, не должен получить вместо них те, что
+   * лежали на скилле. */
+  const mine = [expect('mine')];
+  const own = seedFrom(mine, withProcedure([expect('skill')]));
+  check('переданные чеки не подменяются теми, что на скилле',
+    own.seeded === false && own.list === mine, JSON.stringify(own.seeded));
+
+  /* НЕ ДАЛИ - БЕРЁМ СО СКИЛЛА. Это и есть половина круга: автор второго кейса начинает не с нуля. */
+  const sown = seedFrom(undefined, withProcedure([expect('skill')]));
+  check('своих нет - берутся чеки скилла', sown.seeded === true && sown.list.length === 1,
+    JSON.stringify(sown));
+  /* Пустой список - это тоже «не дали»: передать [] и получить отказ, когда на скилле чеки лежат, - два
+   * разных ответа на один вопрос. */
+  check('и пустой список считается «не дали», а не «дали ноль»',
+    seedFrom([], withProcedure([expect('skill')])).seeded === true);
+
+  check('на скилле пусто - сеять нечего, и отказ остаётся прежним',
+    seedFrom([], withProcedure([])).seeded === false);
+  check('и у скилла без процедуры - тоже',
+    seedFrom([], { payload: {} }).seeded === false && checksOnSkill({ payload: {} }).length === 0);
+
+  /* ПОСЕЯННОЕ ПРОХОДИТ ТОГО ЖЕ СУДЬЮ. Скилл с испорченным чеком отвергается теми же словами, что и
+   * написанный руками, - иначе на скилле можно было бы пронести то, чего дверь не принимает. */
+  const rotten = seedFrom([], withProcedure([{ check: 'text_contains', name: 'S', text: 'x' }]));
+  check('посеянное судит readExpects, а не доверие к скиллу',
+    !!readExpects(rotten.list, ['text_contains']).why,
+    readExpects(rotten.list, ['text_contains']).why.slice(0, 50));
+
+  /* ОБРАТНАЯ ПОЛОВИНА: чеки ложатся в процедуру, и только туда. */
+  const after = procedureWith(withProcedure([]).payload, [expect('written')]);
+  check('чеки записываются в procedure.verification',
+    after.procedure.verification.length === 1 && after.procedure.verification[0].why === 'written',
+    JSON.stringify(after.procedure.verification));
+  /* Защищённо: мутация, выкидывающая steps, иначе роняет тест на `.length` - то есть ровно тогда, когда
+   * он должен краснеть, он уносит с собой всё, что ниже. */
+  const proc = (after && after.procedure) || {};
+  check('и остальная процедура не трогается',
+    Array.isArray(proc.steps) && proc.steps.length === 1 && proc.whenToUse === 'w',
+    JSON.stringify(Object.keys(proc)));
+  /* Скиллу без процедуры сочинять её здесь нельзя: это было бы второе мнение о том, что он делает. */
+  check('скиллу без процедуры процедура не сочиняется',
+    procedureWith({ goalTemplate: 'x' }, [expect('written')]) === null,
+    JSON.stringify(procedureWith({ goalTemplate: 'x' }, [expect('written')])));
+  check('и процедура с пустыми шагами процедурой не считается',
+    procedureWith({ procedure: { steps: [] } }, [expect('w')]) === null);
+
+  /* И ХЕНДЛЕР ЗОВЁТ ИМЕННО ЭТИ ДВЕ - функция, которую никто не зовёт, это то же самое, что её нет. */
+  const src = readFileSync(new URL('./cases.js', import.meta.url), 'utf8');
+  check('создание кейса сеет через seedFrom', /const sow = seedFrom\(body\.expects, found\.skill\);/.test(src));
+  check('и судит посеянное тем же readExpects', /readExpects\(sow\.list,/.test(src));
+  /* Посеянное обратно не пишется: оно оттуда и пришло, а запись сдвинула бы updated_at ни за чем. */
+  check('посеянное обратно не записывается',
+    /const kept = seeded \? true\s*\n\s*: await keepChecksOnSkill\(/.test(src));
+  /* Правка чеков - ровно тот момент, когда скиллу стоит их узнать. */
+  check('правка кейса тоже пишет чеки на скилл',
+    /kept = on\.skill\s*\n\s*\? await keepChecksOnSkill\(sql, userId, rows\[0\]\.flow_id, on\.skill\.payload, expects\)/
+      .test(src));
+  /* Неудача записи не отменяет кейс и не притворяется успехом. */
+  check('и обе половины названы в ответе, а не подразумеваются',
+    /seededFromSkill: seeded,/.test(src) && /checksKeptOnSkill: kept,/.test(src));
+
+  /* ДВЕ ДВЕРИ, ОДНО ПОВЕДЕНИЕ. Дверь, которая сеет, и дверь, которая не сеет, - это два разных
+   * представления о том, что такое кейс, ровно как и два разных судьи. */
+  const mcp = readFileSync(new URL('./mcp.js', import.meta.url), 'utf8');
+  check('и тул сеет той же функцией, что страница',
+    /const sow = seedFrom\(args && args\.expects, entry\);/.test(mcp)
+      && /readExpects\(sow\.list, checksFor\(on\)\)/.test(mcp));
+  check('и тоже пишет чеки обратно на скилл',
+    /const payload = procedureWith\(entry\.payload, read\.expects\);/.test(mcp));
+  check('и обе двери берут эти функции из одного модуля, а не друг у друга',
+    /from '\.\/_procedure\.mjs'/.test(mcp) && /from '\.\/_procedure\.mjs'/.test(src));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

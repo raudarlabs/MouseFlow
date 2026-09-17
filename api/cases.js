@@ -24,6 +24,9 @@ import { whoIsCalling } from './_session.js';
 import { report, wrap } from './_report.js';
 import { cors } from './_cors.mjs';
 import { CASE_KEY, caseVerdict, checksFor, lateBound, readExpects } from './_case.mjs';
+/* Через api/_procedure.mjs, а не из extension/ напрямую: та же цепочка, по которой сюда ходят
+ * flow-role и skill-schema. */
+import { procedureWith, seedFrom } from './_procedure.mjs';
 import { queueOne } from './_queue.mjs';
 
 const fail = (res, status, message) =>
@@ -247,6 +250,29 @@ async function skillFor(sql, userId, flowId) {
   return { skill: rows[0] };
 }
 
+/* Записать чеки кейса обратно в процедуру скилла (SPLIT-PLAN §9, шаг 1b).
+ *
+ * Круг, а не односторонняя труба: иначе первый автор кейса пишет чеки в пустоту, второй начинает с нуля,
+ * и человек, поставивший навык из галереи, получает документ, который говорит, ЧТО он делает, и молчит о
+ * том, что считается сделанным.
+ *
+ * ОШИБКА ЗДЕСЬ НЕ ВАЛИТ ЗАПРОС. Создаётся кейс; запись на скилл - то, что делает его полезным СЛЕДУЮЩЕМУ,
+ * а не условие существования этого. Не получилось - ответ говорит об этом полем, а не притворяется.
+ */
+async function keepChecksOnSkill(sql, userId, flowId, was, expects) {
+  const payload = procedureWith(was, expects);
+  if (!payload) return false;
+  try {
+    await sql`
+      update user_flow set payload = ${JSON.stringify(payload)}, updated_at = now()
+      where user_id = ${userId} and client_id = ${flowId} and deleted_at is null
+    `;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function add(req, res, sql, userId) {
   const body = req.body || {};
   const flowId = String(body.flowId || '').trim();
@@ -260,7 +286,9 @@ async function add(req, res, sql, userId) {
   const found = await skillFor(sql, userId, flowId);
   if (found.why) return fail(res, found.why.startsWith('no skill') ? 404 : 400, found.why);
 
-  const read = readExpects(body.expects, checksFor(surfaceOf(found.skill)));
+  const sow = seedFrom(body.expects, found.skill);
+  const seeded = sow.seeded;
+  const read = readExpects(sow.list, checksFor(surfaceOf(found.skill)));
   if (read.why) return fail(res, 400, read.why);
 
   const id = caseId();
@@ -269,12 +297,21 @@ async function add(req, res, sql, userId) {
     values (${id}, ${userId}, ${name}, ${flowId},
             ${JSON.stringify(body.arguments || {})}, ${JSON.stringify(read.expects)})
   `;
+  /* Обратно на скилл - только если чеки написал человек. Посеянные пришли ОТТУДА, и записывать их
+   * обратно значило бы переписать поле его же содержимым и сдвинуть updated_at ни за чем. */
+  const kept = seeded ? true
+    : await keepChecksOnSkill(sql, userId, flowId, found.skill.payload, read.expects);
+
   const made = await sql`
     select id, name, flow_id, args, expects, machine, created_at, updated_at
     from user_case where id = ${id} and user_id = ${userId}
   `;
   return res.status(200).json({
     ok: true,
+    /* Обе половины круга названы, а не подразумеваются: человек, увидевший чеки, которых не писал, должен
+     * знать, откуда они, а тот, чьи чеки на скилл не легли, - что этого не случилось. */
+    seededFromSkill: seeded,
+    checksKeptOnSkill: kept,
     case: shape(made[0], {
       skill: found.skill.name,
       skillGone: false,
@@ -297,11 +334,17 @@ async function edit(req, res, sql, userId, id) {
   /* Утверждения правятся целиком или не правятся вовсе: частичная правка списка («поменяй третье») - это
    * способ прислать индекс, которого уже нет, и проверять не то, что показано на экране. */
   let expects = rows[0].expects;
+  let kept = null;
   if (body.expects !== undefined) {
     const on = await skillFor(sql, userId, rows[0].flow_id);
     const read = readExpects(body.expects, checksFor(on.skill ? surfaceOf(on.skill) : 'desktop'));
     if (read.why) return fail(res, 400, read.why);
     expects = read.expects;
+    /* ПРАВКА ЧЕКОВ - РОВНО ТОТ МОМЕНТ, когда скиллу стоит их узнать: человек только что решил, что
+     * считается сделанным. Без этого круг замыкался бы только на создании, и первая же правка уводила
+     * кейс и скилл в разные стороны. */
+    kept = on.skill
+      ? await keepChecksOnSkill(sql, userId, rows[0].flow_id, on.skill.payload, expects) : false;
   }
   const args = body.arguments === undefined ? rows[0].args : (body.arguments || {});
   await sql`
@@ -315,7 +358,9 @@ async function edit(req, res, sql, userId, id) {
     from user_case where id = ${id} and user_id = ${userId}
   `;
   const runs = await runsForCase(sql, userId, id);
-  return res.status(200).json({ ok: true, case: shape(after[0], { runs }) });
+  return res.status(200).json({ ok: true,
+    ...(kept === null ? {} : { checksKeptOnSkill: kept }),
+    case: shape(after[0], { runs }) });
 }
 
 /**

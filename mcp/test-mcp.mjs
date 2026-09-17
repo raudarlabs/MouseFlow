@@ -5281,10 +5281,17 @@ group('тест-кейс: утверждения заранее, вердикт 
    * это два разных представления о том, что такое кейс. */
   /* И НАБОР ВИДОВ - ТОТ, ЧТО У ПОВЕРХНОСТИ, на которой это будет проверяться: у окна приложения нет
    * адреса, поэтому url_contains там отвергается при записи, а не молчит до ночи. */
+  /* Аргумент стал `sow.list` на обеих дверях, когда кейс научился брать чеки со скилла (SPLIT-PLAN §9,
+   * шаг 1b): судья тот же, а вот ЧТО ему дают, теперь решает seedFrom - и решает одинаково у обеих, что
+   * здесь и закрепляется вместе с ним. */
   check('утверждения разбирает одна функция, и её зовут обе двери - набором своей поверхности',
     /export function readExpects/.test(rules) && /export const checksFor/.test(rules)
-      && /readExpects\(body\.expects, checksFor\(surfaceOf\(found\.skill\)\)\)/.test(door)
-      && /readExpects\(args && args\.expects, checksFor\(on\)\)/.test(route));
+      && /readExpects\(sow\.list, checksFor\(surfaceOf\(found\.skill\)\)\)/.test(door)
+      && /readExpects\(sow\.list, checksFor\(on\)\)/.test(route));
+  check('и семя для него обе двери берут одной функцией из одного модуля',
+    /const sow = seedFrom\(body\.expects, found\.skill\);/.test(door)
+      && /const sow = seedFrom\(args && args\.expects, entry\);/.test(route)
+      && /from '\.\/_procedure\.mjs'/.test(route));
   check('кейс без проверок отвергается - иначе он каждую ночь докладывал бы «passed»',
     /a case needs at least one check/.test(rules) && /proven nothing/.test(rules));
   check('и утверждение без «что это доказывает» тоже - это единственное, что читают в красном отчёте',

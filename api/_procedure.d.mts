@@ -32,3 +32,18 @@ export function procedureFromSteps(
 
 export function hasProcedure(procedure: unknown): boolean;
 export function stepsSaid(procedure: unknown): string[];
+
+/** Чеки, записанные на скилле, или пустой список. */
+export function checksOnSkill(skill: { payload?: unknown } | null | undefined): unknown[];
+
+/** Чьи чеки берёт кейс: переданные автором, или посеянные со скилла, когда своих нет. */
+export function seedFrom(
+  given: unknown,
+  skill: { payload?: unknown } | null | undefined,
+): { list: unknown; seeded: boolean };
+
+/** Каким станет payload скилла с этими чеками, или null - если процедуры на нём нет. */
+export function procedureWith(
+  payload: unknown,
+  expects: unknown[],
+): Record<string, unknown> | null;

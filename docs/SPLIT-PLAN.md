@@ -229,7 +229,29 @@ skill's `verification` passes the same `readExpects` that judges a case's.
 (`"1. click"`), not sentences, and manufacturing prose from them would put the log back into the document.
 Absent is not false.
 
-*What remains of step 1:* nothing writes `verification` yet. `extension/procedure.js` already names the
+#### Step 1b shipped 2026-09-17 — the loop closes, and it closes at BOTH doors
+
+A case built on a skill now takes that skill's `procedure.verification` when its author passed no checks,
+and writes the case's checks back onto the skill when they did. Three pure functions in
+`api/_procedure.mjs` — `checksOnSkill`, `seedFrom`, `procedureWith` — and both doors call them:
+`api/cases.js` (the page) and `api/mcp.js` (the tool). That was the one thing worth being careful about:
+**a door that seeds and a door that does not are two ideas of what a case is**, exactly as an already-pinned
+rule says about the two doors having one judge. The MCP pin that guards it now guards the seed as well.
+
+Four decisions inside it, each of which could have gone the lazy way:
+
+- **The seed goes through `readExpects`.** A skill carrying a malformed check is refused in the same words
+  as one typed by hand. One judge, and nothing smuggled in through the skill that the door would refuse.
+- **An empty list counts as "none given".** Passing `[]` and being refused while checks sit on the skill
+  would be two answers to one question.
+- **Seeded checks are not written back.** They came from there; writing them home again would rewrite the
+  field with itself and move `updated_at` for nothing.
+- **A skill with no procedure does not get one invented here.** Skills saved before step 1a carry none, and
+  fabricating `steps` and `whenToUse` nobody wrote is precisely the "second opinion" `extension/procedure.js`
+  refuses out loud. Absent is not false — and the response says `checksKeptOnSkill: false` rather than
+  pretending.
+
+*Original note, kept because it names the writer this step became:* nothing wrote `verification` yet. `extension/procedure.js` already names the
 intended writer — *"the field exists to be FILLED — by the author, or by the case flow, in the `expects`
 shape from `api/_case.mjs`"* — so the other half is: when a case is created on a skill, seed its checks from
 the skill's `procedure.verification` when the caller passed none, and write the checks back onto the skill
@@ -510,7 +532,7 @@ commit, and one concrete thing named for the owner to check.
 |---|---|---|---|
 | 0 | Housekeeping: `db/022_queue_machine.sql`'s header still says "НЕ ПРИМЕНЕНА" — it was applied 2026-09-11 | grep | the file no longer contradicts `npm run migrate -- --list` |
 | 1a | **§4.1** a created skill carries tier 1 (`procedureFromSteps`) — **done 2026-09-17** | `api/_test-skills.mjs`, 11 checks | the kind a case accepts can carry `verification` at all |
-| 1b | **§4.1** the case flow fills and seeds `verification` | `api/_test-case.mjs`, mutation-proven | one skill's own checks decide a case's verdict, and a case's checks come back to the skill |
+| 1b | **§4.1** the case flow fills and seeds `verification` — **done 2026-09-17** | `api/_test-case.mjs`, 18 checks, 8 mutations | one skill's own checks decide a case's verdict, and a case's checks come back to the skill |
 | 2 | **§4.2** split `api/mcp.js` into catalogue + worker | `npm test`, routes pin untouched | filename answers "which product" |
 | 3 | **§4.3** `insights` halves (`did` / `ran`) | `api/_test-insights.mjs` | `?half=did` touches no `user_run` |
 | 4 | The product axis: `web/src/lib/product.ts`, one definition read by sidebar, titles, onboarding | pin: nothing decides a screen's product twice | switching product changes the whole shell, in one place |

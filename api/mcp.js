@@ -50,6 +50,7 @@ import { advance, startLoop } from './_step.mjs';
 /* Composed in the brain rather than here, so the cloud driver and the browser one hand the model the same
    background in the same words. */
 import { EARLIER_RUNS, earlierRuns } from './_brain.mjs';
+import { procedureWith, seedFrom } from './_procedure.mjs';
 import { ALLOWED_MODELS } from './_vision.mjs';
 import { readSettings } from './admin.js';
 /* The one implementation of what a skill's parameters do to its goal. Imported rather than repeated for
@@ -1198,7 +1199,11 @@ async function callTool(sql, who, params, req) {
      * кейс, - но набор видов у поверхностей разный: адрес страницы и точное число совпадений знает только
      * документ, а у окна приложения адреса нет вовсе. Сказать это при записи дешевле, чем ночью. */
     const on = entry.source && entry.source !== 'desktop' ? 'browser' : 'desktop';
-    const read = readExpects(args && args.expects, checksFor(on));
+    /* ЧЕКИ СКИЛЛА, КОГДА СВОИХ НЕ ДАЛИ - той же функцией, что у страницы (SPLIT-PLAN §9, шаг 1b). Дверь,
+     * которая сеет, и дверь, которая не сеет, - это два разных представления о том, что такое кейс, ровно
+     * как и два разных судьи. */
+    const sow = seedFrom(args && args.expects, entry);
+    const read = readExpects(sow.list, checksFor(on));
     if (read.why) return say(read.why, true);
 
     const id = `cs_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -1212,7 +1217,25 @@ async function callTool(sql, who, params, req) {
       return say(`The case could not be saved: ${err.message}. If this deployment has not had `
         + 'db/021_user_case.sql applied yet, that is the reason.', true);
     }
+    /* И обратно на скилл - чтобы следующий кейс, и тот, кто поставит навык из галереи, начинали с них.
+     * Посеянное не пишется: оно оттуда и пришло. Неудача записи кейс не отменяет. */
+    let kept = sow.seeded;
+    if (!sow.seeded) {
+      const payload = procedureWith(entry.payload, read.expects);
+      if (payload) {
+        try {
+          await sql`
+            update user_flow set payload = ${JSON.stringify(payload)}, updated_at = now()
+            where user_id = ${who.id} and client_id = ${entry.id} and deleted_at is null
+          `;
+          kept = true;
+        } catch (_) { kept = false; }
+      }
+    }
     return say(`Case "${name}" written down as ${id}.\n`
+      + (sow.seeded
+        ? "Its checks came from the skill's own procedure - it already said what \"done\" means.\n"
+        : kept ? 'Its checks are now on the skill too, so the next case starts from them.\n' : '')
       + `It runs "${entry.name}" and then checks ${read.expects.length} thing`
       + `${read.expects.length === 1 ? '' : 's'}:\n`
       + `${read.expects.map((one, i) => `  ${i + 1}. ${expectLine(one)}`).join('\n')}\n\n`
