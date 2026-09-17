@@ -10,7 +10,8 @@ Entry point: `web/src/main.tsx`.
 |---|---|---|
 | `/` | → the chosen product's home | `/record` for *Make it reusable*, `/create` for *Do it for me*. See **Two products, one shell** below. |
 | `/record` | [Record](04-record.md) | |
-| `/activity` | [Activity](26-activity.md) | Running, waiting and everything that ran, with Stop and Cancel beside each. |
+| `/logs` | [Logs](26-activity.md) | Running, waiting and everything that ran, with Stop and Cancel beside each. Renamed from Activity, 2026-09-18. |
+| `/activity` | → `/logs` | The old path, kept: it was linked from chats and from schedule mail. |
 | `/create` | [Create](05-create.md) | Marked **Beta** in the sidebar. |
 | `/skills` | [Skills](06-skills.md) | |
 | `/tests` | [Test cases](27-cases.md) | Cases, the row of nights each one has had, and one button for a nightly run. |
@@ -89,12 +90,21 @@ the suite (`web/check-web.mjs`) loads it and asks it the same questions the side
 
 | Product | Menu |
 |---|---|
-| *Do it for me* | Create, Activity, Skills, Tests, Dashboard, Teams, Gallery |
+| *Do it for me* | Create, Logs, Skills, Tests |
 | *Make it reusable* | Record, Skills, Dashboard, Teams, Gallery |
 
-Each menu is the old single menu with the other half removed — not a new order. Skills, Dashboard, Teams
-and Gallery are marked `both`: they genuinely answer both questions today and are cut by their own steps of
-the plan. That is a stated position, not indecision.
+**The owner trimmed the first product on 2026-09-18**: the Gallery, the Dashboard and Teams belong to the
+second product now — the Gallery because both its shelves answer "what is already made and can I take it",
+the Dashboard because "what did my week go on" is a person's question about their own work and the half that
+was about runs lives in Logs with the evidence attached, and Teams "for now" (worth knowing: in a build
+locked to the first product that makes the team page unreachable, because it left the settings dialog when
+it became a place). Skills is the one screen still marked `both`, and §5.1 of the plan is what cuts it.
+
+The first product also offers **one executor**: the local agent. The extension and the agent make different
+promises — one aims at page elements and cannot leave the browser, the other sees the whole screen — and in
+a product about proving things still work that is not a choice to put in front of the person.
+`PRODUCTS.do.runsIn` says so, Create asks the product rather than deciding, and a segmented control with
+one option is not rendered at all.
 
 **The address beats the choice.** The switcher's choice is remembered per browser
 (`mouseflow.product`), but a screen belonging to one product names it and the shell obeys — so a link

@@ -249,8 +249,14 @@ what follows is only the shape of it, so a fresh session knows where it is stand
    and `dist-make` — each with one menu and no switcher; `npm run dev:halves` puts both on 4410 and 4411
    with the mock API, to look at side by side. Not two *bundles* yet: both still ship every screen, and
    that is steps 5–8.
-5. **Steps 5–8 — the split proper**: cutting Skills and the Dashboard in half, restoring `/docs` and
-   `/chat`, and serving each product its own subset of MCP tools.
+4a. **The owner trimmed the first product, 2026-09-18** — and it settles part of steps 5–7. Gallery,
+   Dashboard and Teams are the second product's; Teams "for now". Activity became **Logs** at `/logs`
+   (`/activity` redirects), reshaped into a table with named columns, a sticky header, Export CSV and
+   Refresh, after the audit log in our own MCPGateway. And the first product offers **one executor**, the
+   local agent — no extension. First product: Create, Logs, Skills, Tests.
+5. **Steps 5–8 — the split proper**: cutting Skills in half, restoring `/docs` and `/chat`, and serving
+   each product its own subset of MCP tools. §5.2 is now smaller than planned — the Dashboard moved whole
+   rather than being cut.
 6. **Steps 9–12** — a `--record-only` agent, dictation outside the app, the spend partition, the docs set.
 
 **Asked and answered on 2026-09-17, written into the plan rather than started:** whether moving the Windows

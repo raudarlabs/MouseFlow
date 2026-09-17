@@ -1,9 +1,53 @@
-# 26 — Activity
+# 26 — Logs
+
+`/logs` (also `/activity`, the old path, which redirects — it was live and was linked from chats and from
+schedule mail).
 
 What your machine is doing now, what it is about to do, and everything it has done — on one page, with the
 one thing each of them can have done to it where the thing is.
 
-![Activity: running, waiting, and everything that ran](../img/activity.png)
+![Logs: running, waiting, and everything that ran](../img/activity.png)
+
+> The screenshot predates the table below and shows the history as a list of plates.
+
+**Renamed 2026-09-18, the owner's decision.** "Activity" described the page while it was one of eight; in
+the first product — four screens — it is *the log*, the place you go to find out what happened and why.
+
+## The history is a table, and that reverses an earlier decision
+
+The first version of this page drew the history as a full-width table and moved away from it: at 1920px the
+goal stretched the width of the screen, and the two card-shaped sections beside it made the page read as two
+different pages. Both halves of that objection have been answered rather than forgotten, so the table is
+back:
+
+- **The goal is still clamped.** In the table its cell is `w-full max-w-0` with `truncate`: the column asks
+  for nothing and takes whatever the service columns leave. A `max-w-[42rem]` was tried first and measured
+  wrong — in a table a max width reads as a *request*, so the column took its 672px and the table overflowed
+  its own container by 49px. The plates in the cards above still use the rem clamp, because there are no
+  columns there for it to starve.
+- **There are three neighbours now, not eight screens**, and the page is called Logs. In a log, named
+  columns are the point: "14:02 · 1m 20s · schedule" puts three values side by side and names none of them.
+
+The shape follows the audit log in our own MCPGateway (the owner's reference, 2026-09-18): a filter strip
+with its own ground, a sticky header, a row that expands underneath itself, a failed row tinted, and Export
+CSV / Refresh on the right of the filters.
+
+**What was deliberately not copied.** There, an expanded row shows the request and response JSON. Here it
+shows the steps in words, the check verdicts and the frames that were kept. That is not the same thing
+dressed differently: JSON answers *what went to the model*, a frame answers *what was on the screen*, and in
+a product whose promise is evidence the second one is the evidence.
+
+**Export is of what is shown**, with the filters as they stand — somebody who set three filters and pressed
+Export is asking for those rows. The file carries the goal **in full** plus the error, which the table
+truncates and omits: a file is opened to do what the screen cannot, and a truncated goal makes it useless
+for exactly that. CSV is written to RFC 4180 with a BOM, and `web/src/lib/csv.ts` says why each of those
+three details is not optional.
+
+**An expansion with nothing in it says so.** Found by looking at the live page: a run with no steps, no
+words and no summary opened a 25px stripe with not one letter in it, which reads as a broken control rather
+than as "there was nothing to record". Runs from older builds kept no steps at all, so this is the ordinary
+case and not an edge. The wording says only what is known — *nothing was recorded for this run* — not *the
+run did nothing*, which is a claim about the machine that the log cannot support.
 
 ## Why a page
 

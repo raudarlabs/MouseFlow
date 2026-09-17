@@ -19,8 +19,8 @@
  * ли продукт». У прогона может стоять «ok» и рядом «1 check failed» - это найденный дефект, а не путаница.
  */
 import { useNavigate } from '@tanstack/react-router';
-import { ChevronDown, ChevronRight, Clock, Pause, RotateCcw, Search, Square } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Clock, Download, Pause, RotateCcw, Search, Square } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
@@ -29,6 +29,7 @@ import { StepLine } from '@/components/chat';
 import {
   type LiveJob, type Run, type Schedule, cancelJob, liveJobs, schedulePause, scheduleRemove, schedules,
 } from '@/lib/api';
+import { type CsvColumn, downloadCsv, rowsToCsv, stampedName } from '@/lib/csv';
 import { refreshLive, useLive } from '@/lib/live';
 import { useAgent } from '@/lib/store';
 import { useAccount } from '@/shell/AccountProvider';
@@ -106,6 +107,11 @@ const Chip = ({ label, tone }: { label: string; tone: Parameters<typeof chipClas
   </span>
 );
 
+/* Ключ занятости для кнопки «Refresh». Строка, а не булево: `busy` держит id той вещи, над которой идёт
+ * действие, и общий флаг крутил бы спиннеры на всех кнопках сразу. Идентификатором прогона он быть не
+ * может - он начинается не с решётки. */
+const REFRESH = '#refresh';
+
 /** Одна строка истории - прогон из журнала, или работа из очереди, которая прогоном не стала. */
 type Entry =
   | { kind: 'run'; id: string; at: string | null; run: Run; job: LiveJob | null }
@@ -125,6 +131,29 @@ const statusOf = (e: Entry): StatusFilter => {
   if (e.run.outcome === 'stopped') return 'stopped';
   return 'failed';
 };
+
+/* СТОЛБЦЫ ВЫГРУЗКИ - те же вопросы, что в таблице, плюс то, что в таблицу не влезло: цель целиком и
+ * причина отказа. Файл открывают затем, чего экран не умеет - отсортировать, свести, отдать коллеге, - и
+ * обрезанная в нём цель делает его бесполезным ровно для этого.
+ *
+ * НИ ОДНОГО ПОЛЯ, КОТОРОГО НЕТ. Пустая ячейка здесь значит «нечего сказать», а не ноль: у работы, которая
+ * прогоном не стала, нет ни длительности, ни шагов, и выдумать ей «0s» значило бы записать в файл число,
+ * которого никто не мерил. */
+const CSV_COLUMNS: CsvColumn<Entry>[] = [
+  { header: 'Started', get: (e) => e.at ?? '' },
+  { header: 'Name', get: (e) => (e.kind === 'run' ? titleOf(e.run) : (e.job.goal ?? e.job.name)) },
+  { header: 'Asked for', get: (e) => (e.kind === 'run' ? e.run.goal : e.job.goal) ?? '' },
+  { header: 'Outcome', get: (e) => (e.kind === 'run' ? e.run.outcome : e.job.state) },
+  { header: 'Status', get: (e) => statusOf(e) },
+  {
+    header: 'Source',
+    get: (e) => (e.kind === 'run' ? sourceOf(e.run, e.job) : (e.job.scheduleId ? 'schedule' : 'chat')),
+  },
+  { header: 'Took', get: (e) => (e.kind === 'run' ? took(e.run) : '') },
+  { header: 'Steps', get: (e) => (e.kind === 'run' ? stepsOf(e.run).length : '') },
+  { header: 'Error', get: (e) => (e.kind === 'run' ? (e.run.error ?? '') : (e.job.said ?? '')) },
+  { header: 'Run id', get: (e) => e.id },
+];
 
 export const ActivityView = () => {
   const { runs, reload } = useAccount();
@@ -211,9 +240,9 @@ export const ActivityView = () => {
     <Page>
       <header className="mb-5 flex flex-wrap items-start gap-5">
         <div className="min-w-0 flex-1 basis-full sm:min-w-[22rem] sm:basis-auto">
-          <Typography variant="span" className={cn(LABEL, 'block')}>Activity</Typography>
+          <Typography variant="span" className={cn(LABEL, 'block')}>Logs</Typography>
           <Typography variant="h2" weight="semibold" className="mt-1 text-[1.7rem] leading-tight tracking-tight">
-            What your machine is doing
+            Every run, and what it actually did
           </Typography>
           <Typography variant="p" className="mt-1.5 max-w-[74ch] text-ink-inactive text-[0.86rem] leading-relaxed">
             Everything that runs on your computer — started by you, by a schedule, or from a chat — with the
@@ -337,9 +366,30 @@ export const ActivityView = () => {
         )}
       </section>
 
-      {/* ------------------------------------------------------------------ HISTORY */}
-      <section className="rounded-xl border-stroke border bg-surface-card p-4">
-        <div className="mb-3 flex flex-wrap items-end gap-x-3 gap-y-3">
+      {/* ------------------------------------------------------------------ THE LOG
+        *
+        * ТАБЛИЦА, А НЕ СПИСОК ПЛАШЕК - и это разворот прежнего решения, поэтому оно записано здесь целиком.
+        *
+        * Первая версия этой страницы рисовала историю таблицей во всю ширину и ушла от неё: на 1920
+        * пикселях цель растягивалась в строку на весь экран, а рядом стояли два блока-карточки, и страница
+        * читалась как две разные страницы. Обе половины того возражения больше не верны. Ширину держит
+        * колонка: цель обрезается по 42rem, как и раньше, а лишнее место уходит служебным столбцам, у
+        * которых ширина своя. А соседей-карточек у таблицы в этом приложении три, не восемь, и сама
+        * страница теперь называется журналом - в журнале столбцы это то, ради чего его открывают: «покажи
+        * всё, что падало вчера, и сколько это заняло» читается по столбцу, а не по плашкам.
+        *
+        * Образец - audit-лог из нашего же MCPGateway, владелец показал его 2026-09-18: липкая шапка,
+        * строка-раскрытие под строкой, отказ подкрашен, и полоса фильтров со своими кнопками сверху.
+        *
+        * ЧТО ВЗЯТО НЕ БЫЛО: там раскрытая строка показывает запрос и ответ JSON. Здесь под строкой - шаги
+        * своими словами, вердикты проверок и сохранённые кадры. Это не украшение того же самого: JSON
+        * отвечает на «что ушло в модель», а кадр отвечает на «что было на экране», и в продукте, который
+        * обещает доказательства, второе и есть доказательство.
+        */}
+      <section className="rounded-xl border-stroke border bg-surface-card">
+        {/* Полоса фильтров - своим блоком со своей подложкой, как у образца: она относится ко всей таблице,
+          * и слитая с первой строкой читается как часть данных. */}
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-3 border-stroke/70 border-b bg-surface-card2/40 px-4 py-3">
           <div className="min-w-0 flex-1 basis-full lg:basis-auto">
             <Typography variant="span" className={cn(LABEL, 'block')}>
               {shown.length === entries.length
@@ -368,87 +418,177 @@ export const ActivityView = () => {
           <select value={period} onChange={(e) => setPeriod(e.target.value as PeriodFilter)} aria-label="Period" className={SELECT}>
             {PERIODS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
+          {/* ВЫГРУЗКА - ТОГО, ЧТО ПОКАЗАНО, а не всего журнала. Человек, поставивший три фильтра и нажавший
+            * «Export», просит именно эти строки; отдать ему вместо них всё - это тихо подменить вопрос. */}
+          <Button size="sm" variant="secondary" leftSlot={<Download className="size-3.5" />}
+            disabled={shown.length === 0}
+            title="Save the rows shown, with the filters as they are, as a CSV file"
+            onClick={() => downloadCsv(stampedName('mouseflow-logs'), rowsToCsv(shown, CSV_COLUMNS))}>
+            Export CSV
+          </Button>
+          <Button size="sm" variant="secondary" isLoading={busy === REFRESH} leftSlot={<RotateCcw className="size-3.5" />}
+            title="Read the log again from the account"
+            onClick={() => void act(REFRESH, async () => {
+              await Promise.all([refreshLive(), loadStill(), reload()]);
+              return { said: 'Read again.' };
+            }, 'Read again.')}>
+            Refresh
+          </Button>
         </div>
 
         {shown.length === 0 ? (
-          <Typography variant="p" className="py-6 text-center text-[0.88rem] text-ink-inactive">
+          <Typography variant="p" className="py-10 text-center text-[0.88rem] text-ink-inactive">
             {entries.length ? 'Nothing matches these filters.' : 'Nothing has run yet.'}
           </Typography>
         ) : (
-          <ul className="flex flex-col gap-1.5 overflow-y-auto pe-1" style={{ maxHeight: HISTORY_HEIGHT }}>
-            {shown.map((e) => {
-              const isOpen = open === e.id;
-              const chips = e.kind === 'run' ? runChips(e.run) : [jobChip(e.job)];
-              const tone = e.kind === 'run' ? runTone(e.run) : jobChip(e.job).tone;
-              const title = e.kind === 'run' ? titleOf(e.run) : (e.job.goal ?? e.job.name);
-              const from = e.kind === 'run' ? sourceOf(e.run, e.job) : (e.job.scheduleId ? 'schedule' : 'chat');
-              const length = e.kind === 'run' ? took(e.run) : '';
-              const goal = e.kind === 'run' ? e.run.goal : e.job.goal;
-              const finished = e.kind === 'job' || e.run.outcome !== 'running';
-              return (
-                <li key={e.id} className={ROW}>
-                  <div
-                    onClick={(ev) => {
-                      if ((ev.target as HTMLElement).closest('button,a')) return;
-                      const row = (ev.currentTarget as HTMLElement).parentElement;
-                      setOpen(isOpen ? null : e.id);
-                      /* Раскрытая строка не должна уезжать под нижнюю кромку окна: 'nearest' двигает
-                       * только ближайший скроллер и ровно настолько, насколько нужно, чтобы её видеть. */
-                      if (!isOpen && row) requestAnimationFrame(() => row.scrollIntoView({ block: 'nearest' }));
-                    }}
-                    className="grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)_auto_5.5rem_9rem_4rem_auto_1.25rem] items-center gap-3"
-                  >
-                    <span className={cn('size-2 justify-self-center rounded-full', dotClass(tone))} />
-                    <span className={TITLE} title={goal ?? title}>{title}</span>
-                    <span className="flex flex-wrap justify-end gap-1">
-                      {chips.map((chip) => <Chip key={chip.label} {...chip} />)}
-                    </span>
-                    <span className="text-[0.78rem] text-ink-secondary">{from}</span>
-                    <span className="text-[0.78rem] text-ink-inactive tabular-nums">{when(e.at)}</span>
-                    <span className="text-[0.78rem] text-ink-inactive tabular-nums">{length || '—'}</span>
-                    {/* ПЕРЕЗАПУСК - у всего, что кончилось и у чего есть цель: та же дверь, что «Ask again»
-                      * в панели истории, чтобы одна и та же вещь не делалась двумя путями. */}
-                    {finished && goal ? (
-                      <Button size="xs" variant="ghost" leftSlot={<RotateCcw className="size-3" />} title="Put this goal into Create, ready to run again"
-                        onClick={() => relaunch(goal)}>
-                        Relaunch
-                      </Button>
-                    ) : <span />}
-                    {isOpen ? <ChevronDown className="size-3.5 text-ink-inactive" /> : <ChevronRight className="size-3.5 text-ink-inactive" />}
-                  </div>
+          /* ОКНО НА ДЕСЯТЬ СТРОК ОСТАЛОСЬ, и по прежней причине: раскрытая строка должна помещаться в то
+            * же окно, а не выталкивать его. Однажды потолок снимался по раскрытии, и вместо блока на семь
+            * строк на страницу выливались все восемьдесят пять. */
+          <div className="overflow-auto" style={{ maxHeight: HISTORY_HEIGHT }}>
+            <table className="w-full border-collapse text-[0.82rem]">
+              {/* ИМЕНА СТОЛБЦОВ, и это главное, что таблица даёт поверх плашек: в плашке «14:02 · 1m 20s ·
+                * schedule» три числа стоят рядом и ни одно не названо. Шапка липкая - при прокрутке
+                * десятой строки без неё непонятно, какой столбец какой. */}
+              <thead className="sticky top-0 z-10 bg-surface-card2/95 text-ink-inactive backdrop-blur">
+                <tr className="border-stroke/70 border-b text-left">
+                  <th scope="col" className="w-4 px-2 py-2 font-medium" />
+                  <th scope="col" className="w-full max-w-0 px-2 py-2 font-medium">What was asked</th>
+                  <th scope="col" className="whitespace-nowrap px-2 py-2 font-medium">Outcome</th>
+                  <th scope="col" className="whitespace-nowrap px-2 py-2 font-medium">Source</th>
+                  <th scope="col" className="whitespace-nowrap px-2 py-2 font-medium">Started</th>
+                  <th scope="col" className="whitespace-nowrap px-2 py-2 text-right font-medium">Took</th>
+                  <th scope="col" className="px-2 py-2 font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((e) => {
+                  const isOpen = open === e.id;
+                  const chips = e.kind === 'run' ? runChips(e.run) : [jobChip(e.job)];
+                  const tone = e.kind === 'run' ? runTone(e.run) : jobChip(e.job).tone;
+                  const title = e.kind === 'run' ? titleOf(e.run) : (e.job.goal ?? e.job.name);
+                  const from = e.kind === 'run' ? sourceOf(e.run, e.job) : (e.job.scheduleId ? 'schedule' : 'chat');
+                  const length = e.kind === 'run' ? took(e.run) : '';
+                  const goal = e.kind === 'run' ? e.run.goal : e.job.goal;
+                  const finished = e.kind === 'job' || e.run.outcome !== 'running';
+                  return (
+                    <Fragment key={e.id}>
+                      <tr
+                        onClick={(ev) => {
+                          if ((ev.target as HTMLElement).closest('button,a')) return;
+                          const row = ev.currentTarget as HTMLElement;
+                          setOpen(isOpen ? null : e.id);
+                          /* Раскрытая строка не должна уезжать под нижнюю кромку окна: 'nearest' двигает
+                           * только ближайший скроллер и ровно настолько, насколько нужно, чтобы её видеть. */
+                          if (!isOpen && row) requestAnimationFrame(() => row.scrollIntoView({ block: 'nearest' }));
+                        }}
+                        /* ОТКАЗ ПОДКРАШЕН - приём образца, и здесь он стоит дороже, чем там: журнал
+                          * открывают, чтобы найти упавшее, и находить его глазами по цвету строки быстрее,
+                          * чем читать столбец статуса десять раз. Оттенок еле заметный: строка остаётся
+                          * строкой, а не предупреждением. */
+                        className={cn(
+                          'cursor-pointer border-stroke/45 border-t hover:bg-state-hover',
+                          tone === 'bad' && 'bg-fb-red/[0.055]',
+                          isOpen && 'bg-state-hover',
+                        )}
+                      >
+                        <td className="px-2 py-2 align-middle">
+                          <span className={cn('block size-2 rounded-full', dotClass(tone))} />
+                        </td>
+                        {/* ЦЕЛЬ ЗАБИРАЕТ ОСТАТОК И ОБРЕЗАЕТСЯ - `w-full max-w-0`, а не потолок в rem.
+                          *
+                          * Измерено на живой странице: с `max-w-[42rem]` таблица выходила за свой
+                          * контейнер на 49 пикселей, потому что в таблице потолок работает как ЗАПРОС
+                          * ширины - колонка брала свои 672 и остальным оставалось меньше, чем им нужно.
+                          * `max-w-0` с `w-full` - обратное: колонка не просит ничего и забирает то, что
+                          * осталось от служебных, а обрезка делает остальное. У плашек в карточках выше
+                          * потолок в rem на месте: там нет колонок, которые он мог бы обделить. */}
+                        <td className="w-full max-w-0 px-2 py-2 align-middle">
+                          <span className="block truncate text-[0.9rem] text-ink-primary" title={goal ?? title}>{title}</span>
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-2 align-middle">
+                          <span className="flex flex-wrap gap-1">
+                            {chips.map((chip) => <Chip key={chip.label} {...chip} />)}
+                          </span>
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-2 align-middle text-ink-secondary">{from}</td>
+                        <td className="whitespace-nowrap px-2 py-2 align-middle text-ink-inactive tabular-nums">{when(e.at)}</td>
+                        <td className="whitespace-nowrap px-2 py-2 text-right align-middle text-ink-inactive tabular-nums">{length || '—'}</td>
+                        <td className="whitespace-nowrap px-2 py-2 text-right align-middle">
+                          <span className="inline-flex items-center gap-1">
+                            {/* ПЕРЕЗАПУСК - у всего, что кончилось и у чего есть цель: та же дверь, что
+                              * «Ask again» в панели истории, чтобы одна и та же вещь не делалась двумя
+                              * путями. */}
+                            {finished && goal && (
+                              <Button size="xs" variant="ghost" leftSlot={<RotateCcw className="size-3" />} title="Put this goal into Create, ready to run again"
+                                onClick={() => relaunch(goal)}>
+                                Relaunch
+                              </Button>
+                            )}
+                            {isOpen ? <ChevronDown className="size-3.5 text-ink-inactive" /> : <ChevronRight className="size-3.5 text-ink-inactive" />}
+                          </span>
+                        </td>
+                      </tr>
 
-                  {isOpen && (
-                    <div className="mt-2 ms-[1.25rem] flex flex-col gap-1 border-stroke/60 border-s ps-3 pe-2 pb-1">
-                      {goal && goal !== title && (
-                        <Typography variant="p" className="text-ink-inactive text-[0.78rem] italic">asked for: {goal}</Typography>
+                      {isOpen && (
+                        <tr className="border-stroke/45 border-t bg-surface-card2/30">
+                          {/* РАСКРЫТОЕ НЕ ДВИГАЕТ КОЛОНКИ. Шаги - это моноширинные строки произвольной
+                            * длины, и в обычной ячейке они растягивали таблицу шире контейнера, то есть
+                            * одна раскрытая строка сдвигала шапку и все остальные. `max-w-0 w-full` плюс
+                            * свой горизонтальный скроллер: широкое прокручивается внутри себя, как того и
+                            * требует правило для широкого содержимого в этом репозитории. */}
+                          <td colSpan={7} className="w-full max-w-0 px-4 py-3">
+                            <div className="flex flex-col gap-1 overflow-x-auto">
+                              {goal && goal !== title && (
+                                <Typography variant="p" className="text-ink-inactive text-[0.78rem] italic">asked for: {goal}</Typography>
+                              )}
+                              {e.kind === 'run' ? (
+                                <>
+                                  {wordsOf(e.run).map((word, i) => <StepLine key={`w${i}`} kind="say">{word}</StepLine>)}
+                                  {stepsOf(e.run).map((step, i) => (
+                                    <StepLine key={`s${i}`} kind={verdictKind(step)}>
+                                      {describe(asDid(step), health?.platform)}
+                                      {evidenceOf(step)}
+                                    </StepLine>
+                                  ))}
+                                  {e.run.summary && (
+                                    <Typography variant="p" className={cn('mt-1 text-[0.86rem]', e.run.outcome === 'ok' ? 'text-fb-green' : 'text-fb-red-text')}>
+                                      {e.run.summary}
+                                    </Typography>
+                                  )}
+                                  {/* ПУСТОЕ РАСКРЫТИЕ ГОВОРИТ, ЧТО ОНО ПУСТОЕ.
+                                    *
+                                    * Найдено глазами на живой странице: прогон без шагов, слов и итога
+                                    * раскрывался полосой в 25 пикселей без единой буквы, и это читается
+                                    * как сломанная кнопка, а не как «записывать было нечего». Строк без
+                                    * шагов в журнале хватает - прогоны старых сборок ничего в steps не
+                                    * писали, - так что это обычный случай, а не край.
+                                    *
+                                    * И сказано РОВНО то, что известно: не «прогон ничего не делал», а «в
+                                    * этой строке ничего не записано». Первое было бы утверждением о
+                                    * машине, которого журнал не подтверждает. */}
+                                  {!wordsOf(e.run).length && !stepsOf(e.run).length && !e.run.summary && (
+                                    <Typography variant="p" className="text-[0.82rem] text-ink-inactive">
+                                      Nothing was recorded step by step for this run — the build that ran it
+                                      did not keep them. The outcome above is all the log has.
+                                    </Typography>
+                                  )}
+                                  <Frames runId={e.run.id} />
+                                </>
+                              ) : (
+                                <Typography variant="p" className="text-[0.86rem] text-ink-secondary">
+                                  {e.job.said ?? 'It never ran.'}
+                                </Typography>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
                       )}
-                      {e.kind === 'run' ? (
-                        <>
-                          {wordsOf(e.run).map((word, i) => <StepLine key={`w${i}`} kind="say">{word}</StepLine>)}
-                          {stepsOf(e.run).map((step, i) => (
-                            <StepLine key={`s${i}`} kind={verdictKind(step)}>
-                              {describe(asDid(step), health?.platform)}
-                              {evidenceOf(step)}
-                            </StepLine>
-                          ))}
-                          {e.run.summary && (
-                            <Typography variant="p" className={cn('mt-1 text-[0.86rem]', e.run.outcome === 'ok' ? 'text-fb-green' : 'text-fb-red-text')}>
-                              {e.run.summary}
-                            </Typography>
-                          )}
-                          <Frames runId={e.run.id} />
-                        </>
-                      ) : (
-                        <Typography variant="p" className="text-[0.86rem] text-ink-secondary">
-                          {e.job.said ?? 'It never ran.'}
-                        </Typography>
-                      )}
-                    </div>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

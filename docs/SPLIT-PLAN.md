@@ -91,7 +91,7 @@ So, the two products, with working names to argue about later (§11):
 | Screen | Route | Product | Note |
 |---|---|---|---|
 | Create | `/create` | **P1** | The goal loop, both executors, dictation already lives here |
-| Activity | `/activity` | **P1** | Running / waiting / history, plus the memory ledger |
+| Logs | `/logs` | **P1** | Running / waiting / the log as a table, plus the memory ledger. Renamed from Activity 2026-09-18; `/activity` redirects |
 | Tests | `/tests` | **P1** | A case is "is this still true?" |
 | Connect | `/connect` | **P1** | Exists so a machine can be acted on |
 | Record | `/record` | **P2** | Capture, transcript, the recordings table |
@@ -123,6 +123,21 @@ Two rules came out of building it, and neither was in the paragraph above:
 
 Menu order per product is today's order with the other half removed, not a new order invented at the same
 time: somebody who opens the app after the change finds the same things in the same places, fewer of them.
+
+**The owner trimmed P1 on 2026-09-18, and three of the table's rows are settled by it:**
+
+- **The Gallery is P2's** — that is §11.2 answered. Both shelves are "what is already made and can I take
+  it", which is a workshop question.
+- **The Dashboard is P2's, whole.** §5.2 was going to cut it in half; the half about runs is not needed in a
+  product about proving things work, because Logs answers the same question with the evidence attached. Step
+  3's `?half=` is what makes that a move rather than a rewrite.
+- **Teams leaves P1 "for now".** Worth writing down what that costs: in a build locked to P1 the team page
+  becomes unreachable, because it left the settings dialog when it became a place.
+
+**And P1 offers one executor, the local agent** (`PRODUCTS.do.runsIn`). The extension and the agent make
+different promises, and choosing between them is not a question to put in front of somebody whose goal is
+"prove the invoicing still works". This is narrower than §6.2, which splits `extension/content.js`: nothing
+was removed from the extension, it is simply not offered as an executor on P1's Create.
 
 ### 2.2 Routes (`api/*.js`)
 
