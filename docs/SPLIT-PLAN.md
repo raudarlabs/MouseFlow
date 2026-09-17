@@ -402,12 +402,60 @@ Two questions live here: *what did I spend my week on* (P2) and *what did the ma
 components. The embedded assistant goes with P2 (it answers "ask about your own work"), and the P1 half keeps
 the failure/repeat tables that feed the Tests page.
 
+**Superseded in part, 2026-09-18: the owner moved the Dashboard to P2 whole.** The P1 half is not needed —
+Logs answers "what did the machine do" with the evidence attached, which is the stronger version of the same
+question. So this stops being a page split and becomes one line: the P2 dashboard asks `?half=did` and stops
+paying for the run queries. Step 3 is what makes that a one-line change; had it not been done first, this
+would have been a rewrite of a 2 331-line view.
+
 ### 5.3 Gallery
 
 Two shelves today: published flows (installed in order to be **run** — P1's distribution channel) and
 Documents (P2, and not publishable at all — there is no gallery row type for a document). *Cut:* the
 Documents shelf becomes P2's own `/docs` index — a route that existed until recently and was collapsed into
 `?tab=documents`. Restore it, and restore `/chat` for the same reason.
+
+### 5.5 Create as a list of threads (owner's proposal, 2026-09-18)
+
+*"Make the UI like Claude's — switching between applications, and in the QA app keep the chats of the tasks
+that were created, so the history is visible and the user can repeat them or change them. A shape everyone
+already knows."*
+
+**Half of it exists, and that is the point of writing it down here rather than as a new feature.** The
+switch between products landed with step 4. Create already keeps a panel of past runs on the right
+(`EarlierPanel` / `Earlier.tsx`), and Logs already has **Relaunch**, which puts a past goal back into
+Create's composer (`RELAUNCH_KEY`, through `sessionStorage`). So "repeat it" is built; what is missing is
+the *shape* — a list you read down the left, where a row is a task rather than a row in a table.
+
+**The one thing that is genuinely missing is the thread.** A run today is a single execution, not a
+conversation: `user_run` holds a goal, steps and an outcome, and two runs of the same goal are two
+unrelated rows. Claude's shape implies that reopening a row continues something. Two honest readings, and
+they cost very different amounts:
+
+| Reading | What it means | Cost |
+|---|---|---|
+| **A — a thread is a goal you can pick up again** | The row carries the goal and its attachments; opening it fills the composer, and *Run again* / *Change and run* are the two actions. Each run is still its own row in Logs | Small. No schema, no protocol: the goal is already stored, `relaunch()` already does the move |
+| **B — a thread is a conversation with state** | Follow-up turns against the same thread ("now do the same for October"), model context carried between them | Large. A `thread_id` on `user_run`, a decision about what the model is shown from previous turns, and the same question answered again in the extension and in the desktop driver |
+
+**Do A first**, and do not let it drift into B by accident. A is a move of what exists into the shape people
+recognise; B is a second kind of memory beside `app_memory`, and this codebase already has one rule about
+that (QA-ROADMAP §0 principle 3: one implementation, many readers). If B turns out to be wanted, it should
+be planned as its own thing with `chat_thread`/`chat_message` — which P2 already has — rather than grown
+sideways out of the run table.
+
+*Done when:* a past task is one click from being run again or edited, from the same list, without going
+through Logs — and the list is the thing you see first on Create, not a panel on the right.
+
+### 5.6 Connections has no door in P1 (found 2026-09-18, by looking)
+
+With P1 trimmed to four screens, `/connect` is in none of them. It is reachable from the agent pill in the
+header and from the settings dialog, and the "no local agent is answering" notice says *Open Connections* —
+a sentence naming a place the menu does not have. It worked while the app had eight screens and one of them
+was always a click away; in a four-screen shell it is the only screen a new person actually needs on their
+first day, because nothing runs until the agent is installed.
+
+*Do:* either a nav row of its own in P1, or a button in that notice that opens it. One line either way; the
+decision is whether install belongs in the menu forever or only until it is done.
 
 ### 5.4 The cross-links that would tear
 
@@ -610,6 +658,40 @@ documents or analytics.
 
 ---
 
+### 7.2 A messenger as the phone, instead of a PWA (from two codebases the owner sent, 2026-09-18)
+
+§7.1 said a phone is simply one more thing that inserts a `run_queue` row, and proposed a PWA as the shell.
+Two projects the owner pointed at answer the same question differently, and both pick the messenger:
+
+- **[TencentCloud/Octop](https://github.com/TencentCloud/Octop)** (MIT, Python, 3.4k★) — Feishu, DingTalk,
+  QQ, Discord, WeCom into one `HarnessProcessor`; the session key is
+  `<agent>:<channel>:<platform_session>:<dm|group>` and the reply goes back by the same key.
+- **[openclaw/openclaw](https://github.com/openclaw/openclaw)** (MIT, **TypeScript**, 390k★) — 20+ channels
+  through a local gateway, plus a pairing rule worth copying verbatim: *"DM-capable channels pair unknown
+  senders by default; approve a pairing request with `openclaw pairing approve <channel> <code>`."*
+
+**Why a messenger beats a PWA as the first shell.** Push notifications arrive for free — §7.1 named them as
+the one thing a PWA genuinely cannot do and deferred them to a native app. There is nothing to install, no
+home-screen ritual, and no mobile layout to build before the idea can be tried. What it costs is a bot
+token and one channel's API, against a mobile layout for Create plus a manifest.
+
+**What is ours already and must not be re-acquired.** The queue, the worker protocol, `whoIsCalling` with
+three ways in, `mouseflow_status` answering "is the machine awake", the run artifacts. A messenger is an
+*ingress*, not an architecture: one place that turns a message into a queue row and one that posts the
+outcome back. Neither project's agent loop is wanted — this codebase has one, with recording, evidence and
+checks attached to it, and QA-ROADMAP §0 principle 3 forbids a second.
+
+**The pairing rule is the part to lift.** A device token (`mf_…`) already authenticates a machine; a chat
+account is a different kind of sender, and "unknown senders are paired, not served, until approved by code"
+is the right default for something that can drive a desktop. Without it, knowing a bot's handle would be
+enough to queue work on somebody's computer.
+
+*Do:* one channel first — Telegram, because a bot is a token and an HTTP call and nothing else — with the
+pairing rule, `mouseflow_status` answered before anything is queued, and checkpoint gates on anything
+one-way. The PWA stays on the list; it stops being the *first* thing.
+
+---
+
 ## 8. Limits, and what a second deployment would cost
 
 `api/_spend.mjs` is keyed by `(user_id, route, at)` and its `LIMITS` object is already **a partition by
@@ -636,26 +718,54 @@ Each step ends the way this repository requires: `npm test` green with zero FAIL
 web/tsconfig.json` clean, `npm run build` in `web/` ok, the docs page updated, push, `build.json` shows the
 commit, and one concrete thing named for the owner to check.
 
-| # | What | Proof | Done when |
-|---|---|---|---|
-| 0 | Housekeeping: `db/022_queue_machine.sql`'s header still says "НЕ ПРИМЕНЕНА" — it was applied 2026-09-11 | grep | the file no longer contradicts `npm run migrate -- --list` |
-| 1a | **§4.1** a created skill carries tier 1 (`procedureFromSteps`) — **done 2026-09-17** | `api/_test-skills.mjs`, 11 checks | the kind a case accepts can carry `verification` at all |
-| 1b | **§4.1** the case flow fills and seeds `verification` — **done 2026-09-17** | `api/_test-case.mjs`, 18 checks, 8 mutations | one skill's own checks decide a case's verdict, and a case's checks come back to the skill |
-| 2 | **§4.2** split `api/mcp.js` into catalogue + worker — **done 2026-09-17** | `npm test`, routes pin untouched, 4 mutations | filename answers "which product" |
-| 3 | **§4.3** `insights` halves (`did` / `ran`) — **done 2026-09-17** | `api/_test-insights.mjs`, 131 checks, 13 mutations | `?half=did` touches no `user_run` |
-| 4 | The product axis: `web/src/lib/product.ts`, one definition read by sidebar, titles, onboarding — **done 2026-09-18** | `web/check-web.mjs`, 40 checks, 20 mutations | switching product changes the whole shell, in one place |
-| 5 | **§5.1** cut Skills into Library (P2) and Runs (P1) | tsc + build; screenshots regenerated | neither half mentions the other's vocabulary |
-| 6 | **§5.3** restore `/docs` and `/chat` as first-class P2 routes | routes pin | a document is reachable without going through the Gallery |
-| 7 | **§5.2** Dashboard split, on top of step 3 | — | each half loads only its own half |
-| 8 | MCP profiles: serve P1's 7, P2's 7, the shared 4 | `mcp/test-mcp.mjs` tool-count pin becomes per-profile | a P2 connector never sees `mouseflow_run` |
-| 9 | **§6.1** `--record-only` + `canAct:false`, both agents | `agent/test-contract.mjs`; C# compiled for real | a record-only agent refuses every injection action, and says so in words |
-| 10 | **§7** transcription route (server-held key, capped, rate-limited) + dictation in the extension panel | `api/_test-quota.mjs` for the new `LIMITS` key; the route pin | a goal can be dictated with the app closed, and the UI says where the audio goes before the microphone is armed |
-| 10a | **§7.1** mobile layout for Create, as a PWA | — | a goal can be dictated from a phone and run on the desk, with the machine's awake-state said on the first screen |
-| 11 | **§8** `LIMITS` partitioned | `api/_test-quota.mjs` | one product's spend cannot exhaust the other's |
-| 12 | Docs set split into two indexes (§2.6) | `agent/check-promises.mjs` | each product's documentation reads as one product's documentation |
+**Rewritten 2026-09-18**, after a day in which the owner made six decisions that changed what was left. What
+changed, in one line each: the Dashboard, the Gallery and Teams left P1 whole, so §5.2 shrank from a page
+split to one query parameter; P1 runs on the local agent alone; Activity became Logs; and two of the
+"someday" rows (a phone, a packaged Windows agent) now have a named shape.
 
-Steps 1–3 are prerequisites and are worth doing even if the split is later abandoned: each fixes something
-that is half-built today. Steps 4–8 are the split proper. Steps 9–12 finish it.
+### Done
+
+| # | What | Proof |
+|---|---|---|
+| 1a | **§4.1** a created skill carries tier 1 (`procedureFromSteps`) — 2026-09-17 | `api/_test-skills.mjs`, 11 checks |
+| 1b | **§4.1** the case flow fills and seeds `verification` — 2026-09-17 | `api/_test-case.mjs`, 18 checks, 8 mutations |
+| 2 | **§4.2** split `api/mcp.js` into catalogue + worker — 2026-09-17 | `npm test`, routes pin untouched, 4 mutations |
+| 3 | **§4.3** `insights` halves (`did` / `ran`) — 2026-09-17 | `api/_test-insights.mjs`, 131 checks, 13 mutations |
+| 4 | The product axis: `web/src/lib/product.ts`, one list read by sidebar, titles, onboarding — 2026-09-18 | `web/check-web.mjs`, 45 checks, 20 mutations |
+| 4a | Two builds from one repo (`build:halves`, `dev:halves`) — level 2 of §0 *prepared*, not performed — 2026-09-18 | `web/check-web.mjs` |
+| 4b | P1 trimmed: Gallery, Dashboard and Teams to P2; one executor, the local agent — 2026-09-18 | `web/check-web.mjs` |
+| 4c | Activity → **Logs** at `/logs`: a table with named columns, sticky header, Export CSV, Refresh — 2026-09-18 | `mcp/test-mcp.mjs`; CSV pinned by execution |
+| 4d | Create in the shape of the references, and **text files attached to a goal** — 2026-09-18 | `agent/test-contract.mjs`, 12 checks |
+
+### Next, in order
+
+| # | What | Why now | How | Done when |
+|---|---|---|---|---|
+| 5 | **§5.6** a door to Connections in P1 | Four screens, and none of them is the one a new person needs on day one. The notice already says *Open Connections* and names a place the menu does not have | A nav row, or a button inside that notice | Nothing has to be found in a dialog before the first run |
+| 6 | **§5.5-A** Create as a list of threads | The owner's shape, and most of it exists: the goal is stored, `relaunch()` already moves it into the composer, `EarlierPanel` already lists past runs | Move the list left, make a row open its goal **and its attachments**, two actions: *Run again* / *Change and run*. **Not** conversation state — that is 5.5-B and it is a different project | A past task is one click from running again, without going through Logs |
+| 7 | **§5.1** cut Skills into Library (P2) and Runs (P1) | The last screen still marked `both`, and the only thing standing between here and two coherent products | Split the view; `SkillWizard` stays one component | Neither half uses the other's vocabulary |
+| 8 | **§5.2** the P2 dashboard asks `?half=did` | Was a page split; is now one query parameter, because the Dashboard moved whole | One line in `InsightsView`, plus the `HALF` constant that is already named | The dashboard runs no query against `user_run` |
+| 9 | **§5.3** restore `/docs` and `/chat` as first-class P2 routes | A document is P2's output and is reachable only through the Gallery's second shelf | Undo two redirects; both screens exist | A document opens without going through the Gallery |
+| 10 | **§8** partition `LIMITS` | Two products, one budget: a chat turn and a run currently share a ceiling | A partition of keys in `api/_spend.mjs`; no schema change | One product's spend cannot exhaust the other's |
+| 11 | MCP profiles: P1's 7, P2's 7, the shared 4 | The tool list is one array, so this is cheap — but a P2 connector seeing `mouseflow_run` is a product leak | Subset the array by profile | A P2 connector never sees `mouseflow_run` |
+| 12 | **§6.1** `--record-only` + `canAct:false`, both agents | P2's pitch is "it only watches", and today that is a claim rather than a flag | One flag hung on `Input.refusal()`; the C# compiled for real | A record-only agent refuses every injection action, and says so in words |
+| 13 | **§7** transcription route (server-held key, capped, rate-limited) | Dictation quality was the owner's ask, and it reverses a promise the code makes — so the route and the sentence ship together | `api/claude.js` is the shape to copy; a new `LIMITS` key | A goal can be dictated, and the UI says where the audio goes **before** the microphone is armed |
+| 14 | **§7.2** one messenger channel (Telegram), with the pairing rule | Cheaper than the PWA and brings push for free; the queue already does the hard half | One ingress that turns a message into a `run_queue` row; unknown senders paired, not served | A goal sent from a phone runs on the desk, and an unapproved sender cannot queue anything |
+| 15 | **§12** docs set split into two indexes | Each product's documentation should read as one product's | Two indexes over the existing pages | `agent/check-promises.mjs` still green |
+
+### Proposals — worth doing, nobody has asked for them yet
+
+| What | Why it is not above the line |
+|---|---|
+| **§5.5-B** threads with conversation state | A second kind of memory beside `app_memory`, and a `thread_id` answered again in the extension and the desktop driver. Wanted only if 5.5-A shows people asking follow-ups |
+| **§7.1** the PWA | Still the right thing for a phone that is not a chat app. Behind the messenger because the messenger costs a token and this costs a mobile layout |
+| **§6.3 + .NET 10** packaging the Windows agent | The technical answer is settled (yes, .NET 10, Windows first). The commercial one is not: nothing has been measured saying the installer is what loses people. Ask one buyer before buying a certificate |
+| **Attachments with their own field** | Today an attached file is part of the goal and is capped at 4000 characters, because that is what the queue path stores. A real attachment field would have to cross the queue, three loops and the extension — worth it only when somebody hits the cap for a real reason |
+| **Replacing `@insightis/ui`** | 228 vendored files from another Devart product. The name never reaches a built bundle and source maps are not published, so the exposure is the repository and the Sentry project. Only needed if sources are ever handed to a client |
+| 0 | `db/022_queue_machine.sql`'s header still says "НЕ ПРИМЕНЕНА" — it was applied 2026-09-11 | Housekeeping, one line, keeps getting postponed |
+
+Steps 1–4 are done. 5–9 are the split proper. 10–15 finish it; 13 and 14 are the only two that add a
+capability rather than divide one.
 
 ---
 
@@ -676,8 +786,8 @@ that is half-built today. Steps 4–8 are the split proper. Steps 9–12 finish 
 1. **The names.** "Do it for me" and "Make it reusable" are working titles for arguing with. The existing
    name collision (mouseflow.com, behaviour analytics — STATUS.md §5.3) hits the *documentation* product
    hardest, which is P2, and P2 is the one whose name would be new.
-2. **Does the Gallery belong to P1 or P2?** Today it distributes flows *to be run* (P1) while holding a
-   Documents shelf (P2). It can be one product's shelf or a shared shop; it cannot be both silently.
+2. ~~**Does the Gallery belong to P1 or P2?**~~ **Answered 2026-09-18: P2's.** Both shelves are "what is
+   already made and can I take it", which is a workshop question. The Dashboard and Teams went with it.
 3. **Do documents get published and shared like skills?** There is no gallery row type for a document today
    (§5.3), and adding one is a product decision, not a refactor.
 4. **One account or two?** This plan assumes one — one sign-in, one pairing, both products visible to a
@@ -692,6 +802,14 @@ that is half-built today. Steps 4–8 are the split proper. Steps 9–12 finish 
 7. **Does dictation keep an on-device fallback** (§7), or does the product simply say that audio goes to
    OpenAI and leave it at that? Keeping both is one switch and one sentence; keeping neither is simpler to
    explain but reverses a promise the code currently makes.
+
+7a. **Which messenger first** (§7.2), and whether a chat account may drive a desktop at all. Telegram is
+   proposed because a bot is a token and an HTTP call; the pairing rule is not negotiable either way.
+
+7b. **Do threads carry conversation state** (§5.5)? A is small and is on the list; B is a second kind of
+   memory and needs its own plan.
+
+7c. **Does Connections stay in P1's menu forever, or only until the agent is installed** (§5.6)?
 8. **Which side of the wall moves — A, B or C in §4.1's correction?** This one blocks step 1, and step 1 is
    the repair the whole "one artifact, two products" claim rests on. It is a product decision because each
    answer changes what the person is asked for and when.
