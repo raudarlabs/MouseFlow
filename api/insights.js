@@ -3,6 +3,7 @@
  *   GET /api/insights?days=30
  *   GET /api/insights?from=2026-08-21T00:00:00.000Z&to=2026-08-21T23:59:59.999Z
  *   GET /api/insights?days=30&team=t_ab12          the same counts over everybody in one team
+ *   GET /api/insights?days=30&half=ran            only the half that comes out of user_run
  *
  * Every number the app shows today is summed in the browser from /api/sync, which returns the last
  * 60 runs. That makes "how many runs failed last quarter" unanswerable: the answer is not in the
@@ -87,6 +88,39 @@ const SLOWEST_MAX = 10;
 const SLOWEST_MIN_CALLS = 2;          // a "median" over one call is that one call wearing a hat
 const FAILURES_MAX = 10;
 const SKILLS_MAX = 20;
+
+/* ------------------------------------------------------------------- ДВЕ ПОЛОВИНЫ ОДНОГО ОТВЕТА
+ *
+ * Этот маршрут отвечает сразу на два вопроса разных продуктов: ЧТО ДЕЛАЛ ЧЕЛОВЕК (записи, время по
+ * приложениям, внимание, узоры - из `user_flow` и дайджестов) и КАК ОТРАБОТАЛ АГЕНТ (прогоны, исходы, дни,
+ * повторы, отказы - из `user_run`). Половину теперь можно спросить отдельно: `?half=did`, `?half=ran`,
+ * `?half=both` по умолчанию, чтобы ни один существующий вызывающий не заметил разницы.
+ *
+ * ЗАЧЕМ ЭТО НУЖНО РАНЬШЕ РАЗДЕЛЕНИЯ СТРАНИЦ. `web/src/extension/Account.tsx` читает из всего этого ответа
+ * ОДНО поле - `totals.agentHours`, - и платил за разворот каждого события каждой записи в окне, самое
+ * дорогое чтение в продукте. Это не подготовка к будущему разделению, это счёт, который выставлялся
+ * каждый раз, когда открывалась панель.
+ *
+ * ОДНО ОПРЕДЕЛЕНИЕ, И ОНО ЗДЕСЬ. Ответ НАЗЫВАЕТ свои половины (`half.did`, `half.ran`) списками блоков
+ * отсюда же, а не описанием в документации, которое разойдётся с кодом. Проверки, потолки и `gaps` ниже
+ * отбираются по тем же спискам.
+ *
+ * `applications`, `unattributed` и `totals` стоят В ОБОИХ списках НАРОЧНО: это одно измеренное время,
+ * сложенное из двух источников, и каждая половина приносит свою часть. Спросив одну, получаешь её часть -
+ * названную, а не молча уменьшенное число. */
+export const BLOCKS = {
+  did: ['totals', 'applications', 'unattributed', 'attention', 'actions', 'patterns',
+    'previousBehaviour', 'digest'],
+  ran: ['totals', 'byOutcome', 'byDay', 'previous', 'applications', 'unattributed',
+    'repeated', 'slowestSteps', 'failures', 'skills'],
+};
+
+/** Что спросили, приведённое к трём словам. Всё непонятное - `both`: закладка с опечаткой должна
+ *  показывать страницу целиком, а не половину и не ошибку. */
+export const halfAsked = (raw) => {
+  const said = String(raw == null ? '' : raw).trim().toLowerCase();
+  return said === 'did' || said === 'ran' ? said : 'both';
+};
 
 /* A run longer than this is two machines' clocks disagreeing, not a run. The same rule as hoursOf()
  * in web/src/lib/api.ts, deliberately - if it changes it has to change in both, or the page and this
@@ -216,6 +250,9 @@ async function handler(req, res) {
      * everybody and the filter can be changed to somebody else. */
     const out = await gather(
       sql, scope.ids, fromIso, to.toISOString(), scope.kind === 'team', scope.memberIds,
+      /* Какую половину спросили. Приведение - в halfAsked, один раз и на весь файл: опечатка в закладке
+       * показывает страницу целиком, а не половину и не ошибку. */
+      req.query && req.query.half,
     );
     /* Who the numbers belong to, sent back rather than assumed by the page. A dashboard that says "47 runs"
      * without saying whose is the one screenshot that gets pasted into a chat and misread. */
@@ -303,7 +340,12 @@ export function shapeScope({ scope, people, rows, callerId }) {
  *
  * api/_test-insights.mjs now calls this with a fake `sql` that enforces Neon's contract - a tagged template
  * gives back a query OBJECT, and transaction() refuses an array holding anything else. */
-export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
+export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds, half = 'both') {
+  /* Приведено ОДИН раз и здесь, а не в маршруте: gather вызывается ещё и из api/_test-insights.mjs и из
+   * сводки аккаунта, и половина, решённая в двух местах, разойдётся в третьем. */
+  const asks = halfAsked(half);
+  const wantDid = asks !== 'ran';
+  const wantRan = asks !== 'did';
   /* A run's timestamp is coalesce(started_at, synced_at) throughout. started_at is nullable and some
    * runs arrived without one; those runs happened, so dropping them would quietly undercount, and
    * synced_at is never null. How many needed the fallback is reported in `gaps`. */
@@ -317,7 +359,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
   /* Counts only, over the previous window, so a headline number can be compared with something. Same rules as
    * the totals below - the same RUN_MAX_SECONDS clamp, the same coalesce on the timestamp - because a delta
    * between two differently-counted numbers is worse than no delta. */
-  const prevTotalsQ = sql`
+  const prevTotalsQ = wantRan && sql`
     with raw as (
       select outcome,
              case when started_at is not null and finished_at is not null
@@ -337,7 +379,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
     from raw
   `;
 
-  const totalsQ = sql`
+  const totalsQ = wantRan && sql`
     with raw as (
       select outcome, flow_id, said, steps, started_at, finished_at,
              case when started_at is not null and finished_at is not null
@@ -376,7 +418,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
     from r
   `;
 
-  const flowsQ = sql`
+  const flowsQ = wantDid && sql`
     select
       count(*) filter (where kind = 'recorded')::int as recordings,
       count(*) filter (where kind = 'created')::int  as created_skills
@@ -391,7 +433,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
   /* Every day in the window, whether or not anything ran. A series with holes in it draws a chart
    * that lies about its own shape, and the page cannot fill the missing days itself without knowing
    * which time zone the boundaries were cut on. */
-  const byDayQ = sql`
+  const byDayQ = wantRan && sql`
     with raw as (
       select date_trunc('day', coalesce(started_at, synced_at)) as day, outcome,
              case when started_at is not null and finished_at is not null
@@ -450,7 +492,21 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
    *                            there is no wall clock to divide up, so its step time stands on its
    *                            own, and `gaps` says how many runs that is.
    */
-  const appsQ = sql`
+  /* РАЗРЕЗАН НА ДВЕ ПОЛОВИНЫ ПО ТАБЛИЦАМ, и сведение перенесено отсюда в JS.
+   *
+   * Это был единственный запрос файла, читавший ОБЕ таблицы сразу, - и потому единственное место, из-за
+   * которого `?half=did` всё равно трогал бы `user_run`. Разрез идёт по границе, которая уже была внутри
+   * SQL: `flow_time` считает время ЗАПИСЕЙ (`user_flow`), `step`/`run_left` - время ПРОГОНОВ (`user_run`),
+   * а `combined`/`rolled` только складывали их по имени. Сложение по имени - это appsFrom ниже; копии SQL
+   * при этом не появилось, каждая половина осталась в одном экземпляре.
+   *
+   * ЧЕГО ЭТО СТОИЛО, названо здесь, а не умолчано: оконные итоги (`all_seconds`, `groups`) считались в SQL
+   * ДО потолка, поэтому обе половины теперь отдают все свои группы, а не четырнадцать строк. Потолок
+   * остался на ОТВЕТЕ - наружу по-прежнему уходит APPS_MAX строк, - выросла только передача из базы, и она
+   * ограничена тем, сколько разных приложений аккаунт сам записал. Срезать хотя бы одну половину в SQL
+   * было нельзя: приложение, тринадцатое по времени записей и первое по времени прогонов, выпало бы из
+   * суммы, и `all_seconds` перестал бы быть итогом всего измеренного времени. */
+  const appsFlowQ = wantDid && sql`
     with flow as (
       /* Keyed by ACCOUNT AND client id, not by client id alone.
        *
@@ -557,8 +613,20 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
              left(coalesce(p.at_origin, s.only_name), 120) as name,
              p.ms, p.dropped_ms
       from placed p join solo s on s.key = p.key
-    ),
-    wall as (
+    )
+    select name, kind,
+           count(distinct key)::int           as recordings,
+           (sum(ms) / 1000.0)::float8         as seconds,
+           /* Отброшенное «отсутствовал» - по всем строкам, безымянные включая: это время ИЗМЕРЕНО и
+            * вычтено, и gaps отчитывается ровно о нём. */
+           (sum(dropped_ms) / 1000.0)::float8 as idle_seconds
+    from flow_time
+    group by name, kind
+  `;
+
+  /* Вторая половина: время прогонов по страницам, и остаток, который ни на какую страницу не лёг. */
+  const appsRunQ = wantRan && sql`
+    with wall as (
       select user_id::text || ':' || client_id as key, steps,
              case when started_at is not null and finished_at is not null
                     and extract(epoch from (finished_at - started_at)) > 0
@@ -587,43 +655,17 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
              ), 0) / 1000.0)::float8 as secs
       from wall w left join step st on st.key = w.key
       group by w.key, w.secs
-    ),
-    combined as (
-      select name, kind,
-             count(distinct key)::int as recordings,
-             0::int                         as runs,
-             (sum(ms) / 1000.0)::float8     as seconds
-      from flow_time where name is not null group by name, kind
-      union all
-      select origin as name, 'origin'::text as kind,
-             0::int, count(distinct key)::int, (sum(ms) / 1000.0)::float8
-      from step where origin is not null and ms is not null group by origin
-    ),
-    rolled as (
-      select name, kind, sum(recordings)::int as recordings, sum(runs)::int as runs,
-             sum(seconds)::float8 as seconds
-      from combined group by name, kind
-      union all
-      -- Everything real that could not be given a name.
-      select null::text, 'none'::text, 0::int, 0::int, (
-        (select coalesce(sum(ms), 0) from flow_time where name is null) / 1000.0
-        + (select coalesce(sum(secs), 0) from run_left)
-      )::float8
-      union all
-      -- And time dropped as "away from the machine": out of the totals, but still reported.
-      select null::text, 'idle'::text, 0::int, 0::int,
-             ((select coalesce(sum(dropped_ms), 0) from flow_time) / 1000.0)::float8
     )
-    select name, kind, recordings, runs, seconds,
-           /* Both computed before the LIMIT, so the shares are shares of everything and the count is
-            * the count of everything - which is what lets the page say "top 12 of 34". Idle time is
-            * out of the denominator: it was dropped, not attributed. */
-           sum(case when kind = 'idle' then 0 else seconds end) over ()::float8   as all_seconds,
-           count(*) filter (where kind not in ('none', 'idle')) over ()::int      as groups
-    from rolled
-    -- The two bucket rows sort to the front so the cap can never eat them.
-    order by (kind in ('none', 'idle')) desc, seconds desc, name
-    limit ${APPS_MAX + 2}
+    select origin::text          as name,
+           count(distinct key)::int   as runs,
+           (sum(ms) / 1000.0)::float8 as seconds,
+           0::float8                  as left_seconds
+    from step where origin is not null and ms is not null
+    group by origin
+    union all
+    /* Остаток прогона - стенные часы минус то время шагов, которое удалось положить на страницу. Одна
+     * безымянная строка той же формы, чтобы разбор читал оба случая одним путём. */
+    select null::text, 0::int, 0::float8, (select coalesce(sum(secs), 0) from run_left)::float8
   `;
 
   /* --------------------------------------------------------------- what keeps happening
@@ -642,7 +684,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
    * A replay has no goal, so it is grouped by the flow it replayed, which for a replay IS the
    * workflow. A run with neither is counted nowhere here, and how many that is is in `gaps`.
    */
-  const repeatedQ = sql`
+  const repeatedQ = wantRan && sql`
     with base as (
       select r.client_id, r.flow_id, r.kind,
              coalesce(r.started_at, r.synced_at) as at,
@@ -691,7 +733,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
   /* Extension runs only, and not by choice: a desktop run's steps carry { tool, input } with no
    * timing, so there is nothing to take a median of. Both key spellings are read because the two
    * producers disagree - extension/background.js writes `tool`, extension/agent.js writes `name`. */
-  const slowestQ = sql`
+  const slowestQ = wantRan && sql`
     with s as (
       select left(coalesce(nullif(trim(e->>'tool'), ''), nullif(trim(e->>'name'), ''), '(unnamed)'), 60) as tool,
              (e->>'ms')::numeric as ms
@@ -718,7 +760,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
   /* Failures grouped by what went wrong rather than by run. Numbers are flattened to 'n' so
    * "used all 24 steps" and "used all 12 steps" are recognised as one recurring problem; the example
    * keeps the real text, so nothing is lost by the grouping. */
-  const failuresQ = sql`
+  const failuresQ = wantRan && sql`
     with f as (
       select client_id, coalesce(started_at, synced_at) as at,
              coalesce(nullif(trim(error), ''), '(no reason recorded)') as error,
@@ -756,7 +798,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
    * not "flows you have" - the second is what /api/sync is for. flow_id was null on every historical
    * row and is only now being written, so this finds recent runs only; how many runs it could not
    * place is in `gaps`. */
-  const skillsQ = sql`
+  const skillsQ = wantRan && sql`
     with r as (
       select r.user_id, r.client_id, r.flow_id, r.outcome,
              coalesce(r.started_at, r.synced_at) as at,
@@ -804,48 +846,37 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
   /* Over the whole team, NOT over `ids`: when the view is filtered to one person this is still the list
    * every name comes from, and a one-row picker is a filter nobody can leave. */
   const roster = peopleIds && peopleIds.length ? peopleIds : ids;
-  const peopleQ = sql`
-    with ids as (select unnest(${roster}::uuid[]) as id),
-    f as (
-      select user_id,
-             count(*) filter (where kind = 'recorded')::int as recordings,
-             count(*) filter (where kind = 'created')::int  as created_skills,
-             max(coalesce(created_at, updated_at))          as last_made
-      from user_flow
-      where user_id = any(${roster}::uuid[]) and deleted_at is null
-        and coalesce(created_at, updated_at) >= ${fromIso}
-        and coalesce(created_at, updated_at) <= ${toIso}
-      group by user_id
-    ),
-    r as (
-      select user_id,
-             count(*)::int                                   as runs,
-             count(*) filter (where outcome = 'ok')::int      as ok,
-             count(*) filter (where outcome = 'failed')::int  as failed,
-             count(*) filter (where outcome = 'stopped')::int as stopped,
-             -- The same clamp every duration in this file uses, so a person's hours add up to the header's.
-             coalesce(sum(case when started_at is not null and finished_at is not null
-               and extract(epoch from (finished_at - started_at)) > 0
-               and extract(epoch from (finished_at - started_at)) < ${RUN_MAX_SECONDS}
-               then extract(epoch from (finished_at - started_at))::float8 end), 0)::float8 as agent_seconds,
-             max(coalesce(started_at, synced_at))            as last_run
-      from user_run
-      where user_id = any(${roster}::uuid[]) and coalesce(started_at, synced_at) >= ${fromIso}
-        and coalesce(started_at, synced_at) <= ${toIso}
-      group by user_id
-    )
-    select ids.id::text                          as id,
-           coalesce(f.recordings, 0)::int        as recordings,
-           coalesce(f.created_skills, 0)::int    as created_skills,
-           coalesce(r.runs, 0)::int              as runs,
-           coalesce(r.ok, 0)::int                as ok,
-           coalesce(r.failed, 0)::int            as failed,
-           coalesce(r.stopped, 0)::int           as stopped,
-           coalesce(r.agent_seconds, 0)::float8  as agent_seconds,
-           r.last_run, f.last_made
-    from ids
-    left join f on f.user_id = ids.id
-    left join r on r.user_id = ids.id
+  /* Тоже надвое, и по той же границе, что appsQ выше: строка человека складывалась из `user_flow` и
+   * `user_run` одним левым присоединением, а половина команды - это половина этих столбцов. Обещание «у
+   * каждого id есть строка, даже пустая» никуда не делось - оно просто переехало из `left join` по списку
+   * ids в разбор ниже, где список тот же самый. */
+  const peopleFlowQ = wantPeople && wantDid && sql`
+    select user_id::text                                 as id,
+           count(*) filter (where kind = 'recorded')::int as recordings,
+           count(*) filter (where kind = 'created')::int  as created_skills,
+           max(coalesce(created_at, updated_at))          as last_made
+    from user_flow
+    where user_id = any(${roster}::uuid[]) and deleted_at is null
+      and coalesce(created_at, updated_at) >= ${fromIso}
+      and coalesce(created_at, updated_at) <= ${toIso}
+    group by user_id
+  `;
+  const peopleRunQ = wantPeople && wantRan && sql`
+    select user_id::text                                    as id,
+           count(*)::int                                   as runs,
+           count(*) filter (where outcome = 'ok')::int      as ok,
+           count(*) filter (where outcome = 'failed')::int  as failed,
+           count(*) filter (where outcome = 'stopped')::int as stopped,
+           -- The same clamp every duration in this file uses, so a person's hours add up to the header's.
+           coalesce(sum(case when started_at is not null and finished_at is not null
+             and extract(epoch from (finished_at - started_at)) > 0
+             and extract(epoch from (finished_at - started_at)) < ${RUN_MAX_SECONDS}
+             then extract(epoch from (finished_at - started_at))::float8 end), 0)::float8 as agent_seconds,
+           max(coalesce(started_at, synced_at))            as last_run
+    from user_run
+    where user_id = any(${roster}::uuid[]) and coalesce(started_at, synced_at) >= ${fromIso}
+      and coalesce(started_at, synced_at) <= ${toIso}
+    group by user_id
   `;
 
   /* ДАЙДЖЕСТЫ ПРИВОДЯТСЯ В ПОРЯДОК ДО ЧТЕНИЯ, и ограниченной порцией.
@@ -866,54 +897,82 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
   let derived = 0;
   let stale = 0;
   let digestProblem = null;
-  try {
-    const done = await topUp(sql, ids, TOP_UP_MAX);
-    derived = Array.isArray(done) ? done.length : 0;
-    stale = await staleCount(sql, ids);
-  } catch (e) {
-    digestProblem = e && e.message ? String(e.message).slice(0, 200) : 'the digest could not be derived';
+  /* Только когда дайджесты кто-то будет читать. Это ПИШУЩИЙ запрос, и половина «как отработал агент» его
+   * не просто не использует - ей нечего было бы с ним делать. */
+  if (wantDid) {
+    try {
+      const done = await topUp(sql, ids, TOP_UP_MAX);
+      derived = Array.isArray(done) ? done.length : 0;
+      stale = await staleCount(sql, ids);
+    } catch (e) {
+      digestProblem = e && e.message ? String(e.message).slice(0, 200) : 'the digest could not be derived';
+    }
   }
 
+  /* Группировка по коротким строкам дайджестов вместо разворота payload - то, ради чего таблица и
+   * появилась. Замер до: 1700 мс на окно, и линейно по числу записей. */
+  const behaviourNowQ = wantDid ? behaviour(sql, ids, fromIso, toIso) : null;
+  const behaviourPrevQ = wantDid ? behaviour(sql, ids, prevFromIso, fromIso) : null;
+
+  /* ЗАПРОСЫ ЕДУТ ПОИМЁННО, а не по местам в массиве.
+   *
+   * До половин разбор ответа был одним деструктурированием из двенадцати имён, и это держалось на том, что
+   * длина массива постоянна. Теперь она не постоянна: `?half=did` кладёт в транзакцию пять запросов, а не
+   * двенадцать, и позиционное чтение молча выдало бы строки одного запроса за строки другого - отказа не
+   * было бы, был бы дашборд с правдоподобными неверными числами. Ключ переживает и отсутствие запроса, и
+   * добавление нового.
+   *
+   * Заодно это убрало splice по вычисленному индексу в повторной попытке ниже: недостающий ключ - это
+   * пустые строки, а не сдвиг всего, что за ним. */
+  const asked = [];
+  /* `q` бывает false, а не только отсутствующим: запросы выше СТРОЯТСЯ по той же половине, а не строятся
+   * всегда и отбрасываются здесь. Разница не косметическая - именно она делает правду из «?half=did не
+   * трогает user_run»: текста такого запроса при этом не возникает вовсе, и проверить это можно тем же
+   * поддельным sql, который считает построенные запросы. */
+  const add = (key, want, q) => { if (want && q) asked.push({ key, q }); };
+  add('totals', wantRan, totalsQ);
+  add('prev', wantRan, prevTotalsQ);
+  add('flows', wantDid, flowsQ);
+  add('byDay', wantRan, byDayQ);
+  add('appsFlow', wantDid, appsFlowQ);
+  add('appsRun', wantRan, appsRunQ);
+  add('repeated', wantRan, repeatedQ);
+  add('slowest', wantRan, slowestQ);
+  add('failures', wantRan, failuresQ);
+  add('skills', wantRan, skillsQ);
+  add('behaviour', wantDid, behaviourNowQ);
+  add('behaviourPrev', wantDid, behaviourPrevQ);
   /* Appended rather than always run: in a personal scope the breakdown is the header with one row under
    * it, and it would be a query the commonest request on this endpoint pays for and nothing reads. */
-  /* Названы, а не собраны прямо в литерале массива: ниже их нужно уметь ИЗЪЯТЬ из него, а безымянный
-   * вызов изъять нельзя - пришлось бы вырезать по позиции, то есть по числу, которое разъедется с этим
-   * массивом при первом же добавленном запросе.
-   *
-   * Группировка по коротким строкам дайджестов вместо разворота payload - то, ради чего таблица и
-   * появилась. Замер до: 1700 мс на окно, и линейно по числу записей. */
-  const behaviourNowQ = behaviour(sql, ids, fromIso, toIso);
-  const behaviourPrevQ = behaviour(sql, ids, prevFromIso, fromIso);
-
-  const asked = [totalsQ, prevTotalsQ, flowsQ, byDayQ, appsQ, repeatedQ, slowestQ, failuresQ, skillsQ,
-    behaviourNowQ, behaviourPrevQ];
-  if (wantPeople) asked.push(peopleQ);
+  add('peopleFlow', wantPeople && wantDid, peopleFlowQ);
+  add('peopleRun', wantPeople && wantRan, peopleRunQ);
 
   /* ОДНА ТРАНЗАКЦИЯ НА ОБЫЧНОМ ПУТИ, и падение блока про поведение не забирает с собой остальное.
    *
-   * Транзакция - неделимая: один отказавший запрос отвергает все двенадцать. Пока это была единственная
-   * попытка, `flow_digest`, которого нет - развёрнутый код впереди своей миграции, самый обыкновенный
-   * порядок деплоя, - означал 500 на каждый запрос дашборда вместо трёх пустых разделов на нём.
+   * Транзакция - неделимая: один отказавший запрос отвергает все. Пока это была единственная попытка,
+   * `flow_digest`, которого нет - развёрнутый код впереди своей миграции, самый обыкновенный порядок
+   * деплоя, - означал 500 на каждый запрос дашборда вместо трёх пустых разделов на нём.
    *
-   * Повтор БЕЗ двух дайджестовых запросов, и только он: если отказало что-то другое, повтор откажет
-   * снова и наружу уйдёт ПЕРВАЯ ошибка - та, которая настоящая. То есть лишний круг платится только при
-   * отказе, обычный путь остаётся одной транзакцией, и подмена причины невозможна: успех повтора и есть
+   * Повтор БЕЗ двух дайджестовых запросов, и только он: если отказало что-то другое, повтор откажет снова
+   * и наружу уйдёт ПЕРВАЯ ошибка - та, которая настоящая. То есть лишний круг платится только при отказе,
+   * обычный путь остаётся одной транзакцией, и подмена причины невозможна: успех повтора и есть
    * доказательство, что виноваты были именно они. */
-  const digestAt = asked.indexOf(behaviourNowQ);
-  let answered;
+  const isDigest = (e) => e.key === 'behaviour' || e.key === 'behaviourPrev';
+  const answers = new Map();
+  const take = (list, got) => list.forEach((e, i) => answers.set(e.key, got[i] || []));
   try {
-    answered = await sql.transaction(asked, { readOnly: true });
+    take(asked, await sql.transaction(asked.map((e) => e.q), { readOnly: true }));
   } catch (first) {
-    const without = asked.filter((q) => q !== behaviourNowQ && q !== behaviourPrevQ);
+    const without = asked.filter((e) => !isDigest(e));
+    /* Их в наборе и не было - значит виноваты не они, и вторая попытка была бы той же самой. Без этой
+     * строки `?half=ran` платил бы вторым кругом к базе за каждый свой отказ и получал ту же ошибку. */
+    if (without.length === asked.length) throw first;
     try {
-      answered = await sql.transaction(without, { readOnly: true });
+      take(without, await sql.transaction(without.map((e) => e.q), { readOnly: true }));
     } catch (_) {
       /* Не дайджест. Наружу уходит первая ошибка - вторая описывает тот же отказ более узким запросом. */
       throw first;
     }
-    /* Пустые строки на их местах, чтобы разбор ниже читал ответ по одной и той же схеме и в обоих
-     * случаях: разветвление на два способа разбирать один ответ - это второе место, где можно ошибиться. */
-    answered.splice(digestAt, 0, [], []);
     if (!digestProblem) {
       digestProblem = first && first.message
         ? String(first.message).slice(0, 200)
@@ -921,21 +980,38 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
     }
   }
 
-  const [totalsRows, prevRows, flowRows, dayRows, appRows, repeatedRows, slowRows, failureRows, skillRows,
-    behaviourRows, prevBehaviourRows, peopleRows = []] = answered;
+  const rowsOf = (key) => answers.get(key) || [];
+  const totalsRows = rowsOf('totals');
+  const prevRows = rowsOf('prev');
+  const flowRows = rowsOf('flows');
+  const dayRows = rowsOf('byDay');
+  const repeatedRows = rowsOf('repeated');
+  const slowRows = rowsOf('slowest');
+  const failureRows = rowsOf('failures');
+  const skillRows = rowsOf('skills');
+  const behaviourRows = rowsOf('behaviour');
+  const prevBehaviourRows = rowsOf('behaviourPrev');
 
   const t = totalsRows[0] || {};
   const f = flowRows[0] || {};
 
+  /* ЕДИНСТВЕННЫЙ БЛОК, РАЗРЕЗАННЫЙ ПО ПОЛЯМ, а не целиком: пять полей о прогонах и два о записях всегда
+   * жили под одним именем `totals`, и переносить их в разные блоки значило бы переименовать поля, которые
+   * читает каждый существующий вызывающий. Поэтому имена на месте, а отсутствует то, чего не спрашивали:
+   * ноль там, где половину не читали, был бы числом, выдуманным этим маршрутом. */
   const totals = {
-    runs: num(t.runs),
-    ok: num(t.ok),
-    failed: num(t.failed),
-    stopped: num(t.stopped),
-    running: num(t.running),
-    recordings: num(f.recordings),
-    createdSkills: num(f.created_skills),
-    agentHours: round(num(t.agent_seconds) / 3600, 2),
+    ...(wantRan ? {
+      runs: num(t.runs),
+      ok: num(t.ok),
+      failed: num(t.failed),
+      stopped: num(t.stopped),
+      running: num(t.running),
+      agentHours: round(num(t.agent_seconds) / 3600, 2),
+    } : {}),
+    ...(wantDid ? {
+      recordings: num(f.recordings),
+      createdSkills: num(f.created_skills),
+    } : {}),
   };
 
   /* The same counts over the window before, and the fact that there WAS one. A caller cannot tell "no runs
@@ -969,19 +1045,52 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
     agentSeconds: round(r.agent_seconds, 1),
   }));
 
-  /* all_seconds and groups are the same on every row - they are window totals taken before the cap -
-   * so any row will do, and the buckets are pulled out by kind rather than by position. */
-  const allSeconds = appRows.length ? num(appRows[0].all_seconds) : 0;
-  const appGroups = appRows.length ? num(appRows[0].groups) : 0;
-  const bucketSeconds = num((appRows.find((r) => r.kind === 'none') || {}).seconds);
-  const idleSeconds = num((appRows.find((r) => r.kind === 'idle') || {}).seconds);
+  /* СЛОЖЕНИЕ ДВУХ ПОЛОВИН ПО ИМЕНИ - то, что делали `combined` и `rolled` в SQL до разреза выше.
+   *
+   * Ключ - ПАРА (род, имя), а не имя: настольное приложение "chrome" и origin "https://chrome..." - это
+   * две разные вещи с похожими именами, и в SQL их разделял `group by name, kind`. Сложение по одному
+   * имени слило бы их в одну строку, и на странице этого никто бы не увидел. Род - это 'app' или
+   * 'origin', в нём не бывает косой черты, поэтому она и служит границей ключа.
+   *
+   * Безымянные строки обеих половин идут в ОДНО ведро `unattributed` - ровно как делал `select null::text,
+   * 'none'` до разреза, - а отброшенное «отсутствовал» стоит рядом и в знаменатель не входит: его вычли,
+   * а не приписали. */
+  const bucket = new Map();
+  let bucketSeconds = 0;
+  let idleSeconds = 0;
+  const intoBucket = (name, kind, add) => {
+    const key = kind + '/' + name;
+    const was = bucket.get(key) || { name, kind, recordings: 0, runs: 0, seconds: 0 };
+    was.recordings += num(add.recordings);
+    was.runs += num(add.runs);
+    was.seconds += num(add.seconds);
+    bucket.set(key, was);
+  };
+  for (const r of rowsOf('appsFlow')) {
+    idleSeconds += num(r.idle_seconds);
+    if (r.name == null) { bucketSeconds += num(r.seconds); continue; }
+    intoBucket(String(r.name), r.kind === 'app' ? 'app' : 'origin',
+      { recordings: r.recordings, seconds: r.seconds });
+  }
+  for (const r of rowsOf('appsRun')) {
+    if (r.name == null) { bucketSeconds += num(r.left_seconds); continue; }
+    intoBucket(String(r.name), 'origin', { runs: r.runs, seconds: r.seconds });
+  }
+  const appAll = [...bucket.values()];
+  /* Итог и число групп - по ВСЕМУ, что сложилось, и до потолка: иначе страница не смогла бы сказать
+   * «12 из 34», а доли считались бы от показанного, то есть всегда почти от единицы. */
+  const allSeconds = appAll.reduce((was, r) => was + r.seconds, 0) + bucketSeconds;
+  const appGroups = appAll.length;
 
   /* `share` is a share of ALL measured time, the unattributable bucket included - so the shares of
    * `applications` plus `unattributed.share` come to one, and a dataset where most time cannot be
    * placed looks like one. Dividing by attributed time only would make a 1% slice read as 30% and
    * there would be nothing on the page to give that away. */
-  const applications = appRows
-    .filter((r) => r.kind === 'app' || r.kind === 'origin')
+  const applications = appAll
+    /* Тот же порядок, что стоял в `order by seconds desc, name`: ничья разрешается именем, чтобы таблица
+     * не перетасовывалась между двумя обновлениями одного и того же окна. */
+    .sort((a, b) => (b.seconds - a.seconds) || String(a.name).localeCompare(String(b.name)))
+    .slice(0, APPS_MAX)
     .map((r) => ({
       name: String(r.name || '(unnamed)'),
       kind: r.kind === 'app' ? 'app' : 'origin',
@@ -1036,19 +1145,47 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
   }));
 
   /* Stripped off by the handler once it has attached names to it - `gather` has no business reading the
-   * auth table, and the transaction it runs is read-only over this schema. */
-  const people = peopleRows.map((r) => ({
-    id: String(r.id),
-    recordings: num(r.recordings),
-    createdSkills: num(r.created_skills),
-    runs: num(r.runs),
-    ok: num(r.ok),
-    failed: num(r.failed),
-    stopped: num(r.stopped),
-    agentHours: round(num(r.agent_seconds) / 3600, 2),
-    lastRun: iso(r.last_run),
-    lastMade: iso(r.last_made),
-  }));
+   * auth table, and the transaction it runs is read-only over this schema.
+   *
+   * СТРОКА У КАЖДОГО, ДАЖЕ ПУСТАЯ - то же обещание, что держал `left join` по списку ids до разреза: если
+   * молча пропускать тех, кто за две недели ничего не записал, таблица читается как список команды, и
+   * кто-нибудь спросит, куда делся коллега. Тихая неделя - это строка нулей, а не отсутствие. */
+  const byPerson = new Map();
+  const forPerson = (id) => {
+    const was = byPerson.get(id);
+    if (was) return was;
+    const fresh = {
+      id: String(id),
+      recordings: 0,
+      createdSkills: 0,
+      runs: 0,
+      ok: 0,
+      failed: 0,
+      stopped: 0,
+      agentHours: 0,
+      lastRun: null,
+      lastMade: null,
+    };
+    byPerson.set(id, fresh);
+    return fresh;
+  };
+  if (wantPeople) for (const id of roster) forPerson(String(id));
+  for (const r of rowsOf('peopleFlow')) {
+    const one = forPerson(String(r.id));
+    one.recordings = num(r.recordings);
+    one.createdSkills = num(r.created_skills);
+    one.lastMade = iso(r.last_made);
+  }
+  for (const r of rowsOf('peopleRun')) {
+    const one = forPerson(String(r.id));
+    one.runs = num(r.runs);
+    one.ok = num(r.ok);
+    one.failed = num(r.failed);
+    one.stopped = num(r.stopped);
+    one.agentHours = round(num(r.agent_seconds) / 3600, 2);
+    one.lastRun = iso(r.last_run);
+  }
+  const people = [...byPerson.values()];
 
   /* ТРИ БЛОКА ИЗ ОДНОГО СОЮЗА, и разбор здесь, а не в браузере, по тому же правилу, что держит весь этот
    * файл: страница показывает поле, которое ей прислали, и ничего не считает сама.
@@ -1121,8 +1258,17 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
   const behaviourNow = behaviourOf(behaviourRows);
   const prevBehaviour = behaviourOf(prevBehaviourRows);
 
-  return {
+  /* ОДНО МНОЖЕСТВО РЕШАЕТ ВСЁ НИЖЕ: что уедет в ответе, какие потолки к нему приложены и какие пробелы
+   * имеет смысл называть. Собрано из BLOCKS, то есть ровно из того, что ответ о себе и говорит. */
+  const keep = new Set([...(wantDid ? BLOCKS.did : []), ...(wantRan ? BLOCKS.ran : [])]);
+
+  const out = {
     people,
+    /* ЧТО ЗДЕСЬ ЛЕЖИТ, СКАЗАНО САМИМ ОТВЕТОМ. Страница, спросившая половину, не должна отличать «блока нет,
+     * потому что его не просили» от «блок пуст, потому что данных нет» по факту отсутствия поля - это
+     * ровно то отсутствие, которое этот файл отказывается выдавать за отрицательный факт где бы то ни
+     * было ещё. Ненулевой список - это перечень полей, которые в ответе ЕСТЬ. */
+    half: { asked: asks, did: wantDid ? BLOCKS.did : null, ran: wantRan ? BLOCKS.ran : null },
     totals,
     byOutcome,
     byDay,
@@ -1166,7 +1312,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
     slowestSteps,
     failures,
     skills,
-    gaps: gapsFor(t, idleSeconds),
+    gaps: gapsFor(t, idleSeconds, keep),
     caps: {
       days: DAYS_MAX,
       /* The denominator is the repeated ones, which is the list `shown` came out of. `steps` is here
@@ -1200,6 +1346,17 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
       },
     },
   };
+
+  /* ОТСЕЯНО ПО ТОМУ ЖЕ СПИСКУ, который уехал в ответе, а не вторым литералом объекта под `if`.
+   *
+   * Два разных литерала были бы вторым местом, где решается принадлежность блока к половине, и первое же
+   * добавленное поле разошлось бы с одним из них молча - ответ без блока выглядит точно так же, как
+   * ответ, в котором блок пуст. Здесь список ровно один: BLOCKS. */
+  for (const key of new Set([...BLOCKS.did, ...BLOCKS.ran])) if (!keep.has(key)) delete out[key];
+  /* Потолки названы теми же именами, что блоки, - поэтому отсеиваются тем же множеством. `days` не блок,
+   * а граница окна, и остаётся всегда. */
+  for (const key of Object.keys(out.caps)) if (key !== 'days' && !keep.has(key)) delete out.caps[key];
+  return out;
 }
 
 /* ---------------------------------------------------------------------------- the gaps
@@ -1208,17 +1365,23 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds) {
  * the stored data cannot answer it - with the real count from this window wherever there is one, so
  * a gap that has stopped mattering shows a nought rather than a warning nobody rereads.
  */
-function gapsFor(t, idleSeconds) {
+function gapsFor(t, idleSeconds, keep) {
   const runs = num(t.runs);
-  return [
+  /* У КАЖДОГО ПРОБЕЛА НАЗВАН БЛОК, К КОТОРОМУ ОН ОТНОСИТСЯ, и список отсеивается тем же множеством, что
+   * и сам ответ. Иначе половина «что делал человек» несла бы оговорку «сколько из 0 прогонов не имеют
+   * пошагового времени» - предупреждение о том, чего на этой странице нет, а значит шум, который перестают
+   * читать; а половина «как отработал агент» - оговорку про минуты, которых она не показывает. */
+  const all = [
     {
       question: 'How much time did this save me?',
+      block: 'totals',
       why: 'Nothing here holds how long the same task takes by hand, and there is no field for it in '
         + 'user_run. Agent hours are measured wall clock; "time saved" would be a number this '
         + 'endpoint made up, so it does not report one.',
     },
     {
       question: 'Why is my mail time listed under a browser?',
+      block: 'applications',
       why: 'Because the application a click landed in is a PROCESS name, read from the window manager, '
         + 'and a web app hosted in a browser is that browser: Outlook as a PWA counts as chrome, and '
         + 'two different sites in two tabs are one name here. The window TITLE says "Outlook" and the '
@@ -1228,6 +1391,7 @@ function gapsFor(t, idleSeconds) {
     },
     {
       question: 'Where did the rest of my day go?',
+      block: 'applications',
       why: 'Only runs and recordings are timed. The hours between them are recorded nowhere, so these '
         + 'day totals are activity, not a working day - and whatever a pause inside a recording runs '
         + 'past two minutes is dropped rather than counted as time in an application ('
@@ -1235,12 +1399,14 @@ function gapsFor(t, idleSeconds) {
     },
     {
       question: 'Which step of a desktop run was slow?',
+      block: 'slowestSteps',
       why: "A desktop run's steps carry { tool, input } and no timing at all - only extension runs "
         + 'carry a per-step ms. ' + num(t.no_step_timing) + ' of ' + runs + ' runs in this window '
         + 'carry no per-step timing, so the slowest-step table is browser runs only.',
     },
     {
       question: 'What did the agent say while it worked?',
+      block: 'totals',
       /* This used to state as a fact that nothing has ever written user_run.said, and then print a
        * count beside it that contradicted the claim - on the test account 6 of 12 runs in the window
        * carry commentary. The count is the whole claim now, because it is the part that stays true
@@ -1252,21 +1418,27 @@ function gapsFor(t, idleSeconds) {
     },
     {
       question: 'Which skill did each run replay?',
+      block: 'skills',
       why: 'user_run.flow_id was null for every historical row and is only now being written. '
         + num(t.without_flow) + ' of ' + runs + ' runs in this window carry no flow id, so the '
         + 'per-skill table and any flow-based repetition see recent runs only.',
     },
     {
       question: 'Exactly when did an older run start?',
+      block: 'byDay',
       why: num(t.no_wall_clock) + ' of ' + runs + ' runs have no usable start-and-finish pair, so '
         + 'they are placed in the day series by when they synced and contribute no hours.',
     },
     {
       question: 'Did the run actually do the right thing?',
+      block: 'byOutcome',
       why: 'outcome is what the client reported when it stopped. A run that finished "ok" having done '
         + 'the wrong thing is stored as ok, and nothing in these tables can contradict it.',
     },
   ];
+  /* `block` снимается перед отправкой: он существует, чтобы отбирать, а не чтобы его читала страница -
+   * а поле, которое уехало наружу, через месяц кто-нибудь начнёт по нему группировать. */
+  return all.filter((g) => !keep || keep.has(g.block)).map(({ block, ...rest }) => rest);
 }
 
 /* The outer net: anything thrown before or around the handler's own try block. */

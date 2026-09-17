@@ -113,15 +113,23 @@ group('читатель берёт дайджест, а не payload');
    * разошлись бы в том, какие записи попали в период. */
   check('и окно применяется к дате записи, как везде в insights.js',
     /coalesce\(f\.created_at, f\.updated_at\) >= /.test(readerBody));
+  /* Оба окна - и оба только для половины «что делал человек»: блок читается из дайджестов, а половине
+   * «как отработал агент» он не нужен и не должен стоить ей запроса. */
   check('а сам дашборд спрашивает его про оба окна',
-    /const behaviourNowQ = behaviour\(sql, ids, fromIso, toIso\);/.test(insights)
-      && /const behaviourPrevQ = behaviour\(sql, ids, prevFromIso, fromIso\);/.test(insights)
-      && /behaviourNowQ, behaviourPrevQ\]/.test(insights));
+    /const behaviourNowQ = wantDid \? behaviour\(sql, ids, fromIso, toIso\) : null;/.test(insights)
+      && /const behaviourPrevQ = wantDid \? behaviour\(sql, ids, prevFromIso, fromIso\) : null;/.test(insights)
+      && /add\('behaviour', wantDid, behaviourNowQ\);/.test(insights)
+      && /add\('behaviourPrev', wantDid, behaviourPrevQ\);/.test(insights));
   /* И умеет их ИЗЪЯТЬ. Транзакция неделима: пока это было невозможно, отсутствующий flow_digest - код
    * впереди своей миграции - отвечал 500 на каждый запрос дашборда вместо трёх пустых разделов. */
+  /* Изъятие теперь ПО КЛЮЧУ, а не по позиции: набор запросов зависит от спрошенной половины, и splice по
+   * вычисленному индексу в наборе переменной длины выдал бы строки одного запроса за строки другого -
+   * без отказа, просто неверными числами. Отсутствующий ключ - это пустые строки. Сам отказ проверяется
+   * ИСПОЛНЕНИЕМ в api/_test-insights.mjs; здесь закреплена только конструкция. */
   check('и умеет прочитать страницу без них, когда они отказали',
-    /asked\.filter\(\(q\) => q !== behaviourNowQ && q !== behaviourPrevQ\)/.test(insights)
-      && /answered\.splice\(digestAt, 0, \[\], \[\]\)/.test(insights));
+    /asked\.filter\(\(e\) => !isDigest\(e\)\)/.test(insights)
+      && /const rowsOf = \(key\) => answers\.get\(key\) \|\| \[\];/.test(insights)
+      && !/splice\(digestAt/.test(insights));
   /* И не выдаёт чужой отказ за свой: если повтор тоже отказал, наружу уходит ПЕРВАЯ ошибка. */
   check('и чужой отказ не превращается в отчёт о дайджесте',
     /throw first;/.test(insights));
