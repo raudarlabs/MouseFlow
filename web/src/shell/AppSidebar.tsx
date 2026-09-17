@@ -19,6 +19,7 @@
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   FlaskConical,
+  FileText,
   ChartNoAxesColumn,
   ChevronsUpDown,
   CircleDot,
@@ -58,6 +59,7 @@ const ICONS: Record<string, LucideIcon> = {
   '/logs': ScrollText,
   '/skills': FolderOpen,
   '/tests': FlaskConical,
+  '/docs': FileText,
   '/dashboard': ChartNoAxesColumn,
   '/team': Users,
   '/gallery': LayoutGrid,
@@ -86,10 +88,16 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
   const liveCount = useActivityCount();
   const { account, runs } = useAccount();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  /* `product` - чему подчиняется меню сейчас (адрес сильнее выбора), `chosen` - что отмечено галочкой в
-   * переключателе. Разные вещи: на общем экране адрес ничего не говорит, и галочка обязана остаться там,
-   * куда её поставили. */
-  const { product, chosen } = useProduct();
+  /* `product` - чему подчиняется оболочка сейчас. АДРЕС СИЛЬНЕЕ ВЫБОРА, и поэтому имя в шапке и галочка в
+   * списке берутся отсюда же, откуда пункты меню.
+   *
+   * Сначала они брали `chosen` - «что человек выбрал», - и это было ошибкой, найденной глазами: открыв
+   * /docs, стоя в первом продукте, человек видел меню второго под именем первого. Шапка утверждала одно,
+   * а колонка под ней показывала другое, и ни то ни другое не было неправдой по отдельности.
+   *
+   * `chosen` остался - он решает, куда ведёт корень и что показывать на ОБЩЕМ экране, где адрес ничего не
+   * говорит, - но наружу больше не смотрит. Имя над меню всегда называет то меню, которое под ним. */
+  const { product } = useProduct();
   const navigate = useNavigate();
   const nav = screensFor(product);
   /* В сборке на один продукт переключателя нет: кнопка, предлагающая половину, которой в этой сборке
@@ -137,8 +145,8 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
           * переключатель, у которого не видно, что выбрано, хуже его отсутствия. */}
         {locked ? (
           <Link
-            to={PRODUCTS[chosen].home}
-            title={PRODUCTS[chosen].name}
+            to={PRODUCTS[product].home}
+            title={PRODUCTS[product].name}
             className={cn(
               'flex min-w-0 items-center gap-2.5 rounded-md text-ink-primary hover:bg-state-hover',
               tight ? 'size-9 justify-center' : 'h-9 px-2.5',
@@ -149,7 +157,7 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
             </svg>
             {!tight && (
               <Typography variant="span" weight="semibold" className="truncate text-[0.92rem]">
-                {PRODUCTS[chosen].name}
+                {PRODUCTS[product].name}
               </Typography>
             )}
           </Link>
@@ -161,7 +169,7 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
               /* Первый шаг тура целится сюда. Значение - не маршрут, потому что это и не маршрут: у
                * переключателя нет своего адреса, а подсветка меряет элемент, а не ссылку. */
               data-tour="product"
-              title={'Two products in one app: ' + PRODUCTS[chosen].name + '. Click to switch.'}
+              title={'Two products in one app: ' + PRODUCTS[product].name + '. Click to switch.'}
               className={cn(
                 'flex min-w-0 items-center gap-2.5 rounded-md text-ink-primary hover:bg-state-hover',
                 tight ? 'size-9 justify-center' : 'h-9 px-2.5 py-0',
@@ -175,7 +183,7 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
               {!tight && (
                 <>
                   <Typography variant="span" weight="semibold" className="truncate text-[0.92rem]">
-                    {PRODUCTS[chosen].name}
+                    {PRODUCTS[product].name}
                   </Typography>
                   <ChevronsUpDown className="size-3.5 shrink-0 text-ink-inactive" />
                 </>
@@ -184,7 +192,7 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[17rem]">
             <DropdownMenuRadioGroup
-              value={chosen}
+              value={product}
               onValueChange={(next) => {
                 const id = next as Product;
                 chooseProduct(id);

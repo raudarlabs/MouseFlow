@@ -426,6 +426,28 @@ Documents (P2, and not publishable at all — there is no gallery row type for a
 Documents shelf becomes P2's own `/docs` index — a route that existed until recently and was collapsed into
 `?tab=documents`. Restore it, and restore `/chat` for the same reason.
 
+**Done 2026-09-18, and the two are not symmetrical — which the line above assumed and which is wrong.**
+
+`/docs` is a route **and** a menu row. The argument for folding it into the Gallery was sound and has
+expired: the question "what is already made and can I take it" really is one question, so answering it from
+two menu rows was a mistake — *while both shelves belonged to one person with one intent*. The Gallery now
+distributes **other people's** published flows; a document is what this person wrote and sends to a
+colleague. One shelf of other people's, one of your own: two questions.
+
+`/chat` is a route and **not** a menu row. Its original reason for leaving still holds — the questions are
+about the numbers standing beside them, and a separate screen made somebody retype the window they were
+already looking at — so the panel embedded in the Dashboard stays the door. What brought the route back is
+narrower: the redirect sent `/chat` to `/dashboard`, and since 2026-09-18 that is a screen **in the other
+product**. A live address answering with a move to somewhere not in your menu is worse than a screen.
+
+Both components were written for this from the start: `DocsView` reads its id with `useParams({ strict:
+false })` and renders the list when there is none, and `ChatView` defaults `embedded` to false with a
+comment saying "the /chat page is a whole screen and has nothing to minimise into". Nothing had to be
+built; two redirects had to stop.
+
+**The Gallery's Documents tab is left alone for now.** Removing it is a change to a third view, and two
+doors to the same shelf is a duplicate rather than a defect.
+
 ### 5.5 Create as a list of threads (owner's proposal, 2026-09-18)
 
 *"Make the UI like Claude's — switching between applications, and in the QA app keep the chats of the tasks
@@ -775,7 +797,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 | ~~6~~ | **§5.5-A** Create as a list of threads — **done 2026-09-18** | The owner's shape, and most of it existed already | The list moved to the left of the thread; a row reopens its goal **and its attachments** (`splitGoal`, the inverse of the join). **One** action, not two — see §5.5 for why an immediate re-run was not added | `agent/test-contract.mjs`; DOM order verified live |
 | 7 | **§5.1** cut Skills into Library (P2) and Runs (P1) | The last screen still marked `both`, and the only thing standing between here and two coherent products | Split the view; `SkillWizard` stays one component | Neither half uses the other's vocabulary |
 | 8 | **§5.2** the P2 dashboard asks `?half=did` — **NOT one line; corrected 2026-09-18 by trying it** | The route half is one line. The PAGE is not: `did` sends no `byOutcome`, `byDay`, `repeated`, `slowestSteps`, `failures`, `skills`, and the page renders them as **0 runs, —% success, no failures** — absence as a negative fact. It does not crash; `list()` sees to that, which is exactly why it is dangerous | Remove the run blocks from the page. They are not a section: *success rate* and *worth automating* are tiles in the same grid as *recordings*. **Needs eyes on the result** | The dashboard runs no query against `user_run` **and** claims nothing about runs |
-| 9 | **§5.3** restore `/docs` and `/chat` as first-class P2 routes | A document is P2's output and is reachable only through the Gallery's second shelf | Undo two redirects; both screens exist | A document opens without going through the Gallery |
+| ~~9~~ | **§5.3** restore `/docs` and `/chat` — **done 2026-09-18** | A document is P2's output and was reachable only through the Gallery's second shelf | Both components were already written for it (`useParams({strict:false})`, `embedded=false`). `/docs` is a route **and** a menu row; `/chat` is a route and **not** a row — see §5.3 | `web/check-web.mjs`, order pins |
 | 10 | **§8** partition `LIMITS` | Two products, one budget: a chat turn and a run currently share a ceiling | A partition of keys in `api/_spend.mjs`; no schema change | One product's spend cannot exhaust the other's |
 | 11 | MCP profiles: P1's 7, P2's 7, the shared 4 | The tool list is one array, so this is cheap — but a P2 connector seeing `mouseflow_run` is a product leak | Subset the array by profile | A P2 connector never sees `mouseflow_run` |
 | 12 | **§6.1** `--record-only` + `canAct:false`, both agents | P2's pitch is "it only watches", and today that is a claim rather than a flag | One flag hung on `Input.refusal()`; the C# compiled for real | A record-only agent refuses every injection action, and says so in words |

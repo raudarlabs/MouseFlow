@@ -778,7 +778,7 @@ check('and it is in the sidebar, not buried in a dialog',
    с тех пор находил бы ноль пунктов и проходил бы, ничего не сравнив. Порядок здесь - объединение двух
    продуктов в порядке объявления, то есть ровно сегодняшнее меню; по каждому продукту в отдельности он
    закреплён в web/check-web.mjs. */
-const NAV_ORDER = '/record,/create,/logs,/skills,/tests,/dashboard,/team,/gallery';
+const NAV_ORDER = '/record,/create,/logs,/skills,/docs,/tests,/dashboard,/team,/gallery';
 const navNow = SCREENS.filter((s) => s.nav).map((s) => s.to).join();
 check('порядок в сайдбаре тот, о котором договорились, и Gallery последняя',
   navNow === NAV_ORDER, navNow);

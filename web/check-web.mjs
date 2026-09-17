@@ -168,7 +168,7 @@ group('порядок меню закреплён по каждому проду
     /* Первый продукт - это ПРОВЕРКИ: попросил, прочитал журнал, сложил в навык, проверяешь. Галерея,
      * дашборд и команды ушли во второй - решение владельца от 2026-09-18, см. комментарии в product.ts. */
     do: '/create,/logs,/skills,/tests',
-    make: '/record,/skills,/dashboard,/team,/gallery',
+    make: '/record,/skills,/docs,/dashboard,/team,/gallery',
   };
   for (const id of PRODUCT_IDS) {
     const now = screensFor(id).map((s) => s.to).join();

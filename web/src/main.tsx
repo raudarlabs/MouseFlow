@@ -28,6 +28,7 @@ import { AdminModels } from '@/features/admin/AdminModels';
 import { InsightsView } from '@/features/insights/InsightsView';
 import { PRODUCTS } from '@/lib/product';
 import { storedProduct } from '@/shell/useProduct';
+import { ChatView } from '@/features/chat/ChatView';
 import { DocsView } from '@/features/docs/DocsView';
 import { TeamView } from '@/features/team/TeamView';
 import { ErrorBoundary, startReporting } from '@/lib/sentry';
@@ -77,28 +78,34 @@ const routes = [
    * (что загружено, что отказало, что сказано), и разделять их значило бы завести всё это дважды ради
    * одного условия. Идентификатор в АДРЕСЕ, а не в состоянии, по тому же правилу, что уже держит срез
    * дашборда: документ - это то, что посылают коллеге, и ссылка на него обязана открывать его. */
-  /* СПИСОК документов живёт вкладкой в Галерее - см. GalleryView. Этот адрес был живым ровно один день, и
-   * всё-таки перенаправляет, а не удалён: его отдавал ассистент в ответе про написанный документ, и
-   * закладка, отвечающая 404, - худший ответ, чем закладка, приводящая куда надо. */
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/docs',
-    beforeLoad: () => { throw redirect({ to: '/gallery', search: { tab: 'documents' } as never }); },
-  }),
+  /* СПИСОК ДОКУМЕНТОВ - СНОВА СВОЙ АДРЕС, 2026-09-18 (SPLIT-PLAN §5.3).
+   *
+   * Он был живым один день, потом стал вкладкой Галереи, и рассуждение было верным ровно до разделения:
+   * вопрос «что уже сделано и можно взять» действительно один, и отвечать на него двумя пунктами меню
+   * было ошибкой - пока галерея и документы принадлежали одному человеку с одной целью. Теперь галерея
+   * распространяет ЧУЖИЕ опубликованные потоки, а документ - это то, что человек написал сам и посылает
+   * коллеге. Одна полка чужого и одна своего - это два вопроса, а не один.
+   *
+   * Тот же компонент, что и у одного документа: список и документ - одно состояние, и разделять их значило
+   * бы завести всё это дважды ради одного условия. `useParams({ strict: false })` внутри уже это умеет. */
+  createRoute({ getParentRoute: () => rootRoute, path: '/docs', component: DocsView }),
   /* ОДИН документ - по-прежнему свой адрес и своя страница: его посылают коллеге, и открываться он обязан
    * сразу на себе, а не на списке, из которого его надо ещё найти. */
   createRoute({ getParentRoute: () => rootRoute, path: '/docs/$docId', component: DocsView }),
   /* The old path. A rename should not break a link somebody already has - and this one is in a published
    * review of the roadmap, which is exactly the sort of link nobody thinks about until it 404s. */
   createRoute({ getParentRoute: () => rootRoute, path: '/insights', component: InsightsView }),
-  /* The assistant lives on the Insights page now - the questions are about the numbers beside them, and a
-   * separate screen made somebody retype the window they were looking at. Kept as a redirect rather than
-   * deleted: /chat was live, and a bookmark that 404s is a worse answer than one that lands somewhere. */
-  createRoute({
-    getParentRoute: () => rootRoute,
-    path: '/chat',
-    beforeLoad: () => { throw redirect({ to: '/dashboard' }); },
-  }),
+  /* АССИСТЕНТ - СНОВА ЭКРАН, но НЕ пункт меню. Разница существенная, и она же - причина.
+   *
+   * Он переехал на дашборд потому, что вопросы задают про числа, стоящие рядом, и отдельный экран
+   * заставлял человека заново набирать окно, на которое он и так смотрел. Это по-прежнему верно, и
+   * встроенная панель остаётся главной дверью - поэтому пункта в меню нет.
+   *
+   * А маршрут вернулся потому, что перенаправление на дашборд теперь уводит В ДРУГОЙ ПРОДУКТ у того, кто
+   * стоит в первом: адрес, который был живым, отвечал бы переездом на экран, которого в его меню нет.
+   * Компонент это умеет с самого начала - `embedded` по умолчанию false, и комментарий у него говорит
+   * «страница /chat - целый экран, и сворачиваться ей некуда». */
+  createRoute({ getParentRoute: () => rootRoute, path: '/chat', component: ChatView }),
   /* Teams. A module of its own since it stopped being a roster and became a place: several teams, the
    * people in them, and the button through to the dashboard scoped to one. */
   createRoute({ getParentRoute: () => rootRoute, path: '/team', component: TeamView }),
