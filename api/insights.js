@@ -1312,7 +1312,7 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds, ha
     slowestSteps,
     failures,
     skills,
-    gaps: gapsFor(t, idleSeconds, keep),
+    gaps: gapsFor(t, idleSeconds, wantDid, wantRan),
     caps: {
       days: DAYS_MAX,
       /* The denominator is the repeated ones, which is the list `shown` came out of. `steps` is here
@@ -1365,23 +1365,28 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds, ha
  * the stored data cannot answer it - with the real count from this window wherever there is one, so
  * a gap that has stopped mattering shows a nought rather than a warning nobody rereads.
  */
-function gapsFor(t, idleSeconds, keep) {
+function gapsFor(t, idleSeconds, wantDid, wantRan) {
   const runs = num(t.runs);
-  /* У КАЖДОГО ПРОБЕЛА НАЗВАН БЛОК, К КОТОРОМУ ОН ОТНОСИТСЯ, и список отсеивается тем же множеством, что
-   * и сам ответ. Иначе половина «что делал человек» несла бы оговорку «сколько из 0 прогонов не имеют
-   * пошагового времени» - предупреждение о том, чего на этой странице нет, а значит шум, который перестают
-   * читать; а половина «как отработал агент» - оговорку про минуты, которых она не показывает. */
+  /* У КАЖДОГО ПРОБЕЛА НАЗВАНА ЕГО ПОЛОВИНА, и список отсеивается по ней.
+   *
+   * Не по BLOCKS, хотя сначала было так: `totals` стоит в ОБОИХ списках - это единственный блок,
+   * разрезанный по полям, - и четыре оговорки о прогонах, привязанные к нему, ехали бы в половину «что
+   * делал человек» вместе с ним. Оговорка о том, чего на этой странице нет, - это шум, который перестают
+   * читать, а вместе с ним перестают читать и настоящие.
+   *
+   * Двух мест, где решается принадлежность, при этом не появилось: BLOCKS решает про БЛОКИ, эта колонка -
+   * про ОГОВОРКИ, и ни одна вещь не названа дважды. */
   const all = [
     {
       question: 'How much time did this save me?',
-      block: 'totals',
+      half: 'ran',
       why: 'Nothing here holds how long the same task takes by hand, and there is no field for it in '
         + 'user_run. Agent hours are measured wall clock; "time saved" would be a number this '
         + 'endpoint made up, so it does not report one.',
     },
     {
       question: 'Why is my mail time listed under a browser?',
-      block: 'applications',
+      half: 'did',
       why: 'Because the application a click landed in is a PROCESS name, read from the window manager, '
         + 'and a web app hosted in a browser is that browser: Outlook as a PWA counts as chrome, and '
         + 'two different sites in two tabs are one name here. The window TITLE says "Outlook" and the '
@@ -1391,7 +1396,7 @@ function gapsFor(t, idleSeconds, keep) {
     },
     {
       question: 'Where did the rest of my day go?',
-      block: 'applications',
+      half: 'did',
       why: 'Only runs and recordings are timed. The hours between them are recorded nowhere, so these '
         + 'day totals are activity, not a working day - and whatever a pause inside a recording runs '
         + 'past two minutes is dropped rather than counted as time in an application ('
@@ -1399,14 +1404,14 @@ function gapsFor(t, idleSeconds, keep) {
     },
     {
       question: 'Which step of a desktop run was slow?',
-      block: 'slowestSteps',
+      half: 'ran',
       why: "A desktop run's steps carry { tool, input } and no timing at all - only extension runs "
         + 'carry a per-step ms. ' + num(t.no_step_timing) + ' of ' + runs + ' runs in this window '
         + 'carry no per-step timing, so the slowest-step table is browser runs only.',
     },
     {
       question: 'What did the agent say while it worked?',
-      block: 'totals',
+      half: 'ran',
       /* This used to state as a fact that nothing has ever written user_run.said, and then print a
        * count beside it that contradicted the claim - on the test account 6 of 12 runs in the window
        * carry commentary. The count is the whole claim now, because it is the part that stays true
@@ -1418,27 +1423,29 @@ function gapsFor(t, idleSeconds, keep) {
     },
     {
       question: 'Which skill did each run replay?',
-      block: 'skills',
+      half: 'ran',
       why: 'user_run.flow_id was null for every historical row and is only now being written. '
         + num(t.without_flow) + ' of ' + runs + ' runs in this window carry no flow id, so the '
         + 'per-skill table and any flow-based repetition see recent runs only.',
     },
     {
       question: 'Exactly when did an older run start?',
-      block: 'byDay',
+      half: 'ran',
       why: num(t.no_wall_clock) + ' of ' + runs + ' runs have no usable start-and-finish pair, so '
         + 'they are placed in the day series by when they synced and contribute no hours.',
     },
     {
       question: 'Did the run actually do the right thing?',
-      block: 'byOutcome',
+      half: 'ran',
       why: 'outcome is what the client reported when it stopped. A run that finished "ok" having done '
         + 'the wrong thing is stored as ok, and nothing in these tables can contradict it.',
     },
   ];
-  /* `block` снимается перед отправкой: он существует, чтобы отбирать, а не чтобы его читала страница -
+  /* `half` снимается перед отправкой: он существует, чтобы отбирать, а не чтобы его читала страница -
    * а поле, которое уехало наружу, через месяц кто-нибудь начнёт по нему группировать. */
-  return all.filter((g) => !keep || keep.has(g.block)).map(({ block, ...rest }) => rest);
+  return all
+    .filter((g) => (g.half === 'did' ? wantDid !== false : wantRan !== false))
+    .map(({ half, ...rest }) => rest);
 }
 
 /* The outer net: anything thrown before or around the handler's own try block. */

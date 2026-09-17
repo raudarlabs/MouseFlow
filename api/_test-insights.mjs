@@ -48,7 +48,10 @@ const group = (name) => console.log('\n' + name);
 const NEON_QUERY = Symbol('neon query');
 
 function fakeNeon({ rows = () => [] } = {}) {
-  const seen = { queries: 0, transactions: 0, readOnly: [] };
+  /* `texts` - ПОСТРОЕННЫЕ запросы, а не только их число: проверка «эта половина не трогает user_run»
+   * читается по ним, и читается по тому, что запрос вообще не возник, а не по тому, что его не
+   * положили в транзакцию. */
+  const seen = { queries: 0, transactions: 0, readOnly: [], texts: [] };
   const make = (text) => {
     const q = {
       [NEON_QUERY]: true,
@@ -57,6 +60,7 @@ function fakeNeon({ rows = () => [] } = {}) {
       then(resolve) { return Promise.resolve(rows(text)).then(resolve); },
     };
     seen.queries += 1;
+    seen.texts.push(text);
     return q;
   };
   const sql = (strings, ...values) => make(String(strings.raw ? strings.raw.join('?') : strings));
@@ -180,6 +184,210 @@ group('сборка ответа доезжает до конца');
   check('и это была ОДНА read-only транзакция',
     sql.seen.transactions === 1 && sql.seen.readOnly[0] === true,
     JSON.stringify(sql.seen.readOnly));
+}
+
+group('половина спрашивается отдельно, и это видно по запросам');
+{
+  /* УСЛОВИЕ ГОТОВНОСТИ ШАГА 3 из docs/SPLIT-PLAN.md §4.3 дословно: «/api/insights?half=did runs no
+   * query against user_run». Проверяется ИСПОЛНЕНИЕМ и по построенным запросам - не по тому, что
+   * запрос не попал в транзакцию, а по тому, что его текста не возникло вовсе. */
+  const build = async (half, wantPeople = false) => {
+    const sql = fakeNeon();
+    const out = await gather(sql, IDS, FROM.toISOString(), TO.toISOString(), wantPeople, IDS, half);
+    const names = (re) => sql.seen.texts.filter((t) => re.test(t)).length;
+    return { out, texts: sql.seen.texts, runs: names(/user_run/), flows: names(/user_flow/) };
+  };
+
+  const did = await build('did');
+  check('?half=did не строит НИ ОДНОГО запроса к user_run', did.runs === 0,
+    did.texts.filter((t) => /user_run/.test(t)).map((t) => t.slice(0, 60)).join(' | '));
+  check('и всё-таки читает user_flow - иначе он не отвечал бы ни на что', did.flows > 0);
+
+  const ran = await build('ran');
+  check('?half=ran читает user_run', ran.runs > 0);
+  /* И не платит за дайджесты: их приведение в порядок - это ЗАПИСЬ, и половине про агента она не нужна. */
+  check('и не пишет дайджестов вовсе', !ran.texts.some((t) => /insert into flow_digest/.test(t)));
+  check('а ?half=did их пишет', did.texts.some((t) => /insert into flow_digest/.test(t)));
+
+  const both = await build('both');
+  check('?half=both остаётся тем, чем был - обе таблицы', both.runs > 0 && both.flows > 0);
+  /* Половина ДЕШЕВЛЕ целого, и на сколько - тоже измерено, а не обещано. */
+  check('и каждая половина строит меньше запросов, чем целое',
+    did.texts.length < both.texts.length && ran.texts.length < both.texts.length,
+    'did=' + did.texts.length + ' ran=' + ran.texts.length + ' both=' + both.texts.length);
+
+  /* Опечатка в адресе показывает страницу целиком, а не половину и не ошибку: закладка не должна
+   * становиться тупиком из-за одной буквы. */
+  const junk = await build('DID!');
+  check('непонятное слово читается как both, а не как отказ',
+    junk.out.half.asked === 'both' && junk.runs > 0 && junk.flows > 0, junk.out.half.asked);
+  check('а did и ran читаются как did и ran',
+    did.out.half.asked === 'did' && ran.out.half.asked === 'ran');
+
+  /* ОТВЕТ НАЗЫВАЕТ СВОИ ПОЛОВИНЫ. Страница, спросившая половину, не должна отличать «блока нет, потому
+   * что не просили» от «блок пуст» по факту отсутствия поля. */
+  check('ответ называет, какие половины в нём лежат',
+    Array.isArray(did.out.half.did) && did.out.half.ran === null
+      && Array.isArray(ran.out.half.ran) && ran.out.half.did === null
+      && Array.isArray(both.out.half.did) && Array.isArray(both.out.half.ran),
+    JSON.stringify({ did: did.out.half, ran: ran.out.half }));
+
+  /* И список не расходится с тем, что в ответе на самом деле лежит. Это та проверка, из-за которой
+   * список вообще один: `half` можно было бы написать литералом и не заметить, что он врёт. */
+  for (const [name, got] of [['did', did.out], ['ran', ran.out], ['both', both.out]]) {
+    const said = [...(got.half.did || []), ...(got.half.ran || [])];
+    const missing = said.filter((k) => !Object.prototype.hasOwnProperty.call(got, k));
+    check('в ответе ' + name + ' есть всё, что он о себе перечислил', missing.length === 0,
+      missing.join(', '));
+  }
+  const bothSaid = new Set([...both.out.half.did, ...both.out.half.ran]);
+  const extraDid = both.out.half.did.filter((k) => Object.prototype.hasOwnProperty.call(did.out, k));
+  check('и половина did перечислила ровно свои блоки', extraDid.length === both.out.half.did.length);
+  check('а блоков чужой половины в ней нет',
+    !('byDay' in did.out) && !('repeated' in did.out) && !('failures' in did.out)
+      && !('attention' in ran.out) && !('patterns' in ran.out) && !('digest' in ran.out),
+    Object.keys(did.out).join(','));
+  /* Ничего не потерялось: целое - это объединение двух половин и ни поля больше. */
+  const wholeKeys = Object.keys(both.out).filter((k) => k !== 'people' && k !== 'half'
+    && k !== 'gaps' && k !== 'caps');
+  check('а целое - объединение половин и ни поля больше',
+    wholeKeys.every((k) => bothSaid.has(k)), wholeKeys.filter((k) => !bothSaid.has(k)).join(','));
+
+  /* `totals` - единственный блок, разрезанный по ПОЛЯМ: ноль прогонов там, где прогоны не читали, был бы
+   * числом, выдуманным этим маршрутом. */
+  check('у totals в половине did нет полей о прогонах',
+    !('runs' in did.out.totals) && !('agentHours' in did.out.totals)
+      && 'recordings' in did.out.totals, JSON.stringify(did.out.totals));
+  check('а в половине ran нет полей о записях',
+    !('recordings' in ran.out.totals) && 'runs' in ran.out.totals, JSON.stringify(ran.out.totals));
+
+  /* Оговорки отбираются тем же множеством: половина про человека не несёт предупреждения о пошаговом
+   * времени прогонов, которого она не показывает. */
+  const asked = (out) => out.gaps.map((g) => g.question).join(' ');
+  check('в половине did нет оговорок про прогоны',
+    !/desktop run was slow/.test(asked(did.out)) && !/agent say/.test(asked(did.out)),
+    asked(did.out));
+  check('а в половине ran нет оговорки про минуты вне приложений',
+    !/rest of my day/.test(asked(ran.out)), asked(ran.out));
+  check('и в целом есть обе', /desktop run was slow/.test(asked(both.out))
+    && /rest of my day/.test(asked(both.out)));
+  check('а поле, по которому отбирали, наружу не уехало',
+    both.out.gaps.every((g) => !('block' in g)));
+  /* Потолок относится к списку, который в ответе есть. Потолок без списка - подпись под пустым местом. */
+  for (const [name, got] of [['did', did.out], ['ran', ran.out]]) {
+    const orphan = Object.keys(got.caps).filter((k) => k !== 'days'
+      && !Object.prototype.hasOwnProperty.call(got, k));
+    check('в половине ' + name + ' нет потолка без своего списка', orphan.length === 0, orphan.join(','));
+  }
+}
+
+group('две половины приложений складываются в то же, что складывал SQL');
+{
+  /* РАЗРЕЗ ПРОВЕРЯЕТСЯ АРИФМЕТИКОЙ, а не тем, что он написан. `combined`/`rolled` складывали время
+   * записей и время прогонов по имени внутри запроса; теперь это делает JS, и единственный способ
+   * убедиться, что сумма та же, - сложить обе половины руками и сравнить.
+   *
+   * Числа подобраны так, чтобы каждое из них было видно в ответе: 100 + 50 + 25 + 7 + 20 + 10 + 35
+   * отличимы друг от друга и от любой своей суммы. */
+  const FLOW = [
+    { name: 'chrome', kind: 'app', recordings: 2, seconds: 100, idle_seconds: 30 },
+    { name: 'https://a.example', kind: 'origin', recordings: 1, seconds: 50, idle_seconds: 0 },
+    /* Безымянная строка - время записи до того, как что-либо назвало место. */
+    { name: null, kind: 'origin', recordings: 1, seconds: 20, idle_seconds: 5 },
+  ];
+  const RUN = [
+    { name: 'https://a.example', runs: 3, seconds: 25, left_seconds: 0 },
+    /* ТО ЖЕ СЛОВО, ДРУГОЙ РОД: настольный "chrome" и origin "chrome" - две разные вещи, и в SQL их
+     * разделял `group by name, kind`. Сложение по одному имени слило бы 100 и 7 в одну строку. */
+    { name: 'chrome', runs: 1, seconds: 7, left_seconds: 0 },
+    { name: null, runs: 0, seconds: 0, left_seconds: 10 },
+  ];
+  const sql = fakeNeon({ rows: (text) => {
+    if (/from flow_time/.test(text)) return FLOW;
+    if (/from step where origin is not null/.test(text)) return RUN;
+    return [];
+  } });
+  const out = await gather(sql, IDS, FROM.toISOString(), TO.toISOString(), false, IDS, 'both');
+  const by = new Map(out.applications.map((a) => [a.kind + '/' + a.name, a]));
+
+  check('запись и прогон одного origin сложились в одну строку',
+    by.get('origin/https://a.example')
+      && by.get('origin/https://a.example').seconds === 75
+      && by.get('origin/https://a.example').recordings === 1
+      && by.get('origin/https://a.example').runs === 3,
+    JSON.stringify(by.get('origin/https://a.example')));
+  check('а одно слово в двух родах осталось двумя строками',
+    by.get('app/chrome') && by.get('app/chrome').seconds === 100
+      && by.get('origin/chrome') && by.get('origin/chrome').seconds === 7,
+    JSON.stringify(out.applications));
+  check('и их три, а не две', out.applications.length === 3 && out.caps.applications.total === 3,
+    out.applications.length + '/' + out.caps.applications.total);
+  /* Безымянное обеих половин - в одно ведро, ровно как `select null::text, 'none'` до разреза. */
+  check('безымянное обеих половин легло в одно ведро', out.unattributed.seconds === 30,
+    JSON.stringify(out.unattributed));
+  /* Итог - всё измеренное, ведро включая: 100 + 75 + 7 + 30. «Отсутствовал» в знаменатель не входит -
+   * это время вычли, а не приписали. */
+  const ALL = 212;
+  check('доли считаются от всего измеренного времени, ведро включая',
+    by.get('app/chrome').share === Math.round((100 / ALL) * 1e4) / 1e4
+      && out.unattributed.share === Math.round((30 / ALL) * 1e4) / 1e4,
+    by.get('app/chrome').share + ' / ' + out.unattributed.share);
+  check('и доли всех строк плюс ведро дают единицу',
+    Math.abs(out.applications.reduce((was, a) => was + a.share, 0) + out.unattributed.share - 1) < 1e-3);
+  /* Порядок - по времени, как стоял в `order by seconds desc, name`. */
+  check('порядок - по времени, самое долгое первым',
+    out.applications.map((a) => a.seconds).join(',') === '100,75,7',
+    out.applications.map((a) => a.seconds).join(','));
+  /* Отброшенное «отсутствовал» - 30 + 0 + 5, по ВСЕМ строкам, безымянные включая. */
+  check('отброшенное время посчитано по всем строкам и названо в оговорках',
+    out.gaps.some((g) => /0\.6 minutes of it/.test(g.why)),
+    (out.gaps.find((g) => /rest of my day/.test(g.question)) || {}).why);
+
+  /* А половина did видит только свою часть - и это НЕ уменьшенное молча число: `half` говорит, что
+   * прогонов в этом ответе нет вовсе. */
+  const sqlDid = fakeNeon({ rows: (text) => (/from flow_time/.test(text) ? FLOW : []) });
+  const half = await gather(sqlDid, IDS, FROM.toISOString(), TO.toISOString(), false, IDS, 'did');
+  check('половина did складывает только записи',
+    half.applications.length === 2
+      && half.applications.find((a) => a.name === 'https://a.example').seconds === 50
+      && half.unattributed.seconds === 20,
+    JSON.stringify(half.applications));
+  check('и говорит, что половины про прогоны в ней нет', half.half.ran === null);
+}
+
+group('строка есть у каждого, даже у того, кто ничего не делал');
+{
+  /* Обещание, которое держал `left join` по списку ids до разреза: таблица команды, молча пропускающая
+   * тех, у кого пустая неделя, читается как список команды, и кто-нибудь спросит, куда делся коллега. */
+  const TEAM = [
+    '00000000-0000-0000-0000-00000000000a',
+    '00000000-0000-0000-0000-00000000000b',
+    '00000000-0000-0000-0000-00000000000c',
+  ];
+  const sql = fakeNeon({ rows: (text) => {
+    if (/from user_flow/.test(text) && /group by user_id/.test(text)) {
+      return [{ id: TEAM[0], recordings: 4, created_skills: 1, last_made: '2026-08-30T00:00:00.000Z' }];
+    }
+    if (/from user_run/.test(text) && /group by user_id/.test(text)) {
+      return [{ id: TEAM[1], runs: 9, ok: 7, failed: 2, stopped: 0, agent_seconds: 3600,
+        last_run: '2026-08-29T00:00:00.000Z' }];
+    }
+    return [];
+  } });
+  const out = await gather(sql, IDS, FROM.toISOString(), TO.toISOString(), true, TEAM, 'both');
+  check('у каждого из троих есть строка, хотя строк из базы пришло две',
+    out.people.length === 3 && TEAM.every((id) => out.people.some((p) => p.id === id)),
+    out.people.map((p) => p.id.slice(-1)).join(','));
+  const one = out.people.find((p) => p.id === TEAM[0]);
+  const two = out.people.find((p) => p.id === TEAM[1]);
+  const none = out.people.find((p) => p.id === TEAM[2]);
+  check('и две половины сошлись на своих людях',
+    one.recordings === 4 && one.runs === 0 && two.runs === 9 && two.agentHours === 1
+      && two.recordings === 0,
+    JSON.stringify([one, two]));
+  check('а тихая неделя - это строка нулей, а не отсутствие',
+    none && none.runs === 0 && none.recordings === 0 && none.lastRun === null
+      && none.lastMade === null, JSON.stringify(none));
 }
 
 group('приведение дайджестов в порядок идёт вне транзакции');
