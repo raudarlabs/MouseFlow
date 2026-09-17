@@ -23,9 +23,13 @@ export const Account = ({ onDetached }: { onDetached: () => void }) => {
     const status = await ask('sync/status');
     if (status.ok) setWho((status.who as Who) ?? null);
     /* The same number the app's sidebar shows, from the same place: measured agent time over the window,
-     * not an estimate of time saved. */
+     * not an estimate of time saved.
+     *
+     * `half=ran` - ОДНО ПОЛЕ, А НЕ ВЕСЬ ДАШБОРД. Без него этот запрос разворачивал каждое событие каждой
+     * записи в окне, самое дорогое чтение в продукте, и приводил в порядок дайджесты - и всё это ради
+     * `totals.agentHours`, единственного, что здесь читается. Половины описаны в api/insights.js. */
     try {
-      const body = await api<{ totals?: { agentHours?: number } }>('/api/insights?days=7');
+      const body = await api<{ totals?: { agentHours?: number } }>('/api/insights?days=7&half=ran');
       setHours(body.totals?.agentHours ?? null);
     } catch (_) {
       /* The hours are a nicety beside the person's name; a panel that could not read them should still

@@ -419,8 +419,15 @@ const asScope = (scope: Scope) => (scope.kind === 'team'
   ? `&team=${encodeURIComponent(scope.id)}${scope.person ? `&person=${encodeURIComponent(scope.person)}` : ''}`
   : '');
 
+/* КАКУЮ ПОЛОВИНУ СПРАШИВАЕТ ЭТА СТРАНИЦА, сказано вслух, а не оставлено умолчанию.
+ *
+ * Сегодня она показывает обе - и «что делал человек», и «как отработал агент», - поэтому спрашивает обе.
+ * Это единственное место, где номер половины назван, поэтому разделение экрана (SPLIT-PLAN §5.2) меняет
+ * здесь одно слово, а не способ загрузки: маршрут уже умеет отдавать половину, см. api/insights.js. */
+const HALF = 'both';
+
 async function fetchInsights(window: Window, scope: Scope, signal: AbortSignal): Promise<Insights> {
-  const res = await fetch(`/api/insights?${asQuery(window)}${asScope(scope)}`,
+  const res = await fetch(`/api/insights?${asQuery(window)}&half=${HALF}${asScope(scope)}`,
     { credentials: 'same-origin', signal });
   const body = (await res.json().catch(() => null)) as (Insights & { error?: { message?: string } }) | null;
   /* The endpoint's own words, not a status code dressed up as prose: it knows why it refused and this page

@@ -64,6 +64,7 @@ import { report, wrap } from './_report.js';
  * ровно в том месте, где это стоило дороже всего: chats.js отражал ЛЮБОЙ origin и выдавал
  * Allow-Credentials, то есть чужая страница читала разговоры человека его же кукой. */
 import { cors } from './_cors.mjs';
+import { BLOCKS, blocksFor, halfAsked } from './_half.mjs';
 /* СТАТИЧЕСКИМ импортом, в отличие от api/chat.js, и разница обоснована: там ленивый импорт защищает
  * ассистента от отсутствия ФАЙЛА АНАЛИТИКИ - без него остальные вопросы всё равно отвечаются. Здесь
  * дайджест НЕ дополнение: без него у этого маршрута нет блока про внимание, действия и узоры, и маршрут,
@@ -89,38 +90,18 @@ const SLOWEST_MIN_CALLS = 2;          // a "median" over one call is that one ca
 const FAILURES_MAX = 10;
 const SKILLS_MAX = 20;
 
-/* ------------------------------------------------------------------- ДВЕ ПОЛОВИНЫ ОДНОГО ОТВЕТА
+/* ДВЕ ПОЛОВИНЫ ОДНОГО ОТВЕТА - `?half=did`, `?half=ran`, `?half=both` по умолчанию, чтобы ни один
+ * существующий вызывающий не заметил разницы. Списки блоков и приведение слова - в ./_half.mjs, одним
+ * определением на маршрут, страницу и подделку маршрута в dev-режиме.
  *
- * Этот маршрут отвечает сразу на два вопроса разных продуктов: ЧТО ДЕЛАЛ ЧЕЛОВЕК (записи, время по
- * приложениям, внимание, узоры - из `user_flow` и дайджестов) и КАК ОТРАБОТАЛ АГЕНТ (прогоны, исходы, дни,
- * повторы, отказы - из `user_run`). Половину теперь можно спросить отдельно: `?half=did`, `?half=ran`,
- * `?half=both` по умолчанию, чтобы ни один существующий вызывающий не заметил разницы.
- *
- * ЗАЧЕМ ЭТО НУЖНО РАНЬШЕ РАЗДЕЛЕНИЯ СТРАНИЦ. `web/src/extension/Account.tsx` читает из всего этого ответа
+ * ЗАЧЕМ ЭТО НУЖНО РАНЬШЕ РАЗДЕЛЕНИЯ СТРАНИЦ. web/src/extension/Account.tsx читает из всего этого ответа
  * ОДНО поле - `totals.agentHours`, - и платил за разворот каждого события каждой записи в окне, самое
  * дорогое чтение в продукте. Это не подготовка к будущему разделению, это счёт, который выставлялся
  * каждый раз, когда открывалась панель.
  *
- * ОДНО ОПРЕДЕЛЕНИЕ, И ОНО ЗДЕСЬ. Ответ НАЗЫВАЕТ свои половины (`half.did`, `half.ran`) списками блоков
- * отсюда же, а не описанием в документации, которое разойдётся с кодом. Проверки, потолки и `gaps` ниже
- * отбираются по тем же спискам.
- *
- * `applications`, `unattributed` и `totals` стоят В ОБОИХ списках НАРОЧНО: это одно измеренное время,
- * сложенное из двух источников, и каждая половина приносит свою часть. Спросив одну, получаешь её часть -
- * названную, а не молча уменьшенное число. */
-export const BLOCKS = {
-  did: ['totals', 'applications', 'unattributed', 'attention', 'actions', 'patterns',
-    'previousBehaviour', 'digest'],
-  ran: ['totals', 'byOutcome', 'byDay', 'previous', 'applications', 'unattributed',
-    'repeated', 'slowestSteps', 'failures', 'skills'],
-};
-
-/** Что спросили, приведённое к трём словам. Всё непонятное - `both`: закладка с опечаткой должна
- *  показывать страницу целиком, а не половину и не ошибку. */
-export const halfAsked = (raw) => {
-  const said = String(raw == null ? '' : raw).trim().toLowerCase();
-  return said === 'did' || said === 'ran' ? said : 'both';
-};
+ * ОТВЕТ НАЗЫВАЕТ СВОИ ПОЛОВИНЫ сам (`half.did`, `half.ran` - списками блоков оттуда же), а не описанием
+ * в документации, которое разойдётся с кодом. Потолки и `gaps` ниже отбираются тем же множеством. */
+export { BLOCKS, halfAsked } from './_half.mjs';
 
 /* A run longer than this is two machines' clocks disagreeing, not a run. The same rule as hoursOf()
  * in web/src/lib/api.ts, deliberately - if it changes it has to change in both, or the page and this
@@ -1258,9 +1239,9 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds, ha
   const behaviourNow = behaviourOf(behaviourRows);
   const prevBehaviour = behaviourOf(prevBehaviourRows);
 
-  /* ОДНО МНОЖЕСТВО РЕШАЕТ ВСЁ НИЖЕ: что уедет в ответе, какие потолки к нему приложены и какие пробелы
-   * имеет смысл называть. Собрано из BLOCKS, то есть ровно из того, что ответ о себе и говорит. */
-  const keep = new Set([...(wantDid ? BLOCKS.did : []), ...(wantRan ? BLOCKS.ran : [])]);
+  /* ОДНО МНОЖЕСТВО РЕШАЕТ ВСЁ НИЖЕ: что уедет в ответе и какие потолки к нему приложены. Собрано из
+   * BLOCKS, то есть ровно из того, что ответ о себе и говорит. */
+  const keep = blocksFor(asks);
 
   const out = {
     people,

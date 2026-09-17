@@ -216,6 +216,8 @@ GET /api/insights?days=30
 GET /api/insights?from=<iso>&to=<iso>
 GET /api/insights?days=30&team=t_ab12
 GET /api/insights?days=30&team=t_ab12&person=<uuid>
+GET /api/insights?days=30&half=did          what the person did, and no query against `user_run`
+GET /api/insights?days=30&half=ran          how the agent performed
 ```
 
 `days` defaults to 30, maximum 365 — a year of runs is a lot of `jsonb` to unroll. `from`/`to` name the two
@@ -227,6 +229,29 @@ One read-only transaction, so the totals, the day series and the per-application
 Rate: 30/min per account, because this unrolls every event of every recording in the window and is **the most
 expensive read in the product**.
 
+**`half` decides what is read, not only what comes back.** One route answers two products' questions: what
+the person *did* (`user_flow` and the digests) and how the agent *ran* (`user_run`). `half=did` builds no
+query naming `user_run` and `half=ran` writes no digest — measured by executing `gather` against a fake
+driver that counts the queries it was asked to build, not asserted in a comment. `both` is the default and
+is byte-for-byte what every existing caller already got.
+
+Anything unrecognised reads as `both`: a bookmark with a typo in it should show the whole page, not half of
+one and not an error.
+
+**The response names its own halves.** `half: { asked, did, ran }` carries the list of blocks each half
+brought, or `null` for a half that was not asked — so a page cannot mistake "this block was not requested"
+for "this block is empty". The lists live in `api/_half.mjs`, one definition read by the route, by the dev
+fixture and by the suite; `gaps` and `caps` are filtered by the same lists, so the "what did I do" half does
+not carry a caveat about per-step timing it never shows.
+
+`totals` is the one block cut by **field** rather than whole: `runs`, `ok`, `failed`, `stopped`, `running`
+and `agentHours` come with `ran`, `recordings` and `createdSkills` with `did`. A nought for a half that was
+never read would be a number this endpoint made up, so the field is absent instead.
+
+`applications` and `unattributed` are in **both** halves on purpose: they are one measured quantity summed
+from two sources, and each half brings its own part — recordings' time from `user_flow`, runs' time from
+`user_run`. Asking for one half gets that half's part, named, rather than a silently smaller number.
+
 **One write happens before that transaction**, and it is the reason the behaviour blocks are affordable:
 recordings whose `flow_digest` row is missing, behind the formula version or older than the recording itself
 are brought up to date, at most 20 per request. It writes, so it cannot be inside a read-only transaction,
@@ -234,12 +259,14 @@ and it goes first so the read sees fresh rows.
 
 **A digest failure degrades the page rather than replacing it**, and on both halves of the path — which took
 a production 500 to get right. Catching the write was easy; the two *reads* of `flow_digest` travel inside
-the transaction, and a transaction is indivisible, so one failing query rejects all twelve. A missing
+the transaction, and a transaction is indivisible, so one failing query rejects every other. A missing
 `flow_digest` — code deployed ahead of its migration, an ordinary deploy order — therefore answered 500 on
 every request instead of leaving three sections empty. The read is now retried **without those two queries
 only**: if something else failed, the retry fails too and the *first* error is what surfaces, so the extra
 round trip is paid only on failure and one component's outage cannot be reported as another's.
-`digest.problem` carries the reason either way.
+`digest.problem` carries the reason either way. With `half=ran` those two queries are not in the set at all,
+so there is nothing to retry without — the first error surfaces on the first attempt, and the second round
+trip is not paid.
 
 `team` counts every member of that team instead of the caller alone, and is accepted **only from an owner or
 an admin of it**: `api/_team-scope.js` turns the id into a set of accounts or into a refusal — `403` with a
@@ -248,7 +275,7 @@ reason for a member of the team, `404` for somebody who is not in it, which does
 query string is no more a permission than a team id is. Without either parameter the scope is one account,
 so every existing caller and every bookmark asks exactly the question it always asked.
 
-Response: `scope`, `window`, `totals`, `byOutcome`, `byDay`, `applications`, `unattributed`, `attention`,
+Response: `scope`, `window`, `half`, `totals`, `byOutcome`, `byDay`, `applications`, `unattributed`, `attention`,
 `actions`, `patterns`, `previous`, `previousBehaviour`, `digest`, `repeated`, `slowestSteps`, `failures`,
 `skills`, `gaps`, `caps`. `scope` says whose the numbers are, and in a team scope carries one row per member —
 counts and dates only. See [08 — Dashboard](08-dashboard.md) for what each means and every cap, and

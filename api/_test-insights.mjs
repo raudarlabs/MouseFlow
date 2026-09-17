@@ -26,6 +26,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const readHere = (p) => readFileSync(join(here, p), 'utf8').replace(/\r\n/g, '\n');
 const digest = readHere('_digest.mjs');
 const insights = readHere('insights.js');
+const mockApi = readFileSync(join(here, '..', 'web', 'src', 'dev', 'mock-api.ts'), 'utf8');
 
 let pass = 0;
 let fail = 0;
@@ -184,6 +185,23 @@ group('сборка ответа доезжает до конца');
   check('и это была ОДНА read-only транзакция',
     sql.seen.transactions === 1 && sql.seen.readOnly[0] === true,
     JSON.stringify(sql.seen.readOnly));
+}
+
+group('список половин один на всех, а не по копии на каждого');
+{
+  /* Подделка маршрута в dev-режиме отдаёт те же блоки, что настоящий маршрут, - и должна брать их
+   * ОТТУДА ЖЕ. Вторая копия списка разошлась бы молча: фикстура, отдающая блок, которого настоящий
+   * маршрут в этой половине не отдаёт, учит страницу рисовать то, что никогда не приедет, и узнают об
+   * этом на живом аккаунте. Та же цепочка, которой в api/ держатся все прочие общие определения. */
+  check('маршрут берёт списки из ./_half.mjs, а не объявляет свои',
+    /export \{ BLOCKS, halfAsked \} from '\.\/_half\.mjs';/.test(insights)
+      && !/^export const BLOCKS = \{/m.test(insights), 'insights.js');
+  check('и подделка маршрута - оттуда же',
+    /from '\.\.\/\.\.\/\.\.\/api\/_half\.mjs'/.test(mockApi)
+      && !/\bdid: \['totals'/.test(mockApi), 'mock-api.ts');
+  /* И у подделки есть чем ответить на вопрос о половине - иначе dev-режим показывал бы страницу,
+   * которой на живом аккаунте не бывает. */
+  check('подделка приводит слово тем же halfAsked', /halfAsked\(asked\.get\('half'\)\)/.test(mockApi));
 }
 
 group('половина спрашивается отдельно, и это видно по запросам');
@@ -388,6 +406,86 @@ group('строка есть у каждого, даже у того, кто н�
   check('а тихая неделя - это строка нулей, а не отсутствие',
     none && none.runs === 0 && none.recordings === 0 && none.lastRun === null
       && none.lastMade === null, JSON.stringify(none));
+}
+
+group('строки каждого запроса попадают в своё поле, а не в соседнее');
+{
+  /* НАЙДЕНО МУТАЦИЕЙ, которая ничего не сломала: подмена rowsOf('failures') на rowsOf('slowest')
+   * прошла все проверки, потому что фикстура отдавала пустые строки всем. Пустой аккаунт не отличает
+   * ответ, собранный по именам, от ответа, собранного по местам, - а именно это различие и было
+   * причиной перейти к именам: набор запросов зависит от спрошенной половины, и чтение по позиции
+   * выдало бы строки одного запроса за поля другого без единого отказа.
+   *
+   * Поэтому у каждого запроса здесь СВОЯ строка, узнаваемая по значению. */
+  const of = (text) => {
+    if (/as no_wall_clock/.test(text)) return [{ runs: 11, ok: 11, agent_seconds: 3600 }];
+    if (/as created_skills/.test(text) && !/group by user_id/.test(text)) {
+      return [{ recordings: 22, created_skills: 2 }];
+    }
+    if (/to_char\(d\.day/.test(text)) return [{ day: '2026-08-25', runs: 33, ok: 1, agent_seconds: 0 }];
+    if (/as flow_ids/.test(text)) {
+      return [{ signature: 'goal:x', label: 'повтор', times: 44, groups: 1, seconds: 0, timed: 0 }];
+    }
+    if (/as p90_ms/.test(text)) {
+      return [{ tool: 'шаг', calls: 55, median_ms: 1, p90_ms: 2, groups: 1 }];
+    }
+    if (/no reason recorded/.test(text)) {
+      return [{ reason: 'отказ', times: 66, groups: 1, run_id: 'r1', example_error: 'e' }];
+    }
+    if (/as median_seconds/.test(text)) {
+      return [{ flow_id: 'f1', owner_id: 'o1', name: 'навык', kind: 'recorded', source: 'web',
+        runs: 77, ok: 1, failed: 0, groups: 1 }];
+    }
+    /* Предыдущее окно - единственный оставшийся запрос к user_run без собственной приметы. */
+    if (/user_run/.test(text)) return [{ runs: 88, ok: 1, agent_seconds: 7200 }];
+    return [];
+  };
+  const out = await gather(fakeNeon({ rows: of }), IDS, FROM.toISOString(), TO.toISOString(),
+    false, IDS, 'both');
+  const landed = [
+    ['totals.runs', out.totals.runs, 11],
+    ['totals.recordings', out.totals.recordings, 22],
+    ['byDay[0].runs', out.byDay[0] && out.byDay[0].runs, 33],
+    ['repeated[0].times', out.repeated[0] && out.repeated[0].times, 44],
+    ['slowestSteps[0].calls', out.slowestSteps[0] && out.slowestSteps[0].calls, 55],
+    ['failures[0].times', out.failures[0] && out.failures[0].times, 66],
+    ['skills[0].runs', out.skills[0] && out.skills[0].runs, 77],
+    ['previous.runs', out.previous.runs, 88],
+  ];
+  for (const [what, got, want] of landed) {
+    check(what + ' = ' + want + ', а не чужое число', got === want, String(got));
+  }
+  /* И та же раскладка держится, когда половина запросов из набора ушла: именно здесь чтение по позиции
+   * и разъехалось бы - молча, правдоподобными числами. */
+  const half = await gather(fakeNeon({ rows: of }), IDS, FROM.toISOString(), TO.toISOString(),
+    false, IDS, 'ran');
+  check('и в половине ran раскладка та же, хотя запросов меньше',
+    half.totals.runs === 11 && half.byDay[0].runs === 33 && half.failures[0].times === 66
+      && half.skills[0].runs === 77 && half.previous.runs === 88,
+    JSON.stringify({ runs: half.totals.runs, day: half.byDay[0], f: half.failures[0].times }));
+}
+
+group('лишнего круга к базе на отказе не бывает там, где дайджестов не спрашивали');
+{
+  /* Повтор без двух дайджестовых запросов существует ровно для одного случая: отсутствующий
+   * flow_digest не должен ронять весь дашборд. В половине «как отработал агент» этих запросов в наборе
+   * нет вовсе - значит виноваты не они, повтор был бы тем же самым, и его единственным следствием стал
+   * бы второй круг к базе на каждом отказе. */
+  const failing = (half) => {
+    const sql = fakeNeon();
+    sql.transaction = async () => { throw new Error('connection lost'); };
+    let tries = 0;
+    const inner = sql.transaction;
+    sql.transaction = async (...a) => { tries += 1; return inner(...a); };
+    return gather(sql, IDS, FROM.toISOString(), TO.toISOString(), false, IDS, half)
+      .then(() => ({ tries, err: null }), (e) => ({ tries, err: e.message }));
+  };
+  const ran = await failing('ran');
+  check('?half=ran ходит к базе один раз и отдаёт настоящую ошибку',
+    ran.tries === 1 && /connection lost/.test(String(ran.err)), JSON.stringify(ran));
+  const both = await failing('both');
+  check('а целое пробует второй раз - там дайджесты есть, и они могли быть виноваты',
+    both.tries === 2, JSON.stringify(both));
 }
 
 group('приведение дайджестов в порядок идёт вне транзакции');

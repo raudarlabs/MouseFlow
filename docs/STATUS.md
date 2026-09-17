@@ -223,7 +223,7 @@ Two small things remain *of that plan*, and neither blocks anything:
 
 ### The real queue, in order — all of it now lives in [`SPLIT-PLAN.md`](SPLIT-PLAN.md) §9
 
-**Pick it up at step 1b.** The sequence there is numbered and each row carries its own done-condition;
+**Pick it up at step 4.** The sequence there is numbered and each row carries its own done-condition;
 what follows is only the shape of it, so a fresh session knows where it is standing.
 
 1. ~~**Step 1b — the case flow fills `verification`.**~~ **Done 2026-09-17.** A case seeds its checks from
@@ -231,12 +231,24 @@ what follows is only the shape of it, so a fresh session knows where it is stand
    at both doors, page and MCP tool, through three shared functions in `api/_procedure.mjs`. Step 1 is
    closed; **pick up at step 2** (splitting `api/mcp.js`), which needs no decision from anybody.
 2. ~~**Step 2**~~ **done 2026-09-17**: `api/mcp.js` is the route alone (350 lines), mounting
-   `_mcp-tools.mjs` and `_mcp-worker.mjs`. **Step 3 is next** — `api/insights.js` computes both "what the
-   person did" and "how the agent performed" in one transaction. A pure refactor, a prerequisite for
-   everything after, and it needs no decision.
-3. **Steps 4–8 — the split proper**: the product axis, cutting Skills and the Dashboard in half, restoring
+   `_mcp-tools.mjs` and `_mcp-worker.mjs`.
+3. ~~**Step 3**~~ **done 2026-09-17**: `/api/insights?half=did|ran|both`. `both` is the default and is what
+   every existing caller already got; `did` builds no query naming `user_run`, `ran` writes no digest. The
+   one query that read **both** tables — `applications` — is cut along the seam that was already inside it,
+   with the addition moved into JavaScript rather than copied into a second statement. **The first saving is
+   already banked:** the extension panel's account card read one field out of the whole dashboard and now
+   asks for `half=ran` alone. Lists of blocks live in `api/_half.mjs`, read by the route, the dev fixture and
+   the suite. **Step 4 is next** — the product axis (`web/src/lib/product.ts`), and it needs no decision.
+4. **Steps 4–8 — the split proper**: the product axis, cutting Skills and the Dashboard in half, restoring
    `/docs` and `/chat`, and serving each product its own subset of MCP tools.
-4. **Steps 9–12** — a `--record-only` agent, dictation outside the app, the spend partition, the docs set.
+5. **Steps 9–12** — a `--record-only` agent, dictation outside the app, the spend partition, the docs set.
+
+**Asked and answered on 2026-09-17, written into the plan rather than started:** whether moving the Windows
+agent to **.NET 10** is worth it. Yes, but it is not a separate task — it is §6.3's packaging job with a
+target named, and the timing is unchanged: after the split. What it buys is concrete (`Add-Type` compiles
+5 700 lines of C# at every start on a .NET Framework compiler stuck near C# 5; `dotnet build` makes the
+Windows half buildable in CI rather than only on a Windows desk; a signed `.exe` removes execution policy
+and AV heuristics). A better language version is not a reason to pay for the certificate sooner.
 
 **Two things the owner asked for on 2026-09-17, both planned and neither started:** dictation through
 OpenAI rather than the browser's own recogniser ([`SPLIT-PLAN.md`](SPLIT-PLAN.md) §7 — and note what it

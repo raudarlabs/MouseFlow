@@ -302,6 +302,28 @@ choice of section rather than a rewrite of a 2 331-line view.
 *Done when:* `/api/insights?half=did` runs no query against `user_run`, and the Dashboard asks for only the
 half it is showing.
 
+**Done, 2026-09-17,** and with one thing learned that the paragraph above had not foreseen: **one query read
+both tables**. `applications` looked like a P2 block, but its SQL joined recordings' time (`user_flow`) to
+runs' time (`user_run`) inside a single statement — so the plan's condition was unreachable without touching
+it. It is now cut along the seam that was already inside it (`flow_time` against `step`/`run_left`; the
+`combined`/`rolled` CTEs that added them became ten lines of JavaScript), and `peopleQ` the same way. No copy
+of the SQL appeared: each half still exists once. The cost is stated in the file — the window totals were
+taken before the `LIMIT`, so each half now returns all of its groups and the cap moved to the response.
+
+Two things done beyond the letter of the condition, both because the halves made them necessary rather than
+merely nice:
+
+- **The answer is read by key, not by position.** Twelve names destructured out of one array held only while
+  the array's length was constant; with halves it is not, and positional reading would have handed one
+  query's rows to another's field — no error, a dashboard of plausible wrong numbers.
+- **`web/src/extension/Account.tsx` now asks `half=ran`.** It reads one field, `totals.agentHours`, and was
+  paying for the unrolling of every event of every recording in the window — the most expensive read in the
+  product — every time the panel opened. That is the step's first real saving, and it arrived before any
+  page was split.
+
+The Dashboard itself still shows both halves, so it asks for `both` — named in one constant (`HALF`) so
+§5.2 changes a word rather than a loading path.
+
 ---
 
 ## 5. The torn screens, and how each is cut
@@ -401,6 +423,23 @@ The honest case **for**, in order of weight: the install is the highest-anxiety 
 takes the mouse, and it is the moment a team buyer decides; a packaged binary is the only way to get
 auto-update, crash reporting and code signing that are hand-rolled today; and §7 option 3 (a global hotkey
 and a microphone for dictating with the app closed) genuinely needs a real application rather than a script.
+
+**And if it is packaged, the Windows half should become .NET 10** (owner's question, 2026-09-17). Not a
+separate project — the same one, with a target named. What it buys, in order of weight:
+
+- `Add-Type` compiles ~5 700 lines of C# at every start, and in Windows PowerShell 5.1 that is the .NET
+  Framework compiler: the language is stuck around C# 5. The file already works around the 5.1-vs-7 split by
+  hand — `agent/mouseflow-agent.ps1:5903` refuses `JavaScriptSerializer` because the assembly reference that
+  works on one does not exist on the other — and that class of workaround only grows.
+- `dotnet build` makes the Windows half **buildable in CI**, not only on a Windows desk. MEMORY-PLAN §0
+  requires the C# to be compiled for real, and today that requirement is satisfied by a person.
+- A signed `.exe` removes execution policy, AV heuristics against run-time-compiled code, and an install
+  that reads like the exact thing security training tells people never to paste.
+
+The cost is the cost above plus a self-contained build of roughly 70 MB (or a framework-dependent one that
+makes the runtime a prerequisite). **So: the target is .NET 10; the timing is still §6.3's — after the
+split, tied to whichever product ships first.** A better language version is not a reason to pay for the
+certificate sooner.
 
 The honest case **against doing it now**: it costs an EV certificate on Windows or a SmartScreen reputation
 burn-in, an Apple Developer ID plus notarisation on macOS, and a second release pipeline to keep green — in a
@@ -552,7 +591,7 @@ commit, and one concrete thing named for the owner to check.
 | 1a | **§4.1** a created skill carries tier 1 (`procedureFromSteps`) — **done 2026-09-17** | `api/_test-skills.mjs`, 11 checks | the kind a case accepts can carry `verification` at all |
 | 1b | **§4.1** the case flow fills and seeds `verification` — **done 2026-09-17** | `api/_test-case.mjs`, 18 checks, 8 mutations | one skill's own checks decide a case's verdict, and a case's checks come back to the skill |
 | 2 | **§4.2** split `api/mcp.js` into catalogue + worker — **done 2026-09-17** | `npm test`, routes pin untouched, 4 mutations | filename answers "which product" |
-| 3 | **§4.3** `insights` halves (`did` / `ran`) | `api/_test-insights.mjs` | `?half=did` touches no `user_run` |
+| 3 | **§4.3** `insights` halves (`did` / `ran`) — **done 2026-09-17** | `api/_test-insights.mjs`, 131 checks, 13 mutations | `?half=did` touches no `user_run` |
 | 4 | The product axis: `web/src/lib/product.ts`, one definition read by sidebar, titles, onboarding | pin: nothing decides a screen's product twice | switching product changes the whole shell, in one place |
 | 5 | **§5.1** cut Skills into Library (P2) and Runs (P1) | tsc + build; screenshots regenerated | neither half mentions the other's vocabulary |
 | 6 | **§5.3** restore `/docs` and `/chat` as first-class P2 routes | routes pin | a document is reachable without going through the Gallery |

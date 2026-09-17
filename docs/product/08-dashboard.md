@@ -7,6 +7,14 @@ Files: `web/src/features/insights/InsightsView.tsx`, `web/src/features/chat/Chat
 Two things on one page, deliberately: the numbers, and something you can ask about them. They were two
 screens once, and a separate address made somebody retype the window they were already looking at.
 
+**Two questions also live here, and the route can now answer them apart.** *What did I spend my week on* is
+counted from recordings and their digests; *what did the machine do, and did it work* is counted from runs.
+`/api/insights?half=did|ran|both` picks one, `both` is the default and is what this page asks for, because
+this page still shows both. The blocks each half brings are listed in `api/_half.mjs` and named back in the
+response as `half.did` / `half.ran`, so a page can never mistake a block it did not request for a block that
+came back empty. See [14 — HTTP API](14-http-api.md#apiinsights) and `docs/SPLIT-PLAN.md` §4.3 for why the
+split exists before the screen is split.
+
 ## The rule the whole page rests on
 
 **No derived arithmetic.** Everything shown is a field `/api/insights` sent. Where the stored data cannot

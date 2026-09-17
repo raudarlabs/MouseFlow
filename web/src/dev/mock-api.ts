@@ -8,6 +8,10 @@
  * the UI to expect the wrong thing, which is how a fake becomes worse than nothing.
  */
 import type { Connect } from 'vite';
+/* Те же списки половин, что у настоящего маршрута, а не вторая их копия. Фикстура, отдающая блок,
+ * которого /api/insights в этой половине не отдаёт, учит страницу рисовать то, что никогда не
+ * приедет, - и узнают об этом на живом аккаунте. */
+import { BLOCKS, blocksFor, halfAsked } from '../../../api/_half.mjs';
 
 const now = Date.now();
 const hoursAgo = (h: number) => new Date(now - h * 3600_000).toISOString();
@@ -1478,10 +1482,18 @@ Zoho lookup, not the writing [steps 5-10].
         },
       ];
 
-    return json(res, 200, {
+    /* ПОЛОВИНА ОТВЕТА - та же, что у настоящего маршрута, и отсеивается тем же множеством. */
+    const asks = halfAsked(asked.get('half'));
+    const keep = blocksFor(asks);
+    const whole: Record<string, unknown> = {
       ok: true,
       scope,
       window: { days, from, to, timeZone: 'UTC' },
+      half: {
+        asked: asks,
+        did: asks === 'ran' ? null : BLOCKS.did,
+        ran: asks === 'did' ? null : BLOCKS.ran,
+      },
       totals,
       previous: chosen
         ? {
@@ -1673,7 +1685,20 @@ Zoho lookup, not the writing [steps 5-10].
         failures: { shown: 2, total: 2, limit: 10 },
         skills: { shown: 3, total: 3, limit: 20 },
       },
-    });
+    };
+    /* `totals` разрезан по ПОЛЯМ, как в api/insights.js: ноль прогонов там, где прогоны не спрашивали,
+     * был бы числом, выдуманным подделкой, и страница училась бы верить ему. */
+    const cut = (of: Record<string, unknown>, drop: string[]) => Object.fromEntries(
+      Object.entries(of).filter(([k]) => !drop.includes(k)),
+    );
+    whole.totals = cut(totals as unknown as Record<string, unknown>, [
+      ...(asks === 'did' ? ['runs', 'ok', 'failed', 'stopped', 'running', 'agentHours'] : []),
+      ...(asks === 'ran' ? ['recordings', 'createdSkills'] : []),
+    ]);
+    for (const key of new Set([...BLOCKS.did, ...BLOCKS.ran])) if (!keep.has(key)) delete whole[key];
+    whole.caps = cut(whole.caps as Record<string, unknown>,
+      Object.keys(whole.caps as Record<string, unknown>).filter((k) => k !== 'days' && !keep.has(k)));
+    return json(res, 200, whole);
   }
 
   if (url.startsWith('/api/team')) {
