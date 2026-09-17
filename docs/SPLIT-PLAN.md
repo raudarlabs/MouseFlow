@@ -404,9 +404,20 @@ the failure/repeat tables that feed the Tests page.
 
 **Superseded in part, 2026-09-18: the owner moved the Dashboard to P2 whole.** The P1 half is not needed —
 Logs answers "what did the machine do" with the evidence attached, which is the stronger version of the same
-question. So this stops being a page split and becomes one line: the P2 dashboard asks `?half=did` and stops
-paying for the run queries. Step 3 is what makes that a one-line change; had it not been done first, this
-would have been a rewrite of a 2 331-line view.
+question.
+
+**And then corrected the same evening, by trying it.** "One line" was wrong, and the way it was wrong is
+worth keeping: changing `HALF` to `'did'` typechecks, does not crash, and produces a page that **says
+0 runs, —% success rate, no failures, no slow steps**. Every list on this page is read through `list()`,
+which turns a missing field into an empty array — defensive code written for a deploy where the page is
+newer than the endpoint, doing exactly its job and, here, hiding the problem. A page that was never asked
+the question now answers it with a nought.
+
+So the work is what it always was — take the run blocks off the page — only smaller, because they need
+deleting rather than moving. They are not one section: *success rate* and *worth automating* are tiles in
+the same grid as *recordings* and *skills made*. That is a change somebody has to **look at**, not one the
+typechecker can confirm, and it is left for a session that can. The route already does its half; step 3 is
+not wasted.
 
 ### 5.3 Gallery
 
@@ -763,7 +774,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 | ~~5~~ | **§5.6** a door to Connections in P1 — **done 2026-09-18** | Smaller than it read: the button existed, was called *Open the guide*, and was missing entirely on the stale-agent case | Renamed to match the sentence; shown on every desktop refusal. No nav row — four screens is a decision | `agent/test-contract.mjs`, 3 checks |
 | ~~6~~ | **§5.5-A** Create as a list of threads — **done 2026-09-18** | The owner's shape, and most of it existed already | The list moved to the left of the thread; a row reopens its goal **and its attachments** (`splitGoal`, the inverse of the join). **One** action, not two — see §5.5 for why an immediate re-run was not added | `agent/test-contract.mjs`; DOM order verified live |
 | 7 | **§5.1** cut Skills into Library (P2) and Runs (P1) | The last screen still marked `both`, and the only thing standing between here and two coherent products | Split the view; `SkillWizard` stays one component | Neither half uses the other's vocabulary |
-| 8 | **§5.2** the P2 dashboard asks `?half=did` | Was a page split; is now one query parameter, because the Dashboard moved whole | One line in `InsightsView`, plus the `HALF` constant that is already named | The dashboard runs no query against `user_run` |
+| 8 | **§5.2** the P2 dashboard asks `?half=did` — **NOT one line; corrected 2026-09-18 by trying it** | The route half is one line. The PAGE is not: `did` sends no `byOutcome`, `byDay`, `repeated`, `slowestSteps`, `failures`, `skills`, and the page renders them as **0 runs, —% success, no failures** — absence as a negative fact. It does not crash; `list()` sees to that, which is exactly why it is dangerous | Remove the run blocks from the page. They are not a section: *success rate* and *worth automating* are tiles in the same grid as *recordings*. **Needs eyes on the result** | The dashboard runs no query against `user_run` **and** claims nothing about runs |
 | 9 | **§5.3** restore `/docs` and `/chat` as first-class P2 routes | A document is P2's output and is reachable only through the Gallery's second shelf | Undo two redirects; both screens exist | A document opens without going through the Gallery |
 | 10 | **§8** partition `LIMITS` | Two products, one budget: a chat turn and a run currently share a ceiling | A partition of keys in `api/_spend.mjs`; no schema change | One product's spend cannot exhaust the other's |
 | 11 | MCP profiles: P1's 7, P2's 7, the shared 4 | The tool list is one array, so this is cheap — but a P2 connector seeing `mouseflow_run` is a product leak | Subset the array by profile | A P2 connector never sees `mouseflow_run` |
