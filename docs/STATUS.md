@@ -1,24 +1,25 @@
-# Where MouseFlow stands — 2026-09-11
+# Where MouseFlow stands — 2026-09-17
 
-A handover, written to be read on a machine that has never seen this project. It says what changed on
-9–11 September, what is true now, what to do next, and what only the owner can supply.
+A handover, written to be read on a machine that has never seen this project. It says what is true now,
+what to do next, and what only the owner can supply.
 
-**Live right now:** app `https://mouseflowapp.vercel.app` (commit `741985c`), docs site
-`https://mouse-flow.vercel.app`, agents at **0.29.0**. Whole suite green: **3,065 checks across 26 suites**
-(`npm test`), `tsc --noEmit` clean, `web/` builds, and the agent's C# compiles for real.
+**Live right now:** app `https://mouseflowapp.vercel.app` (commit `024a60a`), docs site
+`https://mouse-flow.vercel.app`, agents at **0.29.0**. Whole suite green (`npm test`, zero FAIL),
+`tsc --noEmit` clean, `web/` builds, `npm run build:extension` builds.
 
-**The QA roadmap is closed.** Items 1, 2, 3, 5, 6, 7 and 8 are done and item 4 is parked. What is left of
-that plan is one small lever and one measurement, both named in §4. The work now moves to the **memory of
-applications** and the **split into two products**.
+**Where the work is now.** The QA roadmap is closed (§3). The **memory of applications** is built and live
+behind a flag that is now on (§2a). The current work is the **split into two products**, and it has its own
+document — read it before doing anything to the product's shape.
 
-**The four planning documents, and which to read when:**
+**The five planning documents, and which to read when:**
 
 | | |
 |---|---|
 | **this file** | where things are, what is next, and how to start on a new machine |
-| [`QA-ROADMAP.md`](QA-ROADMAP.md) | the eight-item QA direction. **Section 0 is the house rules — read it before touching anything** |
-| [`MEMORY-PLAN.md`](MEMORY-PLAN.md) | skills as a tiered artifact, and a memory of applications. Also holds the shell/tooling notes section 0 of the roadmap lacks |
-| [`SITE-DEBT.md`](SITE-DEBT.md) | what the public site owes the product. Site and code are now updated in separate passes |
+| [`SPLIT-PLAN.md`](SPLIT-PLAN.md) | **the current work.** Two products from one engine: what divides, what must not, and the sequence. Its §4.1 carries two corrections found while executing it — read those, they are the shape of the problem |
+| [`QA-ROADMAP.md`](QA-ROADMAP.md) | the eight-item QA direction, closed. **Section 0 is the house rules — read it before touching anything** |
+| [`MEMORY-PLAN.md`](MEMORY-PLAN.md) | skills as a tiered artifact, and the memory of applications (built — see its §4 progress notes). Also holds the shell/tooling notes section 0 of the roadmap lacks |
+| [`SITE-DEBT.md`](SITE-DEBT.md) | what the public site owes the product. **Sites are deliberately untouched until the split lands** (owner, 2026-09-17) |
 
 ---
 
@@ -52,7 +53,7 @@ in `web/`, and in the site.
    **Never paste key values into a file that is tracked, and never into a chat.**
 2. **The agent, installed and running.** Open the app → **Connect** and use the command it prints; it pipes
    the script straight into a scriptblock, so there is no file to unblock. The page shows the running
-   version — it must say **0.28.0**, because the fixes from 9–11 September are agent-side, `clickname`
+   version — it must say **0.29.0**, because the fixes from 9–11 September are agent-side, `clickname`
    among them.
 3. **The Chrome extension — BUILT, then loaded unpacked.** This said "select the `extension/` folder",
    and that is the wrong folder: `extension/` is the source, and what Chrome loads is **`extension/dist`**
@@ -79,11 +80,23 @@ npm test
 ```
 
 Expect zero FAIL. `check-swift` prints `0 passed, 0 failed` — that is correct on Windows, `swiftc` does not
-exist there. Then `npx tsc --noEmit -p web/tsconfig.json` and `npm run build` in `web/`.
+exist there; on a Mac it compiles the Swift agent for real, and `check-csharp` is the text proxy in the
+other direction. Then `npx tsc --noEmit -p web/tsconfig.json`, `npm run build` in `web/`, and
+`npm run build:extension` from the root.
+
+**Do not count the checks against a number written in a document** — every suite prints its own total, the
+`npm test` line you see last belongs to `mcp/test-mcp.mjs` alone, and a remembered grand total is the kind
+of fact that rots quietly. Zero FAIL is the condition.
 
 Read [`MEMORY-PLAN.md`](MEMORY-PLAN.md) §0 next: it holds the shell quirks (the Bash tool needs its `PATH`
 set on every call; heredocs with backticks break; how to compile the agent's C# for real) that cost time
-before they were written down.
+before they were written down. Then [`SPLIT-PLAN.md`](SPLIT-PLAN.md) §0 and §9 — that is the work in
+progress, and §4.1 is where it currently stands.
+
+**The database is live on this account and both recent migrations are applied** (022, 023). A machine with
+`.env.local` can read it; `npm run migrate -- --list` should show 23 files, all `applied`. **`MEMORY_LIVE`
+is `true`** (`api/_memory.mjs`), so the memory block reaches a live turn on the browser-driven path — one
+`taught` fact exists on the owner's account, and nothing about it has been measured yet.
 
 ---
 
@@ -132,6 +145,41 @@ worth more struck than shipped.
 
 ---
 
+## 2a. What shipped on 11–17 September — the memory of applications, and the split's first repairs
+
+Ten commits, `d091ddc … 024a60a`. The memory plan's §5 rows 2–5 are done; the split has begun.
+
+| commit | what |
+|---|---|
+| `d091ddc` | **Memory row 2**: `api/_memory.mjs` — keys, redaction, budget/eviction, the four `builtin` lines. Pure, no DB, no caller yet |
+| `a065585` | **Row 3**: `derived` over recordings (`api/_memory-derive.mjs`). Run once against the owner's real 61 recordings and it **found a real redaction gap**: one event's `context.control` held an email address — an accessibility tree sometimes hands back typed content as "the name". §4.5 of the memory plan predicted exactly this. `redactionProblem` now refuses an email in `body` or `name` |
+| `7ff19ba` | **Row 4**: `screenMessage()` takes a fifth argument; both drivers call one `memoryForOpen`, so neither writes its own flag check. Pins: the words live in the brain; `_case.mjs`/`_expect.mjs` never import the memory module (§4.8 — memory acts, never judges) |
+| `d12b9f9` | **Row 5**: `db/023_app_memory.sql`, `api/memory.js` (list/teach/forget), and the fourth Activity card, *What MouseFlow has learned* |
+| `dc05bc2` | **Migrations 022 and 023 applied**, by the owner's word. `npm run migrate -- --list` shows all 23 `applied` |
+| `caac044` | `MEMORY_LIVE = true`, and the web driver actually reads `app_memory` — once per run, before the wave loop |
+| `9bdc923` | **`web:<origin>` memory reaches a run, through the extension.** The desktop agent sees a browser *window*, never the address inside it; only the extension can. `fitBlock`/`webKeyFor` moved to `extension/memory.js`, re-exported by `api/_memory.mjs` — the `checksOf` pattern |
+| `5255f56` | [`SPLIT-PLAN.md`](SPLIT-PLAN.md) — written from the code, not from the pitch |
+| `b436d71` | Split step 0, and the first correction: step 1 rested on a false premise |
+| `024a60a` | Split step 1a: a written skill carries a procedure too |
+
+**One fact was taught and is live**, so the memory is not an empty feature: `web:outlook.office.com` →
+*"The stable part of the title is the trailing " - Outlook"…"*, verified end to end over real HTTP against
+the deployment. **Nothing is measured yet** — §4.13 of the memory plan wants turns-per-successful-run
+before and after, and one row is not a measurement.
+
+**The two things worth carrying forward from that work**
+
+**A plan can be wrong in a way only execution finds, twice in a row.** Both of the split's first corrections
+came from starting the work, not from reading: `procedure` turned out to live only on the kind of skill a
+case refuses, and then `procedureFrom` turned out to read extension events while created skills come from
+desktop recordings. Both are written into [`SPLIT-PLAN.md`](SPLIT-PLAN.md) §4.1 rather than quietly worked
+around. Keep doing that — the document is worth more than the tidy story.
+
+**A pin asserting yesterday's truth is a pin somebody will silence.** `db/022`'s header still said "НЕ
+ПРИМЕНЕНА" six days after it was applied, and a pin asserted that word. The pin moved with the fact — to
+assert that the status is *stated at all*, which is what it was really guarding — and was proven by mutation
+in both directions.
+
 ## 3. The QA roadmap now
 
 | item | state |
@@ -172,23 +220,34 @@ Two small things remain *of that plan*, and neither blocks anything:
   `click_named`. Re-run the query in [`QA-ROADMAP.md`](QA-ROADMAP.md) §6 in October, and read **two**
   numbers: the median (where caching shows) and **steps per successful run** (where `click_named` shows).
 
-### The real queue, in order
+### The real queue, in order — all of it now lives in [`SPLIT-PLAN.md`](SPLIT-PLAN.md) §9
 
-1. **The memory of applications** — [`MEMORY-PLAN.md`](MEMORY-PLAN.md) §4, built in the order given there:
-   `derived` from the 58 recordings already on the account first, `taught` second, `learned` last or never.
-   Ships behind a flag and is judged by one number — turns per successful run — or is rolled back. This is
-   the next substantial piece of work.
-2. **`mouseflow.skill/2` tier 2** — the recording as a *pointer* rather than a copy. Deliberately split off
-   from tiers 0–1 because it changes the **replay path**, not the artifact. [`MEMORY-PLAN.md`](MEMORY-PLAN.md)
-   §3 names what it needs and the one hazard already found by reading: `mouseflow_run` (`api/mcp.js`, near
-   the `row.kind !== 'created'` branch) answers with `body: null, goal: false` the moment a `/2` skill stops
-   carrying events — an agent reads that as "not a goal, and nothing to do". Today unreachable; reachable
-   the moment tier 2 lands, and it must **refuse with words** rather than quietly do nothing.
-3. **Splitting the product in two** — the owner's decision, 2026-09-11. A documentation product (record work
-   → a process document) and a QA product (goal loop + checks + verdicts), on one engine. `skill/2` was
-   built to serve both: `procedure.steps` read as documentation, `procedure.verification` runs as checks.
-4. **The site pass** — [`SITE-DEBT.md`](SITE-DEBT.md), and the `.mmmacro` positioning question belongs
-   here rather than to an engineering cleanup (§5).
+**Pick it up at step 1b.** The sequence there is numbered and each row carries its own done-condition;
+what follows is only the shape of it, so a fresh session knows where it is standing.
+
+1. **Step 1b — the case flow fills `verification`.** Step 1a gave a written skill a procedure, so the field
+   finally has somewhere to live on the kind of skill a case accepts. Nothing writes it yet.
+   `extension/procedure.js` names the writer it expects, in its own words: *"the field exists to be FILLED —
+   by the author, or by the case flow, in the `expects` shape from `api/_case.mjs`"*. So: seed a case's
+   checks from the skill when the caller passed none, and write the case's checks back onto the skill, so
+   the next case — and anyone who installs it from the gallery — starts from them.
+2. **Steps 2 and 3 — the two files that answer for both products.** `api/mcp.js` is 2 628 lines holding
+   product 2's tool catalogue *and* product 1's whole worker protocol; `api/insights.js` computes both
+   "what the person did" and "how the agent performed" in one transaction. Both are pure refactors, both
+   are prerequisites for everything after, and neither needs a decision.
+3. **Steps 4–8 — the split proper**: the product axis, cutting Skills and the Dashboard in half, restoring
+   `/docs` and `/chat`, and serving each product its own subset of MCP tools.
+4. **Steps 9–12** — a `--record-only` agent, dictation outside the app, the spend partition, the docs set.
+
+**Two things the owner asked for on 2026-09-17, both planned and neither started:** dictation through
+OpenAI rather than the browser's own recogniser ([`SPLIT-PLAN.md`](SPLIT-PLAN.md) §7 — and note what it
+reverses), and speaking into a phone while the computer works (§7.1 — this needs no new architecture; a
+phone is one more thing that inserts a queue row).
+
+**Two things now parked, not forgotten:** `mouseflow.skill/2` **tier 2** (the recording as a pointer rather
+than a copy — [`MEMORY-PLAN.md`](MEMORY-PLAN.md) §3 holds the hazard: `mouseflow_run` answers `body: null,
+goal: false` the moment a `/2` skill stops carrying events, and must refuse **with words** instead), and
+**the site pass** ([`SITE-DEBT.md`](SITE-DEBT.md)), which the owner deferred until the split has landed.
 
 ### The extension is being narrowed, not grown
 
@@ -205,7 +264,9 @@ Part of it will be cut. Do not add screens to it. Two consequences for whoever p
 1. **Is roadmap item 4 struck?** Everything above assumes it is superseded. Say so and it comes out of the
    roadmap; say no and it goes back in the queue.
 2. **Which of the two products leads?** It decides whose vocabulary gets the site's front page — and the
-   answer shapes the site pass in [`SITE-DEBT.md`](SITE-DEBT.md) §2.
+   answer shapes the site pass in [`SITE-DEBT.md`](SITE-DEBT.md) §2. **Seven more questions the split
+   itself raises are in [`SPLIT-PLAN.md`](SPLIT-PLAN.md) §11**, and one of them — §11.8, which side of the
+   `verification` wall moves — was answered on 2026-09-17 and is half-built; the rest are open.
 3. **The name.** `MouseFlow` describes the mechanism rather than the outcome, and there is an established
    product called Mouseflow (mouseflow.com, behaviour analytics — worth verifying) whose adjacency is a real
    collision for the documentation product. Cheap to change now, expensive later.
