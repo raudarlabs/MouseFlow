@@ -17,12 +17,13 @@
  * Reloading the page clears the thread and loses nothing that matters.
  */
 import { useNavigate } from '@tanstack/react-router';
-import { ChevronDown, CircleDot, Crosshair, Mic, MicOff, Monitor, Send, Sparkles, Square } from 'lucide-react';
+import { ChevronDown, CircleDot, Crosshair, FileText, Mic, MicOff, Monitor, Paperclip, Send, Sparkles, Square, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@insightis/ui/Button';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
@@ -56,6 +57,9 @@ import { useAgent, useConsole } from '@/lib/store';
 import {
   type DictatedRun, dictatedSkillIdFor, hasSkillForRun, saveDictatedAsGoalSkill,
 } from '@/features/record/save-as-skill';
+import {
+  type Attached, FILES_MAX, GOAL_MAX, goalWith, readTextFile, sizeSaid,
+} from './attach';
 import { langName, useDictation } from './dictation';
 import { SaveDictatedSkill } from './SaveDictatedSkill';
 import { PRODUCTS } from '@/lib/product';
@@ -171,6 +175,40 @@ export const CreateView = () => {
       return '';
     }
   });
+
+  /* ПРИЛОЖЕННЫЕ ТЕКСТОВЫЕ ФАЙЛЫ. Что это значит и чего стоит - в ./attach.ts; здесь только состояние,
+   * чтение и показ. Коротко: содержимое становится частью ЦЕЛИ, а не отдельным полем, потому что цель
+   * едет через очередь, три реализации цикла и расширение, и новое поле половина путей теряла бы молча. */
+  const [files, setFiles] = useState<Attached[]>([]);
+  const [attachProblem, setAttachProblem] = useState<string | null>(null);
+  const picker = useRef<HTMLInputElement>(null);
+
+  const takeFiles = useCallback(async (chosen: FileList | null) => {
+    if (!chosen || !chosen.length) return;
+    setAttachProblem(null);
+    const refused: string[] = [];
+    const taken: Attached[] = [];
+    for (const file of Array.from(chosen)) {
+      if (files.length + taken.length >= FILES_MAX) {
+        refused.push(`${file.name} — ${FILES_MAX} files is the most that can be attached at once`);
+        continue;
+      }
+      const got = await readTextFile(file);
+      if ('error' in got) { refused.push(got.error); continue; }
+      taken.push(got.one);
+    }
+    if (taken.length) setFiles((was) => [...was, ...taken]);
+    /* ОТКАЗ НАЗЫВАЕТСЯ, а не проглатывается. Файл, который молча не приложился, - это прогон, идущий без
+     * того, что человек ему дал, и выглядящий при этом нормально. */
+    if (refused.length) setAttachProblem(refused.join(' · '));
+  }, [files.length]);
+
+  /* Цель ЦЕЛИКОМ - то, что напечатано, плюс приложенное. Ровно эта строка уходит в прогон, ложится в
+   * user_run.goal и читается моделью на каждом шаге, поэтому и план, и запуск, и «уже спланировано»
+   * считаются от неё, а не от содержимого поля: иначе план строился бы по одному тексту, а исполнялся
+   * другой. */
+  const asked = useMemo(() => goalWith(goal, files), [goal, files]);
+  const left = GOAL_MAX - asked.length;
 
   /* Готовые куски речи ДОПИСЫВАЮТСЯ к тому, что уже набрано, а не заменяют его: диктовка - это ещё один
    * способ набирать в то же поле, а не отдельный режим ввода. Пробел ставится здесь, потому что
@@ -414,7 +452,9 @@ export const CreateView = () => {
    * текущим экраном - иначе план строится по формулировке, что и правильно: модель, которой без просьбы дали
    * картинку, начинает планировать по тому, что на ней открыто, а не по тому, о чём попросили. */
   const makePlan = useCallback(async () => {
-    const text = goal.trim();
+    /* ПЛАН СТРОИТСЯ ПО ЦЕЛИ ЦЕЛИКОМ, приложенное включая: план по одному тексту с исполнением другого -
+     * это план, который не о том прогоне, который пойдёт. */
+    const text = asked;
     if (!text || planning || running) return;
     setPlanning(true);
     setPlanProblem(null);
@@ -436,10 +476,10 @@ export const CreateView = () => {
     } finally {
       setPlanning(false);
     }
-  }, [goal, planning, running, target, pinScreen, state.port]);
+  }, [asked, planning, running, target, pinScreen, state.port]);
 
   const send = useCallback(async () => {
-    const text = goal.trim();
+    const text = asked;
     if (!text || running) return;
 
     /* Имя окна, закреплённого на время работы. Читается СЕЙЧАС, а не при включении тумблера: между тем и
@@ -738,7 +778,7 @@ export const CreateView = () => {
     }
     setRunning(true);
     void pollExtension();
-  }, [goal, running, target, state.port, reload, pollExtension, updateLive]);
+  }, [asked, running, target, state.port, reload, pollExtension, updateLive]);
 
   const stop = useCallback(async () => {
     setStopping(true);
@@ -790,7 +830,7 @@ export const CreateView = () => {
     [turns],
   );
 
-  const planned = !!plan && plan.for === goal.trim();
+  const planned = !!plan && plan.for === asked;
 
   /* ЧТО СЕЙЧАС СДЕЛАЕТ КНОПКА - и, значит, что сделает Enter, потому что это одно и то же действие.
    *
@@ -836,20 +876,17 @@ export const CreateView = () => {
         </div>}
 
         {turns.length === 0 ? (
+          /* Подсказки ушли ПОД композер - см. Composer.below. На пустом экране между заголовком и полем
+             стоял третий блок, и взгляд шёл заголовок → подсказки → поле, то есть мимо поля. */
           <Opener
-            title="Say what you want done"
+            title="What do you want"
+            accent="done for you?"
             note={
               target === 'desktop'
                 ? 'It works from a picture of your screen, so it reaches Excel, Explorer or any window — not only a browser tab. Each step sends that picture to the model.'
                 : 'The extension drives a tab in this browser. It aims at page elements rather than positions, so it survives the page moving underneath it — but it cannot leave the browser.'
             }
-          >
-            {SUGGESTIONS.map((text) => (
-              <Suggestion key={text} icon={<Sparkles />} onClick={() => setGoal(text)}>
-                {text.length > 52 ? `${text.slice(0, 52)}…` : text}
-              </Suggestion>
-            ))}
-          </Opener>
+          />
         ) : (
           turns.map((turn) => {
             const lastTurnEvent = [...turn.feed].reverse().find((e) => e.type === 'turn');
@@ -1252,8 +1289,134 @@ export const CreateView = () => {
             )}
           </>
         )}
+        /* ЧТО УЖЕ ПРИЛОЖЕНО - внутри рамки, над полем: это часть того, что сейчас отправят, а не справка о
+          * нём. Каждый файл снимается по отдельности, и рядом сказано, сколько он весил НА ДИСКЕ, а не
+          * сколько от него взяли: человек, приложивший файл на мегабайт, должен видеть, что он был на
+          * мегабайт, и что взяли не всё. */
+        /* Подсказки под полем, и ТОЛЬКО на пустом экране: когда в ленте уже что-то есть, они предлагают
+          * начать заново там, где человек продолжает. */
+        below={turns.length === 0 && !running ? SUGGESTIONS.map((text) => (
+          <Suggestion key={text} icon={<Sparkles />} onClick={() => setGoal(text)}>
+            {text.length > 52 ? `${text.slice(0, 52)}…` : text}
+          </Suggestion>
+        )) : null}
+        above={(files.length > 0 || attachProblem) ? (
+          <div className="flex flex-col gap-1.5">
+            {files.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {files.map((one) => (
+                  <span
+                    key={one.id}
+                    title={one.clipped
+                      ? `${one.name} — only the first ${GOAL_MAX} characters were taken`
+                      : one.name}
+                    className={cn(
+                      'inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1',
+                      'text-[0.76rem]',
+                      one.clipped
+                        ? 'border-fb-attention/50 text-fb-attention'
+                        : 'border-stroke text-ink-body',
+                    )}
+                  >
+                    <FileText className="size-3.5 shrink-0" />
+                    <span className="min-w-0 truncate">{one.name}</span>
+                    <span className="shrink-0 text-ink-inactive tabular-nums">
+                      {sizeSaid(one.bytes)}{one.clipped ? ' · clipped' : ''}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${one.name}`}
+                      disabled={running}
+                      onClick={() => setFiles((was) => was.filter((f) => f.id !== one.id))}
+                      className="shrink-0 rounded-full text-ink-inactive hover:text-ink-primary"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </span>
+                ))}
+                {/* СКОЛЬКО МЕСТА ОСТАЛОСЬ, и это не косметика: цель уходит модели НА КАЖДОМ ШАГЕ, и
+                  * потолок здесь тот же, который сохраняет путь очереди. Показывается только когда до него
+                  * близко - счётчик, который всегда на экране, перестают видеть. */}
+                {left < GOAL_MAX / 4 && (
+                  <span className={cn(
+                    'text-[0.74rem] tabular-nums',
+                    left < 0 ? 'font-semibold text-fb-red-text' : 'text-ink-inactive',
+                  )}>
+                    {left < 0
+                      ? `${-left} characters over the limit — remove a file or shorten the goal`
+                      : `${left} characters left`}
+                  </span>
+                )}
+              </div>
+            )}
+            {attachProblem && (
+              <span className="flex items-start gap-1.5 text-[0.76rem] text-fb-red-text">
+                <span className="min-w-0">{attachProblem}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss"
+                  onClick={() => setAttachProblem(null)}
+                  className="shrink-0 text-ink-inactive hover:text-ink-primary"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </span>
+            )}
+          </div>
+        ) : null}
         footer={
           <>
+            {/* СКРЕПКА ПЕРВОЙ, слева - форма из образцов: слева то, что кладут в сообщение, справа то, что
+              * с ним делают. Меню, а не голая кнопка, по одной причине: приложить текст - не единственное,
+              * что сюда попросятся класть, и место для следующего пункта должно быть заранее, иначе вторая
+              * кнопка встанет рядом с первой и строка расползётся.
+              *
+              * Скрытый input, а не кнопка-обёртка: выбор файла в браузере открывает только настоящий
+              * `<input type="file">`, и никакой способ это обойти не работает. */}
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              /* Подсказка диалогу, НЕ проверка: расширение ничего не гарантирует, и настоящая проверка -
+                 по содержимому, в attach.ts. `text/*` оставляет человеку возможность выбрать что угодно. */
+              accept=".txt,.md,.markdown,.csv,.tsv,.json,.log,.yml,.yaml,.xml,.html,.sql,text/*"
+              className="hidden"
+              onChange={(ev) => {
+                void takeFiles(ev.target.files);
+                /* Сброс, иначе выбор того же файла второй раз не поднимет событие. */
+                ev.target.value = '';
+              }}
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={running}
+                  aria-label="Attach something to this goal"
+                  className="px-2"
+                >
+                  <Paperclip className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="w-[19rem]">
+                <DropdownMenuItem
+                  className="py-2"
+                  disabled={files.length >= FILES_MAX}
+                  onSelect={() => picker.current?.click()}
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="font-semibold text-ink-primary">Add text files</span>
+                    <span className="text-[0.78rem] text-ink-inactive">
+                      {files.length >= FILES_MAX
+                        ? `${FILES_MAX} is the most that can be attached at once`
+                        : 'Their text becomes part of what you are asking for'}
+                    </span>
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* The choice of executor lives with the message it applies to, not in a mode above the page:
                 the same goal typed against the browser and against the desktop is two different requests.
                 Продукт, предлагающий одного исполнителя, не показывает его вовсе: сегментный контрол с
@@ -1326,7 +1489,7 @@ export const CreateView = () => {
                   size="sm"
                   leftSlot={wants === 'run' ? <Send className="size-4" /> : <Sparkles className="size-4" />}
                   isLoading={planning}
-                  disabled={!!blocked || !goal.trim()}
+                  disabled={!!blocked || !asked || left < 0}
                   onClick={() => void act()}
                   className={cn(!planned && 'rounded-e-none')}
                 >

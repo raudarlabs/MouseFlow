@@ -80,14 +80,24 @@ export const AgentTurn = ({
  * one product. */
 export const Composer = ({
   children,
+  above,
   footer,
   hint,
+  below,
 }: {
   children: ReactNode;
+  /* Над полем, ВНУТРИ карточки: то, что уже приложено к этому сообщению. Не под карточкой вместе со
+   * справкой - приложенный файл не справка, а часть того, что сейчас отправят, и стоять он должен внутри
+   * той рамки, которую отправляют. */
+  above?: ReactNode;
   footer?: ReactNode;
   /* Справка, а не управление: она стоит ПОД карточкой мелким шрифтом. Внутри строки управления она отнимала
    * место у кнопок и сталкивала их на второй ряд - справка, описывающая кнопку, не должна её выдавливать. */
   hint?: ReactNode;
+  /* Подсказки - ПОД композером и по центру, как в образцах, которые владелец показал 2026-09-18. Раньше
+   * они стояли в Opener над полем, и получалось, что между заголовком и полем вклинивался третий блок; под
+   * полем они читаются как продолжение самого поля - «или спросите одно из этого». */
+  below?: ReactNode;
 }) => (
   <div className="shrink-0 px-4 pb-5">
     <div className={THREAD_WIDTH}>
@@ -98,11 +108,13 @@ export const Composer = ({
           'focus-within:border-input-focus [&:hover:not(:focus-within)]:border-stroke-field-hover',
         )}
       >
+        {above}
         {children}
         {/* `flex-nowrap` до `sm`, потому что в этой строке теперь только управление, и разъезжаться ему не
           * на чем - а перенос как раз и был тем, из-за чего кнопка уезжала под поле. */}
         {footer && <div className="flex flex-wrap items-center gap-2">{footer}</div>}
       </div>
+      {below && <div className="mt-3 flex flex-wrap justify-center gap-2">{below}</div>}
       {hint && (
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[0.74rem] text-ink-inactive">
           {hint}
@@ -144,24 +156,38 @@ export const Segmented = <T extends string>({
   </div>
 );
 
-/** Where a thread starts: a line about what this screen does, and things worth asking it. */
+/** Where a thread starts: a line about what this screen does, and things worth asking it.
+ *
+ *  ПО ЦЕНТРУ И КРУПНО - форма из образцов, которые владелец показал 2026-09-18 (ChatGPT, Claude, их
+ *  собственный Insightis). Вопрос в полтора десятка слов над пустым полем - это единственное, что стоит на
+ *  пустом экране, и мелкий подзаголовок слева читается как надпись на форме, а не как приглашение.
+ *
+ *  `accent` - вторая половина заголовка, набранная цветом. В образце Insightis выделены именно СЛОВА
+ *  вопроса, а не всё предложение: выделять всё - то же, что не выделять ничего. */
 export const Opener = ({
   title,
+  accent,
   note,
   children,
 }: {
   title: string;
+  accent?: string;
   note: string;
   children?: ReactNode;
 }) => (
-  <div className="flex flex-1 flex-col justify-center gap-3 py-8">
-    <Typography variant="h2" weight="semibold" className="text-[1.35rem]">
+  <div className="flex flex-1 flex-col items-center justify-center gap-4 py-8 text-center">
+    <Typography
+      variant="h2"
+      weight="semibold"
+      className="text-balance text-[1.9rem] leading-tight tracking-tight sm:text-[2.4rem]"
+    >
       {title}
+      {accent && <> <span className="text-brand-primary">{accent}</span></>}
     </Typography>
     <Typography variant="p" className="max-w-[58ch] text-ink-secondary">
       {note}
     </Typography>
-    {children && <div className="mt-1 flex flex-wrap gap-2">{children}</div>}
+    {children && <div className="mt-1 flex flex-wrap justify-center gap-2">{children}</div>}
   </div>
 );
 
@@ -178,8 +204,11 @@ export const Suggestion = ({
   <button
     type="button"
     onClick={onClick}
+    /* Пилюля, а не прямоугольник: в трёх образцах подряд подсказки под полем скруглены полностью, и это
+       не украшение - круглая форма отличает «можно нажать и оно подставится» от кнопок в строке
+       управления, которые что-то ДЕЛАЮТ. */
     className={cn(
-      'inline-flex h-[2.125rem] items-center gap-2 rounded-md border border-stroke px-3.5',
+      'inline-flex h-[2.125rem] items-center gap-2 rounded-full border border-stroke px-4',
       'text-[0.8125rem] text-ink-body hover:bg-state-hover hover:text-ink-primary',
       '[&_svg]:size-3.5 [&_svg]:text-ink-secondary',
     )}
