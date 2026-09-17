@@ -44,6 +44,12 @@ const uploadingMaps = Boolean(
   process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
 );
 
+/* Одна половина или обе - см. `define.__PRODUCT__` ниже. Пустая строка значит «обе». */
+const onlyProduct = (process.env.VITE_PRODUCT || '').trim();
+if (onlyProduct && onlyProduct !== 'do' && onlyProduct !== 'make') {
+  throw new Error('VITE_PRODUCT must be "do", "make" or unset; got ' + JSON.stringify(onlyProduct));
+}
+
 /* The same shape as insightis/apps/web: React plugin, an @ alias, and a dev proxy so the app talks to the
  * real /api functions while it is being worked on.
  *
@@ -138,11 +144,24 @@ export default defineConfig({
    *
    * The commit is the stamp on Vercel and `dev` everywhere else, which makes the check inert in
    * development rather than noisy. */
+  /* КАКОЙ ЭТО ПРОДУКТ, если сборка на один продукт.
+   *
+   * Пусто - обычная сборка: оба продукта в одном приложении, переключатель на месте. `VITE_PRODUCT=do`
+   * или `make` - сборка, в которой второй половины нет: меню только своё, переключателя нет, корень
+   * ведёт домой этого продукта. Это уровень 2 из SPLIT-PLAN §0 - две сборки из одного репозитория, - и
+   * он здесь ровно затем, зачем план и говорил его подготовить: чтобы обе половины можно было ПОСМОТРЕТЬ
+   * рядом, а не обсуждать по описанию. Выбранного продукта это не касается: заперта сборка, а не человек,
+   * и в обычной сборке переключатель работает как прежде.
+   *
+   * Проверяется здесь, а не в приложении: опечатка в переменной окружения должна остановить сборку, а не
+   * тихо собрать обычное приложение и выдать его за половину. */
   define: {
     __BUILD__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA || 'dev').slice(0, 7)),
+    __PRODUCT__: JSON.stringify(onlyProduct),
   },
   build: {
-    outDir: 'dist',
+    /* Каждая половина в свой каталог, чтобы их можно было держать рядом и сравнивать. */
+    outDir: onlyProduct ? 'dist-' + onlyProduct : 'dist',
     // A screenshot-heavy vision loop and a design system make for a big-ish bundle; this is the point at
     // which it is worth looking rather than a hard limit.
     chunkSizeWarningLimit: 900,

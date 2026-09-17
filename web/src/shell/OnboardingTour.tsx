@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { setPref } from '@/lib/api';
 import { PRODUCTS, type Product, tourFor } from '@/lib/product';
-import { useProduct } from '@/shell/useProduct';
+import { lockedProduct, useProduct } from '@/shell/useProduct';
 import { useAccount } from '@/shell/AccountProvider';
 import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
@@ -87,14 +87,17 @@ const INSTALL: Step = {
  * Первым шагом - сам переключатель: два продукта в одном приложении - это первое, чего не ожидают, и
  * узнать об этом из подсветки дешевле, чем наткнуться на половину меню и решить, что чего-то не хватает.
  */
-const stepsFor = (product: Product): Step[] => [
-  {
+const stepsFor = (product: Product, locked: boolean): Step[] => [
+  /* В сборке на один продукт этого шага нет: переключателя на странице тоже нет, а подсветка меряет
+   * элемент по `data-tour` - шаг остался бы панелью без подсветки, объясняющей кнопку, которой не
+   * видно. */
+  ...(locked ? [] : [{
     target: 'product',
     title: 'Two products, one app',
     body: PRODUCTS.do.name + ' — ' + PRODUCTS.do.blurb + ' ' + PRODUCTS.make.name + ' — '
       + PRODUCTS.make.blurb + ' You are in ' + PRODUCTS[product].name
       + '; this button switches, and nothing you have made belongs to one half only.',
-  },
+  }]),
   ...tourFor(product).map((screen) => ({
     target: screen.to,
     title: screen.tour!.title,
@@ -116,7 +119,7 @@ export const OnboardingTour = ({ onOpenConnections }: Props) => {
   /* Тур водит по тому продукту, в котором человек стоит. Пересобирается при переключении - иначе
    * подсветка указывала бы на пункт, которого в меню больше нет. */
   const { product } = useProduct();
-  const steps = useMemo(() => stepsFor(product), [product]);
+  const steps = useMemo(() => stepsFor(product, lockedProduct() !== null), [product]);
 
   /* Whether this person has seen it, asked of the ACCOUNT first and the browser second.
    *

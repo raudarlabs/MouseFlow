@@ -51,6 +51,21 @@ So, the two products, with working names to argue about later (§11):
    Precedent exists: `web/vite.extension.config.ts` already builds a second target from this codebase, and
    `vercel.json` is nine lines of rewrites. *This plan cuts the seams so that this is a config change, not a
    refactor — but does not do it.*
+
+   **Half of it arrived with step 4, at the owner's request (2026-09-18): two builds, one repo, no second
+   domain.** `VITE_PRODUCT=do|make` builds an app with the other half absent — its own menu, no switcher,
+   the root landing on its own home — into `web/dist-do` and `web/dist-make`:
+
+   ```bash
+   cd web && npm run build:halves   # both, into dist-do and dist-make
+   cd web && npm run dev:halves     # both live on 4410 and 4411, with the mock API, to look at side by side
+   ```
+
+   Two separate processes, deliberately: `VITE_PRODUCT` is read when the config module loads and the config
+   is cached, so building both in one process would make the second half a copy of the first under a
+   different name. What this is **not** yet: two bundles each carrying only its own code. Both still ship
+   every screen — the lock is a runtime branch — and that is the `api/` and screen split of steps 5–8, not
+   a build flag. It is enough to *look at* the two products, which is what it was asked for.
 3. **Two repos, two agents, two extensions.** *Never.* §10 says why.
 
 ---
@@ -87,6 +102,27 @@ So, the two products, with working names to argue about later (§11):
 | Chat (assistant) | *(embedded in Dashboard)* | **P2** | "Ask about your own work"; was its own route until recently |
 | MCP page | `/mcp` | **P2** | Public reference for connecting an agent |
 | Teams, account, admin | `/team`, settings | **shared** | Org plumbing |
+
+**Step 4 landed this table in code, 2026-09-18.** `web/src/lib/product.ts` now holds it — address, label,
+title, owner, whether it is in the nav, and what the first-run tour says about it — and the sidebar, the
+header and the tour all read it. Before that the set of screens was written down **four** times and never
+once completely: the routes in `main.tsx` (addresses only), `NAV` in `AppSidebar`, `TITLES` in `AppLayout`,
+`STEPS` in `OnboardingTour`. They had already drifted — `/docs` spent one day in the nav, its title stayed
+behind, its tour step never existed — and the product was in none of them, because there was nowhere to
+write it.
+
+Two rules came out of building it, and neither was in the paragraph above:
+
+- **The address beats the choice.** A screen that belongs to one product names it and the shell obeys;
+  the stored preference decides only the rest. Otherwise there is a state called "I am in *Make it
+  reusable* and looking at Tests", and repairing it needs a second rule. Opening a shared link to `/tests`
+  shows that product's menu, and no drift is possible.
+- **`'both'` is not indecision.** It is a screen that genuinely answers both questions and is cut by its own
+  step — Skills (§5.1), Dashboard (§5.2), Gallery (§5.3). Until then it stands whole in both menus, which is
+  honester than hiding half of it from whoever needs that half.
+
+Menu order per product is today's order with the other half removed, not a new order invented at the same
+time: somebody who opens the app after the change finds the same things in the same places, fewer of them.
 
 ### 2.2 Routes (`api/*.js`)
 
@@ -592,7 +628,7 @@ commit, and one concrete thing named for the owner to check.
 | 1b | **§4.1** the case flow fills and seeds `verification` — **done 2026-09-17** | `api/_test-case.mjs`, 18 checks, 8 mutations | one skill's own checks decide a case's verdict, and a case's checks come back to the skill |
 | 2 | **§4.2** split `api/mcp.js` into catalogue + worker — **done 2026-09-17** | `npm test`, routes pin untouched, 4 mutations | filename answers "which product" |
 | 3 | **§4.3** `insights` halves (`did` / `ran`) — **done 2026-09-17** | `api/_test-insights.mjs`, 131 checks, 13 mutations | `?half=did` touches no `user_run` |
-| 4 | The product axis: `web/src/lib/product.ts`, one definition read by sidebar, titles, onboarding | pin: nothing decides a screen's product twice | switching product changes the whole shell, in one place |
+| 4 | The product axis: `web/src/lib/product.ts`, one definition read by sidebar, titles, onboarding — **done 2026-09-18** | `web/check-web.mjs`, 40 checks, 20 mutations | switching product changes the whole shell, in one place |
 | 5 | **§5.1** cut Skills into Library (P2) and Runs (P1) | tsc + build; screenshots regenerated | neither half mentions the other's vocabulary |
 | 6 | **§5.3** restore `/docs` and `/chat` as first-class P2 routes | routes pin | a document is reachable without going through the Gallery |
 | 7 | **§5.2** Dashboard split, on top of step 3 | — | each half loads only its own half |

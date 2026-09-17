@@ -3,14 +3,15 @@
 A handover, written to be read on a machine that has never seen this project. It says what is true now,
 what to do next, and what only the owner can supply.
 
-**Live right now:** app `https://mouseflowapp.vercel.app` (commit `024a60a`), docs site
+**Live right now:** app `https://mouseflowapp.vercel.app` (commit `d6093f2`), docs site
 `https://mouse-flow.vercel.app`, agents at **0.29.0**. Whole suite green (`npm test`, zero FAIL),
-`tsc --noEmit` clean, `web/` builds, `npm run build:extension` builds.
+`tsc --noEmit` clean, `web/` builds, `npm run build:extension` builds, and `npm run build:halves`
+builds each product on its own (see step 4 below).
 
 **Where the work is now.** The QA roadmap is closed (§3). The **memory of applications** is built and live
 behind a flag that is now on (§2a). The current work is the **split into two products**, and it has its own
-document — read it before doing anything to the product's shape. **Steps 1 and 2 are closed as of
-2026-09-17; the next is step 3.**
+document — read it before doing anything to the product's shape. **Steps 1–4 are closed as of
+2026-09-18; the next is step 5.**
 
 **The five planning documents, and which to read when:**
 
@@ -223,7 +224,7 @@ Two small things remain *of that plan*, and neither blocks anything:
 
 ### The real queue, in order — all of it now lives in [`SPLIT-PLAN.md`](SPLIT-PLAN.md) §9
 
-**Pick it up at step 4.** The sequence there is numbered and each row carries its own done-condition;
+**Pick it up at step 5.** The sequence there is numbered and each row carries its own done-condition;
 what follows is only the shape of it, so a fresh session knows where it is standing.
 
 1. ~~**Step 1b — the case flow fills `verification`.**~~ **Done 2026-09-17.** A case seeds its checks from
@@ -239,9 +240,18 @@ what follows is only the shape of it, so a fresh session knows where it is stand
    already banked:** the extension panel's account card read one field out of the whole dashboard and now
    asks for `half=ran` alone. Lists of blocks live in `api/_half.mjs`, read by the route, the dev fixture and
    the suite. **Step 4 is next** — the product axis (`web/src/lib/product.ts`), and it needs no decision.
-4. **Steps 4–8 — the split proper**: the product axis, cutting Skills and the Dashboard in half, restoring
-   `/docs` and `/chat`, and serving each product its own subset of MCP tools.
-5. **Steps 9–12** — a `--record-only` agent, dictation outside the app, the spend partition, the docs set.
+4. ~~**Step 4**~~ **done 2026-09-18**: `web/src/lib/product.ts` — one list of screens carrying address,
+   label, title, owner, nav and tour copy, read by the sidebar, the header and the first-run tour. Before
+   it the set of screens was written down four times and the product in none of them. The sidebar now
+   carries a switcher, and **the address beats the stored choice**, so a shared link to `/tests` shows that
+   product's menu rather than yesterday's.
+   **And, asked for on the day: two separate builds.** `cd web && npm run build:halves` produces `dist-do`
+   and `dist-make` — each with one menu and no switcher; `npm run dev:halves` puts both on 4410 and 4411
+   with the mock API, to look at side by side. Not two *bundles* yet: both still ship every screen, and
+   that is steps 5–8.
+5. **Steps 5–8 — the split proper**: cutting Skills and the Dashboard in half, restoring `/docs` and
+   `/chat`, and serving each product its own subset of MCP tools.
+6. **Steps 9–12** — a `--record-only` agent, dictation outside the app, the spend partition, the docs set.
 
 **Asked and answered on 2026-09-17, written into the plan rather than started:** whether moving the Windows
 agent to **.NET 10** is worth it. Yes, but it is not a separate task — it is §6.3's packaging job with a

@@ -8,7 +8,7 @@ Entry point: `web/src/main.tsx`.
 
 | Path | Screen | Notes |
 |---|---|---|
-| `/` | → `/record` | Landing on Record: the thing most visits came to do. |
+| `/` | → the chosen product's home | `/record` for *Make it reusable*, `/create` for *Do it for me*. See **Two products, one shell** below. |
 | `/record` | [Record](04-record.md) | |
 | `/activity` | [Activity](26-activity.md) | Running, waiting and everything that ran, with Stop and Cancel beside each. |
 | `/create` | [Create](05-create.md) | Marked **Beta** in the sidebar. |
@@ -20,7 +20,7 @@ Entry point: `web/src/main.tsx`.
 | `/insights` | Dashboard | The old path, kept: it is linked from a published roadmap review. |
 | `/chat` | → `/dashboard` | The assistant moved onto the page whose numbers it answers about. |
 | `/connect` | [Connections](09-connections.md) | Not in the sidebar — it is setup, not a place you work. |
-| anything else | → `/record` | |
+| anything else | → the chosen product's home | Old hash links land here too. |
 
 Old hash links (`#record`, `#skills`, `#gallery`, `#connect`, `#desktop`) are rewritten to paths once, on
 the way in. `defaultPreload: 'intent'`.
@@ -75,13 +75,58 @@ on another machine". The reconciler refuses to run until `loaded`. This was foun
 the rows came back a moment later and hid it; had the request failed, the recordings would simply have
 gone. See [04 — Record § reconciliation](04-record.md#cross-device-reconciliation).
 
+## Two products, one shell
+
+The app holds two products — *Do it for me* (the machine acts) and *Make it reusable* (the person acts) —
+and shows one at a time. `docs/SPLIT-PLAN.md` is the plan; this section is what is built.
+
+**One definition, in `web/src/lib/product.ts`.** Every screen is one row there: address, sidebar label,
+header title, which product owns it, whether it is in the nav, and what the first-run tour says about it.
+The sidebar, the header and the tour all read that list. Until 2026-09-18 the set of screens was written
+down four separate times — the routes, the sidebar's `NAV`, the layout's `TITLES`, the tour's `STEPS` —
+none of which knew about the others, and which had already drifted. The file has **no imports at all**, so
+the suite (`web/check-web.mjs`) loads it and asks it the same questions the sidebar asks it.
+
+| Product | Menu |
+|---|---|
+| *Do it for me* | Create, Activity, Skills, Tests, Dashboard, Teams, Gallery |
+| *Make it reusable* | Record, Skills, Dashboard, Teams, Gallery |
+
+Each menu is the old single menu with the other half removed — not a new order. Skills, Dashboard, Teams
+and Gallery are marked `both`: they genuinely answer both questions today and are cut by their own steps of
+the plan. That is a stated position, not indecision.
+
+**The address beats the choice.** The switcher's choice is remembered per browser
+(`mouseflow.product`), but a screen belonging to one product names it and the shell obeys — so a link
+somebody sends you to `/tests` shows that product's menu rather than the one you picked yesterday. There is
+no state in which the menu and the screen disagree, because there is nowhere for one to come from.
+
+**The product names are working titles** (`SPLIT-PLAN` §11.1, the owner's decision, still open). They exist
+in exactly one place, so renaming them is one edit; the suite fails if either is typed into the shell.
+
+### Building one product on its own
+
+```bash
+cd web && npm run build:halves   # dist-do and dist-make, each with one menu and no switcher
+cd web && npm run dev:halves     # both live on 4410 and 4411 with the mock API, to compare side by side
+```
+
+`VITE_PRODUCT=do|make` is what does it, and an unrecognised value stops the build rather than quietly
+producing the ordinary app. Two separate processes, because the variable is read when the config module
+loads and the config is cached — one process would make the second half a copy of the first.
+
+**What this is not.** Both builds still *contain* every screen; the lock is a runtime branch. Two bundles
+each carrying only its own code needs the screen and `api/` split (steps 5–8 of the plan), not a build flag.
+
 ## Sidebar
 
 ![The sidebar and top bar](../img/record.png)
 
-`web/src/shell/AppSidebar.tsx`. Six destinations — Record, Create (Beta), Skills, Dashboard, Teams,
-Gallery — then an hours row and the account row. Gallery is last because it is the only one that is not
-*your* work: everything above it is something on this account.
+`web/src/shell/AppSidebar.tsx`. The product switcher where the wordmark used to be, then the current
+product's destinations, then an hours row and the account row. Gallery is last because it is the only one
+that is not *your* work: everything above it is something on this account. The list of destinations comes
+from `web/src/lib/product.ts`; what stays here is the **icon** for each, because an icon is presentation
+and importing one into the shared file would make it unloadable outside a browser.
 
 - **Collapse** is remembered (`mouseflow.side.tight`); it is a preference about this screen rather than
   about this visit. Below 820px it collapses itself, because a 236px sidebar and a two-column view do not

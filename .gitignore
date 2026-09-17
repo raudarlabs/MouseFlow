@@ -10,6 +10,9 @@ Thumbs.db
 # The React app's build output and its public copy of the agent: both are generated, and the agent has one
 # source of truth at agent/mouseflow-agent.ps1 which the build copies in.
 web/dist/
+# Две сборки на один продукт - см. web/scripts/two-products.mjs.
+web/dist-do/
+web/dist-make/
 web/public/agent/
 
 # Built by web/vite.extension.config.ts — Chrome loads this, git does not carry it.

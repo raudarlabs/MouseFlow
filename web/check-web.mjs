@@ -35,6 +35,9 @@ const main = read('src/main.tsx');
 const sidebar = read('src/shell/AppSidebar.tsx');
 const layout = read('src/shell/AppLayout.tsx');
 const tour = read('src/shell/OnboardingTour.tsx');
+const hook = read('src/shell/useProduct.ts');
+const viteConfig = read('vite.config.ts');
+const twoUp = read('scripts/two-products.mjs');
 
 let pass = 0;
 let fail = 0;
@@ -175,18 +178,61 @@ group('тур водит по тому продукту, в котором ст�
   for (const id of PRODUCT_IDS) {
     const steps = tourFor(id);
     check('у продукта ' + id + ' есть что показать', steps.length > 0, String(steps.length));
-    /* Шаг тура целится в пункт МЕНЮ - подсветка меряет элемент по `data-tour`, и экрана без пункта на
-     * экране нет, так что подсветка была бы вокруг ничего. */
-    const notInNav = steps.filter((s) => !screensFor(id).some((n) => n.to === s.to));
-    check('и каждый его шаг целится в пункт его же меню', notInNav.length === 0,
-      show(notInNav.map((s) => s.to)));
+    /* И шаги идут в том же порядке, что пункты меню: тур ведёт вниз по колонке, и подсветка, прыгающая
+     * вверх, читается как промах. */
+    const inNav = screensFor(id).map((s) => s.to);
+    const order = steps.map((s) => inNav.indexOf(s.to));
+    check('и его шаги идут сверху вниз по его же меню',
+      order.every((n, i) => n >= 0 && (i === 0 || n > order[i - 1])), show(order));
   }
+  /* А НАПИСАННЫЙ ШАГ ОБЯЗАН ГДЕ-ТО ПОКАЗАТЬСЯ.
+   *
+   * Найдено мутацией, которая ничего не сломала: проверка выше спрашивала у tourFor, стоят ли его шаги в
+   * меню, - а tourFor сам собран из пунктов меню, так что ответ был «да» всегда. Опасность обратная:
+   * текст, написанный экрану БЕЗ пункта меню, не покажется никогда, и узнать об этом неоткуда - тур
+   * выглядит нормально, просто в нём на один шаг меньше, чем кто-то написал. Подсветка меряет элемент по
+   * `data-tour`, и у экрана вне меню такого элемента на странице нет. */
+  const unreachable = SCREENS.filter((s) => s.tour && !s.nav);
+  check('а текст тура не написан экрану, которого нет в меню', unreachable.length === 0,
+    show(unreachable.map((s) => s.to)));
   /* Первым шагом - сам переключатель, и у него есть во что целиться. */
   check('первый шаг целится в переключатель', /target: 'product'/.test(tour)
     && /data-tour="product"/.test(sidebar));
   /* Последний - установка агента, и он общий: агент нужен обоим. */
   check('последний шаг - установка, и он один на оба продукта',
     /const INSTALL: Step = \{/.test(tour) && /INSTALL,\n\]/.test(tour));
+}
+
+group('сборка на один продукт - половина без второй половины');
+{
+  /* Уровень 2 из SPLIT-PLAN §0: `VITE_PRODUCT=do|make` собирает приложение, в котором второй половины
+   * нет. План говорил ПОДГОТОВИТЬ этот разрез, а не выполнить его, и здесь ровно подготовленное: обе
+   * половины можно поднять рядом и посмотреть. Второй домен, второй проект на Vercel и разрезанный
+   * `api/` - это шаги 5-8, и их здесь нет. */
+  check('опечатка в переменной останавливает сборку, а не собирает обычное приложение',
+    /VITE_PRODUCT must be "do", "make" or unset/.test(viteConfig), 'vite.config.ts');
+  /* Каждая половина в свой каталог, иначе вторая сборка затирает первую и сравнивать нечего. */
+  check('и каждая половина собирается в свой каталог',
+    /outDir: onlyProduct \? 'dist-' \+ onlyProduct : 'dist'/.test(viteConfig), 'vite.config.ts');
+  /* ЗАМОК СИЛЬНЕЕ И АДРЕСА. Адрес сильнее выбора - но в сборке на одну половину экранов другой в меню
+   * нет, и подчинить оболочку адресу значило бы показать меню, которого в этой сборке не существует. */
+  check('замок сильнее и выбора, и адреса',
+    /if \(LOCKED\) return LOCKED;/.test(hook)
+      && /if \(LOCKED\) return \{ product: LOCKED, chosen: LOCKED \};/.test(hook), 'useProduct.ts');
+  /* И переключателя в ней нет: кнопка, предлагающая половину, которой в сборке не существует, хуже её
+   * отсутствия. Как и шага тура, который её объясняет. */
+  check('переключателя в ней нет', /\{locked \? \(/.test(sidebar), 'AppSidebar.tsx');
+  check('и шага тура про переключатель тоже', /\.\.\.\(locked \? \[\] : \[\{/.test(tour),
+    'OnboardingTour.tsx');
+  /* Собираются ОТДЕЛЬНЫМИ процессами: `VITE_PRODUCT` читается на загрузке конфига, и конфиг кэшируется -
+   * в одном процессе вторая половина вышла бы копией первой под другим именем. */
+  check('половины собираются отдельными процессами, а не в одном',
+    /spawnSync\(process\.execPath/.test(twoUp) && /VITE_PRODUCT: half\.id/.test(twoUp),
+    'two-products.mjs');
+  /* И поднимаются на РАЗНЫХ портах - иначе «рядом» не получится. */
+  const ports = [...twoUp.matchAll(/port: (\d+)/g)].map((m) => m[1]);
+  check('и поднимаются рядом, на разных портах',
+    ports.length === 2 && ports[0] !== ports[1], show(ports));
 }
 
 group('имена продуктов стоят ровно в одном месте');

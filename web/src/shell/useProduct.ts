@@ -22,9 +22,29 @@ import { DEFAULT_PRODUCT, PRODUCT_IDS, type Product, productAt } from '@/lib/pro
 const KEY = 'mouseflow.product';
 const CHANGED = 'mouseflow:product';
 
+/* СБОРКА НА ОДИН ПРОДУКТ, если её попросили: `VITE_PRODUCT=do npm run build` (см. web/vite.config.ts).
+ *
+ * Пусто - обычное приложение с переключателем, и всё ниже работает как работало. Заперто - второй
+ * половины нет вовсе: меню только своё, переключателя нет, корень ведёт домой этого продукта. Это
+ * уровень 2 из SPLIT-PLAN §0, и он существует затем, чтобы обе половины можно было посмотреть рядом.
+ *
+ * ЗАМОК СИЛЬНЕЕ И ВЫБОРА, И АДРЕСА. Адрес сильнее выбора (см. ниже) ровно затем, чтобы оболочка не
+ * расходилась с экраном; но в сборке на одну половину экраны другой в меню не стоят, и подчинять ей
+ * оболочку значило бы показать меню, которого в этой сборке нет. Открытый по ссылке чужой экран
+ * отрисуется - маршруты объявлены все, - но меню останется своим. */
+declare const __PRODUCT__: string;
+const LOCKED: Product | null = typeof __PRODUCT__ === 'string'
+  && PRODUCT_IDS.includes(__PRODUCT__ as Product)
+  ? (__PRODUCT__ as Product)
+  : null;
+
+/** Заперта ли эта сборка на один продукт, и на какой. Читает переключатель, чтобы не рисоваться. */
+export const lockedProduct = (): Product | null => LOCKED;
+
 /** Выбор, как он записан в этом браузере. Экспортирован ради одного читателя вне React: корневой
  *  маршрут в main.tsx решает, куда вести с `/`, и делает это в `beforeLoad`, где хуков нет. */
 export const storedProduct = (): Product => {
+  if (LOCKED) return LOCKED;
   try {
     const said = localStorage.getItem(KEY);
     return PRODUCT_IDS.includes(said as Product) ? (said as Product) : DEFAULT_PRODUCT;
@@ -63,5 +83,6 @@ export const useProduct = (): { product: Product; chosen: Product } => {
     };
   }, []);
 
+  if (LOCKED) return { product: LOCKED, chosen: LOCKED };
   return { product: productAt(path) ?? chosen, chosen };
 };

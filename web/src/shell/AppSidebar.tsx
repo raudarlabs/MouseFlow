@@ -46,7 +46,7 @@ import { hoursOf } from '@/lib/api';
 import { PRODUCTS, PRODUCT_IDS, type Product, screensFor } from '@/lib/product';
 import { useActivityCount } from '@/features/activity/ActivityView';
 import { useAccount } from '@/shell/AccountProvider';
-import { chooseProduct, useProduct } from '@/shell/useProduct';
+import { chooseProduct, lockedProduct, useProduct } from '@/shell/useProduct';
 
 const TIGHT = 'mouseflow.side.tight';
 
@@ -92,6 +92,9 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
   const { product, chosen } = useProduct();
   const navigate = useNavigate();
   const nav = screensFor(product);
+  /* В сборке на один продукт переключателя нет: кнопка, предлагающая половину, которой в этой сборке
+   * не существует, - хуже её отсутствия. Знак при этом остаётся и ведёт домой, как вёл до всего этого. */
+  const locked = lockedProduct() !== null;
 
   const toggle = useCallback((next: boolean) => {
     setTight(next);
@@ -132,6 +135,25 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
           *
           * Свёрнутой полосой остаётся только знак: имя в четырнадцать пикселей не помещается, а
           * переключатель, у которого не видно, что выбрано, хуже его отсутствия. */}
+        {locked ? (
+          <Link
+            to={PRODUCTS[chosen].home}
+            title={PRODUCTS[chosen].name}
+            className={cn(
+              'flex min-w-0 items-center gap-2.5 rounded-md text-ink-primary hover:bg-state-hover',
+              tight ? 'size-9 justify-center' : 'h-9 px-2.5',
+            )}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden className={cn(GLYPH, 'text-logo-mark')}>
+              <path d="M5 4l14 8-6 1.6L10.5 20z" fill="currentColor" />
+            </svg>
+            {!tight && (
+              <Typography variant="span" weight="semibold" className="truncate text-[0.92rem]">
+                {PRODUCTS[chosen].name}
+              </Typography>
+            )}
+          </Link>
+        ) : (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -183,6 +205,7 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
+        )}
 
         {!tight && (
           <button
