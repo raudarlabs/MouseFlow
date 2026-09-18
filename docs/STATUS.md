@@ -3,15 +3,15 @@
 A handover, written to be read on a machine that has never seen this project. It says what is true now,
 what to do next, and what only the owner can supply.
 
-**Live right now:** app `https://mouseflowapp.vercel.app` (commit `d6093f2`), docs site
+**Live right now:** app `https://mouseflowapp.vercel.app` (commit `a7210f1`), docs site
 `https://mouse-flow.vercel.app`, agents at **0.29.0**. Whole suite green (`npm test`, zero FAIL),
 `tsc --noEmit` clean, `web/` builds, `npm run build:extension` builds, and `npm run build:halves`
 builds each product on its own (see step 4 below).
 
 **Where the work is now.** The QA roadmap is closed (§3). The **memory of applications** is built and live
 behind a flag that is now on (§2a). The current work is the **split into two products**, and it has its own
-document — read it before doing anything to the product's shape. **Steps 1–4 are closed as of
-2026-09-18; the next is step 5.**
+document — read it before doing anything to the product's shape. **Steps 0, 1–6 and 9–11 are closed as of
+2026-09-18; what is left of the split is 7 and 8, and both want eyes on the result.**
 
 **The five planning documents, and which to read when:**
 
@@ -224,18 +224,26 @@ Two small things remain *of that plan*, and neither blocks anything:
 
 ### The real queue, in order — all of it now lives in [`SPLIT-PLAN.md`](SPLIT-PLAN.md) §9
 
-**Pick it up at step 5.** §9 was rewritten on 2026-09-18 and is now three tables: what is done, what is next
-in order with a reason on every row, and proposals nobody has asked for yet. What follows is only the shape,
-so a fresh session knows where it is standing.
+**Pick it up at step 7 or 8 — both need somebody looking at the screen.** §9 was rewritten on 2026-09-18
+and is now three tables: what is done, what is next in order with a reason on every row, and proposals
+nobody has asked for yet. What follows is only the shape, so a fresh session knows where it is standing.
 
 1. **Steps 1–4 are closed** (2026-09-17 and 18): the `verification` bridge, the `api/mcp.js` split, the
    `insights` halves, and the product axis — plus, on the 18th, two separate builds (`npm run dev:halves`),
    the P1 trim, Logs, and Create's new shape with text files attachable to a goal.
-2. **Next, 5–9 — the split proper:** a door to Connections in P1, Create as a list of threads, cutting
-   Skills, the P2 dashboard asking `?half=did`, and restoring `/docs` and `/chat`.
-3. **Then 10–15:** the spend partition, MCP profiles, `--record-only`, the transcription route, one
-   messenger channel, and the docs split.
-4. **Proposals at the foot of §9:** conversation threads, the PWA, packaging the Windows agent on .NET 10,
+2. **Done overnight 2026-09-18, unsupervised:** step 5 (a door to Connections), step 6 (past tasks as a
+   list on the left, reopening one brings its files back), step 9 (`/docs` and `/chat` are screens again),
+   step 10 (each ceiling names its product, and a dead one came out), step 11 (MCP profiles), and step 0
+   (which turned out to be already done — the row was stale).
+3. **Left for a session with eyes on the screen, deliberately:**
+   - **Step 7, cutting Skills** — 1 879 lines, and the split runs through the middle of it.
+   - **Step 8, the dashboard's half** — tried, reverted, and the finding written down: `?half=did`
+     typechecks and produces a page saying *0 runs, —% success, no failures*, because every list is read
+     through `list()`. The run blocks have to come off the page, and they are tiles in the same grid as the
+     recording ones.
+4. **Then 12–15:** `--record-only`, the transcription route, one messenger channel, the docs split.
+   12 needs the C# compiled on a Windows machine; 13 and 14 need credentials and post to the outside world.
+5. **Proposals at the foot of §9:** conversation threads, the PWA, packaging the Windows agent on .NET 10,
    attachments with a field of their own, replacing the vendored design system.
 
 **Two decisions of 2026-09-18 made the plan smaller, not larger.** The Dashboard, the Gallery and Teams

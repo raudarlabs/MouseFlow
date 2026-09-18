@@ -845,7 +845,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 | **§6.3 + .NET 10** packaging the Windows agent | The technical answer is settled (yes, .NET 10, Windows first). The commercial one is not: nothing has been measured saying the installer is what loses people. Ask one buyer before buying a certificate |
 | **Attachments with their own field** | Today an attached file is part of the goal and is capped at 4000 characters, because that is what the queue path stores. A real attachment field would have to cross the queue, three loops and the extension — worth it only when somebody hits the cap for a real reason |
 | **Replacing `@insightis/ui`** | 228 vendored files from another Devart product. The name never reaches a built bundle and source maps are not published, so the exposure is the repository and the Sentry project. Only needed if sources are ever handed to a client |
-| 0 | `db/022_queue_machine.sql`'s header still says "НЕ ПРИМЕНЕНА" — it was applied 2026-09-11 | Housekeeping, one line, keeps getting postponed |
+| ~~0~~ | `db/022_queue_machine.sql`'s header — **already fixed; the roadmap row was stale, 2026-09-18** | Its header has said `ПРИМЕНЕНА 2026-09-11` for a week. The row survived two rewrites of this plan because nobody checked the file, which is the whole failure mode a housekeeping list has: it outlives the housekeeping |
 
 Steps 1–4 are done. 5–9 are the split proper. 10–15 finish it; 13 and 14 are the only two that add a
 capability rather than divide one.
