@@ -156,7 +156,23 @@ was removed from the extension, it is simply not offered as an executor on P1's 
 
 Two facts that decide §4.2: the **list** is one array (subsetting is a one-line change), but `callTool`
 (~900 lines) and the whole worker protocol sit in the same 2 628-line module, so a product-specific
-*deployment* would still ship the entire execution engine. Separately, `mcp/server.mjs` (stdio) already does
+*deployment* would still ship the entire execution engine.
+
+**Done 2026-09-18, and subsetting the list turned out to be the smaller half of it.** `?profile=do|make`
+on the connector URL, unrecognised or absent meaning the whole set so nothing already configured notices.
+Three things had to move together, and the last two each cover a way the first would have been theatre:
+
+- **`tools/call` asks the profile too.** Hiding a tool from `tools/list` while still running it on a direct
+  call is cosmetic — clients cache the list from an earlier connection and a model remembers names from an
+  earlier conversation. The refusal is a tool answer with a sentence in it, naming the one thing that would
+  change it (the URL), rather than a transport error the caller cannot act on.
+- **The `initialize` instructions change with the set.** They told everybody "calling it moves the real
+  mouse and keyboard". For `make` that is false — nothing in that set acts on the computer — and a model
+  reads those instructions as a description of what it can do, so a description promising more than it was
+  given is one it will test with a call.
+- **The four shared tools are shared for a stated reason.** `mouseflow_status` answers *is the machine
+  awake*, the first question either half has. A schedule is **when**, not **what**: one tool sets a nightly
+  case check and a weekly recordings report, both into `user_schedule`. Separately, `mcp/server.mjs` (stdio) already does
 the thing P2 is *for*: it appends **one MCP tool per skill**, so a person's own flows become callable tools.
 That is P2's product, already shipped, and nobody has called it that yet.
 
@@ -814,7 +830,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 | 8 | **§5.2** the P2 dashboard asks `?half=did` — **NOT one line; corrected 2026-09-18 by trying it** | The route half is one line. The PAGE is not: `did` sends no `byOutcome`, `byDay`, `repeated`, `slowestSteps`, `failures`, `skills`, and the page renders them as **0 runs, —% success, no failures** — absence as a negative fact. It does not crash; `list()` sees to that, which is exactly why it is dangerous | Remove the run blocks from the page. They are not a section: *success rate* and *worth automating* are tiles in the same grid as *recordings*. **Needs eyes on the result** | The dashboard runs no query against `user_run` **and** claims nothing about runs |
 | ~~9~~ | **§5.3** restore `/docs` and `/chat` — **done 2026-09-18** | A document is P2's output and was reachable only through the Gallery's second shelf | Both components were already written for it (`useParams({strict:false})`, `embedded=false`). `/docs` is a route **and** a menu row; `/chat` is a route and **not** a row — see §5.3 | `web/check-web.mjs`, order pins |
 | ~~10~~ | **§8** partition `LIMITS` — **done 2026-09-18, and it was already true** | The premise was wrong: each route has its own ceiling, so no product could exhaust the other's before either. What was missing was the answer to *whose spend is this* | Each ceiling names its product. And a dead one was found: `plan` was spent by nobody — planning goes through `/api/claude` | `api/_test-quota.mjs`, 5 checks |
-| 11 | MCP profiles: P1's 7, P2's 7, the shared 4 | The tool list is one array, so this is cheap — but a P2 connector seeing `mouseflow_run` is a product leak | Subset the array by profile | A P2 connector never sees `mouseflow_run` |
+| ~~11~~ | MCP profiles — **done 2026-09-18** | A model chooses from what it was shown, so offering a way to ACT where only reading was asked makes acting a possible outcome | `?profile=do\|make` in the URL (that is how a client is configured); unrecognised = the whole set. Asked again on `tools/call`, and the `initialize` instructions change with the set | `mcp/test-mcp.mjs`, 14 checks |
 | 12 | **§6.1** `--record-only` + `canAct:false`, both agents | P2's pitch is "it only watches", and today that is a claim rather than a flag | One flag hung on `Input.refusal()`; the C# compiled for real | A record-only agent refuses every injection action, and says so in words |
 | 13 | **§7** transcription route (server-held key, capped, rate-limited) | Dictation quality was the owner's ask, and it reverses a promise the code makes — so the route and the sentence ship together | `api/claude.js` is the shape to copy; a new `LIMITS` key | A goal can be dictated, and the UI says where the audio goes **before** the microphone is armed |
 | 14 | **§7.2** one messenger channel (Telegram), with the pairing rule | Cheaper than the PWA and brings push for free; the queue already does the hard half | One ingress that turns a message into a `run_queue` row; unknown senders paired, not served | A goal sent from a phone runs on the desk, and an unapproved sender cannot queue anything |
