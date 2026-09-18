@@ -752,7 +752,22 @@ route** — "a chat turn is worth more than a filename and both should not share
 schema change:
 
 - **P1:** `step`, `claude`.
-- **P2:** `chat`, `insights`, `transcript`, `compose`, `params`, `skill-md`, `plan`.
+- **P2:** `chat`, `insights`, `transcript`, `compose`, `params`, `skill-md`.
+
+**Done 2026-09-18, and the done-condition was already met before the work started.** "One product's spend
+cannot exhaust the other's" was true the moment the table was keyed by route: there is no shared pot to
+exhaust. Saying otherwise in the sequence was the sort of row that gets ticked without changing anything,
+so what was actually added is the thing that was missing — **each ceiling names its product**. Nothing
+behaves differently today; when a per-account budget exists (a plan, a month, "how much is left"), the
+sums have to be taken per product, and there is now one place that says which is which instead of the
+answer being re-derived from route names.
+
+**And a ceiling that guarded nothing came out.** `plan` was in the table and no route ever spent it —
+building a plan goes through `/api/claude` and is counted as `claude`. Twenty calls in five minutes read as
+a protection that did not exist, which is worse than no line at all: the next conversation about limits
+would have read it as live. `api/_test-quota.mjs` now executes the check both ways — every ceiling is spent
+by some route, and every route that spends has a ceiling — because a key nobody asks for is silently
+unlimited (`overSpend` returns "yes" for an unknown route).
 
 There is no plan table, no seat count and no per-account budget anywhere in `db/` — so "two products, two
 prices" is a product decision with no schema debt behind it, and it is not part of this plan.
@@ -798,7 +813,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 | 7 | **§5.1** cut Skills into Library (P2) and Runs (P1) | The last screen still marked `both`, and the only thing standing between here and two coherent products | Split the view; `SkillWizard` stays one component | Neither half uses the other's vocabulary |
 | 8 | **§5.2** the P2 dashboard asks `?half=did` — **NOT one line; corrected 2026-09-18 by trying it** | The route half is one line. The PAGE is not: `did` sends no `byOutcome`, `byDay`, `repeated`, `slowestSteps`, `failures`, `skills`, and the page renders them as **0 runs, —% success, no failures** — absence as a negative fact. It does not crash; `list()` sees to that, which is exactly why it is dangerous | Remove the run blocks from the page. They are not a section: *success rate* and *worth automating* are tiles in the same grid as *recordings*. **Needs eyes on the result** | The dashboard runs no query against `user_run` **and** claims nothing about runs |
 | ~~9~~ | **§5.3** restore `/docs` and `/chat` — **done 2026-09-18** | A document is P2's output and was reachable only through the Gallery's second shelf | Both components were already written for it (`useParams({strict:false})`, `embedded=false`). `/docs` is a route **and** a menu row; `/chat` is a route and **not** a row — see §5.3 | `web/check-web.mjs`, order pins |
-| 10 | **§8** partition `LIMITS` | Two products, one budget: a chat turn and a run currently share a ceiling | A partition of keys in `api/_spend.mjs`; no schema change | One product's spend cannot exhaust the other's |
+| ~~10~~ | **§8** partition `LIMITS` — **done 2026-09-18, and it was already true** | The premise was wrong: each route has its own ceiling, so no product could exhaust the other's before either. What was missing was the answer to *whose spend is this* | Each ceiling names its product. And a dead one was found: `plan` was spent by nobody — planning goes through `/api/claude` | `api/_test-quota.mjs`, 5 checks |
 | 11 | MCP profiles: P1's 7, P2's 7, the shared 4 | The tool list is one array, so this is cheap — but a P2 connector seeing `mouseflow_run` is a product leak | Subset the array by profile | A P2 connector never sees `mouseflow_run` |
 | 12 | **§6.1** `--record-only` + `canAct:false`, both agents | P2's pitch is "it only watches", and today that is a claim rather than a flag | One flag hung on `Input.refusal()`; the C# compiled for real | A record-only agent refuses every injection action, and says so in words |
 | 13 | **§7** transcription route (server-held key, capped, rate-limited) | Dictation quality was the owner's ask, and it reverses a promise the code makes — so the route and the sentence ship together | `api/claude.js` is the shape to copy; a new `LIMITS` key | A goal can be dictated, and the UI says where the audio goes **before** the microphone is armed |

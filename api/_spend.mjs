@@ -22,22 +22,40 @@
  */
 
 /** What each route may spend, and over how long. Named here so the numbers can be compared side by side. */
+/* У КАЖДОГО ПОТОЛКА НАЗВАН ПРОДУКТ (SPLIT-PLAN §8, шаг 10). `'do'` - машина действует, `'make'` - человек
+ * действует, `'both'` - общая инфраструктура.
+ *
+ * ЧТО ЭТО МЕНЯЕТ СЕГОДНЯ: ничего в поведении, и это надо сказать прямо, а не выдать разметку за работу.
+ * Счёт ведётся по ключу `(user_id, route, at)`, то есть у каждого маршрута СВОЙ потолок и общего котла
+ * нет - значит «расход одного продукта не может исчерпать другой» было правдой и до этой колонки. План
+ * ровно это и говорил: разделение бюджетов - это разделение КЛЮЧЕЙ, и они уже разделены.
+ *
+ * ЗАЧЕМ ТОГДА КОЛОНКА. Затем, что общего котла ещё нет, а когда он появится - счёт на аккаунт, тариф,
+ * «сколько осталось до конца месяца», - складывать придётся по продуктам, и место, где это записано,
+ * должно быть одно. Сегодня она отвечает на вопрос «чей это расход» тому, кто смотрит на таблицу; завтра
+ * по ней будут суммировать. Без неё ответ пришлось бы выводить из имени маршрута каждый раз заново.
+ *
+ * И КАЖДЫЙ ПОТОЛОК СТОРОЖИТ НАСТОЯЩИЙ МАРШРУТ. Здесь лежал ключ `plan`, которого не тратил никто:
+ * построение плана идёт через `/api/claude` и считается ключом `claude`. Двадцать вызовов за пять минут
+ * звучали как защита, которой не существовало, - а потолок, который никто не спрашивает, хуже его
+ * отсутствия: при следующем разговоре о лимитах его прочитают как действующий. Проверено исполнением в
+ * api/_test-quota.mjs: каждый ключ здесь кто-то передаёт в overSpend. */
 export const LIMITS = {
   /* The decision loop, on both driven paths. A turn takes roughly eight seconds, so fifteen a minute is
    * about twice the pace a real run can manage - fast enough never to be felt, slow enough that a runaway
    * stops costing money within a minute. */
-  step: { max: 15, windowMs: 60_000 },
-  /* The browser's own loop, which is the same work asked for from the page. */
-  claude: { max: 30, windowMs: 60_000 },
+  step: { max: 15, windowMs: 60_000, product: 'do' },
+  /* The browser's own loop, which is the same work asked for from the page. Сюда же попадает построение
+   * плана перед прогоном - см. web/src/lib/plan.ts, он зовёт /api/claude. */
+  claude: { max: 30, windowMs: 60_000, product: 'do' },
   /* Conversations are the most expensive single call and the least automatable. */
-  chat: { max: 12, windowMs: 300_000 },
-  insights: { max: 30, windowMs: 60_000 },
-  transcript: { max: 20, windowMs: 60_000 },
-  compose: { max: 20, windowMs: 300_000 },
-  params: { max: 20, windowMs: 300_000 },
+  chat: { max: 12, windowMs: 300_000, product: 'make' },
+  insights: { max: 30, windowMs: 60_000, product: 'make' },
+  transcript: { max: 20, windowMs: 60_000, product: 'make' },
+  compose: { max: 20, windowMs: 300_000, product: 'make' },
+  params: { max: 20, windowMs: 300_000, product: 'make' },
   /* A file somebody downloads once per skill. */
-  'skill-md': { max: 20, windowMs: 300_000 },
-  plan: { max: 20, windowMs: 300_000 },
+  'skill-md': { max: 20, windowMs: 300_000, product: 'make' },
 };
 
 /* Долго ли держать строки. Больше самого длинного окна с запасом, и всё: таблица существует, чтобы
