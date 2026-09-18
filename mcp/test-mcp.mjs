@@ -5964,6 +5964,72 @@ group('кейс можно привязать к машине, и до мигр�
     readdirSync(new URL('../db/', import.meta.url)).filter((n) => n.startsWith('022_')).length === 1);
 }
 
+/* ------------------------------------------------------------------ ПРОФИЛИ НАБОРА (шаг 11) */
+
+group('коннектор несёт половину набора, если о ней попросили');
+{
+  const t = await import('../api/_mcp-tools.mjs');
+  const names = (p) => t.toolsFor(p).map((x) => x.name);
+
+  /* Восемнадцать - это весь набор, и он остаётся по умолчанию: профиль сужает по просьбе, а не меняет
+   * поведение всем, кто уже настроил коннектор. */
+  check('по умолчанию - весь набор, восемнадцать', names('all').length === 18, String(names('all').length));
+  check('и опечатка в профиле тоже весь, а не половина наугад',
+    names('nonsense').join() === names('all').join() && names('').join() === names('all').join());
+
+  /* Объединение половин - ровно весь набор, пересечение - ровно общее. Иначе инструмент выпал бы из обоих
+   * (никому не виден) или стоял бы в обоих без причины. */
+  const both = new Set([...names('do'), ...names('make')]);
+  check('объединение половин - весь набор, ни инструмента мимо',
+    both.size === 18 && names('all').every((n) => both.has(n)),
+    names('all').filter((n) => !both.has(n)).join(','));
+  const shared = names('do').filter((n) => names('make').includes(n));
+  check('а общих ровно четыре, и это status и расписания',
+    shared.length === 4 && shared.includes('mouseflow_status')
+      && shared.includes('mouseflow_schedule'), shared.join(','));
+
+  /* УСЛОВИЕ ГОТОВНОСТИ ШАГА 11 дословно: коннектор второго продукта не видит mouseflow_run. */
+  check('коннектор второго продукта не видит mouseflow_run',
+    !names('make').includes('mouseflow_run') && !names('make').includes('mouseflow_do')
+      && !t.inProfile('make', 'mouseflow_run'), names('make').join(','));
+  check('а первого - не видит записей и расшифровок',
+    !names('do').includes('mouseflow_recordings') && !names('do').includes('mouseflow_transcript'),
+    names('do').join(','));
+
+  /* СЛОВА ПОД НАБОР. Модель читает инструкции как описание своих возможностей: фраза «вызов двигает
+   * настоящую мышь» в наборе, где двигать мышь нечем, - это обещание, которое она проверит вызовом. */
+  check('инструкция второго продукта не обещает движения мыши',
+    !/moves the real mouse/.test(t.instructionsFor('make'))
+      && /has no tool that acts on the computer/.test(t.instructionsFor('make')),
+    t.instructionsFor('make').slice(0, 120));
+  check('а первого - обещает, и называет невозвратность',
+    /moves the real mouse and keyboard/.test(t.instructionsFor('do'))
+      && /cannot be undone/.test(t.instructionsFor('do')));
+  /* И про машину сказано в каждой: «ничего не пойдёт, пока не слушает рабочий» - первый вопрос обоих. */
+  for (const p of ['all', 'do', 'make']) {
+    check('инструкция профиля ' + p + ' говорит про слушающую машину',
+      /mouseflow_status says/.test(t.instructionsFor(p)));
+  }
+
+  /* НЕ ТОЛЬКО СПИСОК. Профиль, прячущий инструмент из списка и исполняющий его по прямому вызову, -
+   * косметика: клиент кэширует список с прошлого подключения, а модель помнит имена. */
+  const only = read('../api/mcp.js');
+  check('профиль спрашивается и на tools/call, а не только в списке',
+    /if \(!inProfile\(profile, wanted\)\)/.test(only), 'mcp.js');
+  /* Отказ - ОТВЕТ ИНСТРУМЕНТА с текстом, а не ошибка транспорта: вызывающему нужно предложение, с
+   * которым можно что-то сделать, и оно называет, что менять - адрес коннектора. */
+  check('и отказ - текст, который можно прочитать, с указанием что менять',
+    /say\(\s*\n?\s*`This connector does not carry \$\{wanted/.test(only)
+      && only.includes("'?profile= from it for the whole set.'")
+      /* Ответ инструмента, а не ошибка транспорта: `rpc` плюс `say(..., true)`, не `rpcError`. */
+      && /rpc\(id, say\(/.test(only), 'mcp.js');
+  /* И читается он ОДИН раз: список, инструкция и то, что исполняется, обязаны описывать одно. */
+  check('и читается один раз на все три ответа',
+    (only.match(/profileAsked\(req\.query && req\.query\.profile\)/g) || []).length === 1
+      && /tools: toolsFor\(profile\)/.test(only)
+      && /instructions: instructionsFor\(profile\)/.test(only), 'mcp.js');
+}
+
 group('ДВЕ ПОЛОВИНЫ ОДНОГО МАРШРУТА ЛЕЖАТ ОТДЕЛЬНО (SPLIT-PLAN §4.2, шаг 2)');
 {
   const tools = readFileSync(fileURLToPath(new URL('../api/_mcp-tools.mjs', import.meta.url)), 'utf8');

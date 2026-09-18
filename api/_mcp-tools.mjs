@@ -462,7 +462,7 @@ export const CASE_RESULTS_TOOL = {
   },
 };
 
-const CASE_TOOLS = [CASE_TOOL, CASES_TOOL, CASE_RESULTS_TOOL];
+export const CASE_TOOLS = [CASE_TOOL, CASES_TOOL, CASE_RESULTS_TOOL];
 
 
 /* Строка расписания словами - один формат для перечня и для подтверждения, чтобы человек читал то же, что
@@ -1308,3 +1308,90 @@ async function queueAndWait(sql, who, { flowId, toolName, args }) {
 }
 
 
+
+/* ------------------------------------------------------------------ ПРОФИЛИ: чей это набор инструментов
+ *
+ * SPLIT-PLAN §2.3 и шаг 11. Восемнадцать инструментов отвечают на вопросы двух разных продуктов, и
+ * коннектор, подключённый ради документов, видел среди них `mouseflow_run` - то есть кнопку, двигающую
+ * настоящую мышь на настоящем компьютере. Это не только лишняя строка в диалоге разрешений: модель
+ * выбирает из того, что ей показали, и показать ей средство действия там, где просили только прочитать, -
+ * значит сделать это действие возможным исходом.
+ *
+ * ПРОФИЛЬ - В АДРЕСЕ (`/api/mcp?profile=make`), и это не произвол: клиент MCP настраивают URL-ом, одним и
+ * на всё соединение, а `tools/list` спрашивают один раз при подключении. Заголовок пришлось бы носить в
+ * каждом запросе, и половина клиентов этого не умеет.
+ *
+ * `all` ПО УМОЛЧАНИЮ, поэтому ни один уже настроенный коннектор ничего не заметит. Профиль - это сужение,
+ * о котором попросили, а не новое поведение по умолчанию.
+ *
+ * И ЭТО НЕ ТОЛЬКО СПИСОК. Профиль, который прячет инструмент из `tools/list`, но исполняет его по прямому
+ * вызову, - косметика: клиент кэширует список с прошлого подключения, а модель помнит имена. Поэтому
+ * `inProfile` спрашивается и на `tools/call`, см. api/mcp.js.
+ */
+
+/** Инструменты первого продукта: машина действует. */
+const DO_ONLY = ['mouseflow_run', 'mouseflow_do', 'mouseflow_stop', 'mouseflow_run_status',
+  'mouseflow_case', 'mouseflow_cases', 'mouseflow_case_results'];
+
+/** Инструменты второго: человек действует, машина смотрит и рассказывает. */
+const MAKE_ONLY = ['mouseflow_recordings', 'mouseflow_transcript', 'mouseflow_activity',
+  'mouseflow_run_history', 'mouseflow_help', 'mouseflow_start_recording', 'mouseflow_stop_recording'];
+
+/* Общие - и каждое по своей причине, а не «не решили».
+ *
+ * `mouseflow_status` отвечает на «жива ли машина», и это первый вопрос обоих. Расписание - это КОГДА, а не
+ * ЧТО: им заводят и ночную проверку кейса, и еженедельный отчёт по записям, и оба продукта отправляют в
+ * одну и ту же таблицу `user_schedule`. */
+const SHARED = ['mouseflow_status', 'mouseflow_schedule', 'mouseflow_schedules', 'mouseflow_unschedule'];
+
+export const PROFILES = {
+  do: new Set([...DO_ONLY, ...SHARED]),
+  make: new Set([...MAKE_ONLY, ...SHARED]),
+  all: new Set([...DO_ONLY, ...MAKE_ONLY, ...SHARED]),
+};
+
+/** Что спросили, приведённое к трём словам. Непонятное - `all`: коннектор с опечаткой в адресе должен
+ *  работать как прежде, а не отвечать половиной набора, которую никто не выбирал. */
+export const profileAsked = (raw) => {
+  const said = String(raw == null ? '' : raw).trim().toLowerCase();
+  return said === 'do' || said === 'make' ? said : 'all';
+};
+
+/** Виден ли инструмент в этом профиле. */
+export const inProfile = (profile, name) => PROFILES[profileAsked(profile)].has(String(name || ''));
+
+/** Набор для `tools/list`, в том же порядке, в котором объявлен весь набор. */
+export const toolsFor = (profile) => {
+  const allowed = PROFILES[profileAsked(profile)];
+  return [
+    ...READ_TOOLS,
+    HELP_TOOL,
+    SCHEDULE_TOOL, SCHEDULES_TOOL, UNSCHEDULE_TOOL,
+    ...CASE_TOOLS,
+    START_TOOL, STOP_RECORDING_TOOL,
+    STATUS_TOOL, STOP_TOOL, RUN_STATUS_TOOL, RUN_TOOL, DO_TOOL,
+  ].filter((tool) => allowed.has(tool.name));
+};
+
+/** Что сказать модели про набор, который ей дали. Разный для профилей, и обязан быть: фраза «вызов двигает
+ *  настоящую мышь» неверна для набора, в котором двигать мышь нечем. */
+export const instructionsFor = (profile) => {
+  const asks = profileAsked(profile);
+  const machine = 'Nothing runs unless a worker is listening on that machine; mouseflow_status says '
+    + 'whether one is.';
+  if (asks === 'make') {
+    return 'These tools READ this person\'s MouseFlow account and start or stop a recording of what they '
+      + 'do: recordings, transcripts, what ran and when. None of them moves the mouse or the keyboard — '
+      + 'this connector has no tool that acts on the computer. A recording captures the screen of whoever '
+      + 'is at that machine, so start one only when asked for. ' + machine;
+  }
+  if (asks === 'do') {
+    return 'Calling mouseflow_run or mouseflow_do moves the real mouse and keyboard on this person\'s '
+      + 'computer. Two consequences worth holding on to: the actions cannot be undone from here, and a '
+      + 'missing argument should be asked for rather than guessed. ' + machine;
+  }
+  return 'Each tool other than mouseflow_status, mouseflow_stop and mouseflow_run_status is one skill on '
+    + 'this person\'s MouseFlow account, and calling it moves the real mouse and keyboard on their '
+    + 'computer. Two consequences worth holding on to: the actions cannot be undone from here, and a '
+    + 'missing argument should be asked for rather than guessed. ' + machine;
+};

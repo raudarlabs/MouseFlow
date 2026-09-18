@@ -278,6 +278,48 @@ three states that look identical from a chat: no machine has *ever* asked for wo
 
 ---
 
+## One half of the set, if you ask for it
+
+```
+https://mouseflowapp.vercel.app/api/mcp                 all eighteen tools (the default)
+https://mouseflowapp.vercel.app/api/mcp?profile=do      the machine acts: run, do, stop, cases
+https://mouseflowapp.vercel.app/api/mcp?profile=make     the person acts: recordings, transcripts, activity
+```
+
+Eighteen tools answer two different products' questions, and a connector added in order to read documents
+was being shown `mouseflow_run` — a tool that moves the real mouse on a real computer. That is not just a
+longer permission dialog. **A model chooses from what it was shown**, so offering it a way to act where only
+reading was asked for makes acting a possible outcome.
+
+| Profile | Carries |
+|---|---|
+| `do` (11) | `mouseflow_run`, `mouseflow_do`, `mouseflow_stop`, `mouseflow_run_status`, `mouseflow_case`, `mouseflow_cases`, `mouseflow_case_results` + the shared four |
+| `make` (11) | `mouseflow_recordings`, `mouseflow_transcript`, `mouseflow_activity`, `mouseflow_run_history`, `mouseflow_help`, `mouseflow_start_recording`, `mouseflow_stop_recording` + the shared four |
+| shared (4) | `mouseflow_status`, `mouseflow_schedule`, `mouseflow_schedules`, `mouseflow_unschedule` |
+
+Each of the shared four is shared for a reason rather than for want of a decision. `mouseflow_status`
+answers *is the machine awake*, which is the first question either half has. A schedule is **when**, not
+**what**: the same tool sets a nightly check on a case and a weekly report over recordings, and both write
+to `user_schedule`.
+
+**The profile is in the URL**, because that is how an MCP client is configured — once, for the whole
+connection — and `tools/list` is asked once when it connects. A header would have to be carried on every
+request and half the clients cannot.
+
+**Anything unrecognised is the whole set**, and so is no profile at all. A connector already in somebody's
+client notices nothing, and a typo in the URL does not silently hand back a half nobody chose.
+
+**It is not only the list.** A profile that hides a tool from `tools/list` and still runs it on a direct
+call is cosmetic: clients cache the list from an earlier connection, and a model remembers names from an
+earlier conversation. So the profile is asked again on `tools/call`, and a tool from the other half is
+refused **as a tool answer with a sentence in it** — not a transport error — naming the one thing that
+would change it, which is the connector's URL.
+
+**The instructions change with the set.** `initialize` used to say "calling it moves the real mouse and
+keyboard" to everybody. For `make` that is false: nothing in that set acts on the computer. A model reads
+those instructions as a description of what it can do, and a description promising more than it was given
+is one it will test with a call.
+
 ## Skills as tools
 
 A skill on an account is already the same shape as a tool call: a named, described unit of work with the

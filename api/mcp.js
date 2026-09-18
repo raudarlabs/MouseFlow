@@ -46,7 +46,9 @@ import { wrap } from './_report.js';
 import { scheduleId } from './_queue.mjs';
 import { cors } from './_cors.mjs';
 import {
-  SPOKEN, NEWEST, SERVER, unauthorized, rpc, rpcError, say, callTool, STATUS_TOOL, STOP_TOOL, RUN_STATUS_TOOL, START_TOOL, STOP_RECORDING_TOOL, DO_TOOL, HELP_TOOL, SCHEDULE_TOOL, SCHEDULES_TOOL, UNSCHEDULE_TOOL, RUN_TOOL, READ_TOOLS, CASE_TOOL, CASES_TOOL, CASE_RESULTS_TOOL,
+  SPOKEN, NEWEST, SERVER, unauthorized, rpc, rpcError, say, callTool,
+  /* ПРОФИЛЬ НАБОРА - см. _mcp-tools.mjs: `?profile=do|make`, по умолчанию весь набор. */
+  inProfile, instructionsFor, profileAsked, toolsFor,
 } from './_mcp-tools.mjs';
 import { workerRoute } from './_mcp-worker.mjs';
 
@@ -282,6 +284,11 @@ async function handler(req, res) {
 
   const { id, method, params } = body;
 
+  /* КАКУЮ ПОЛОВИНУ НАБОРА НЕСЁТ ЭТОТ КОННЕКТОР. Читается из адреса один раз и служит трём ответам сразу -
+   * списку инструментов, инструкциям в `initialize` и отказу на вызов не своего инструмента, - потому что
+   * расходиться им нельзя: набор, инструкция и то, что реально исполняется, обязаны описывать одно. */
+  const profile = profileAsked(req.query && req.query.profile);
+
   /* A notification has no id and gets no body - 202 is the documented answer, and replying to one would
    * put an unmatched response into the client's stream. */
   if (method.startsWith('notifications/')) {
@@ -297,11 +304,11 @@ async function handler(req, res) {
         protocolVersion: SPOKEN.has(asked) ? asked : NEWEST,
         capabilities: { tools: { listChanged: false } },
         serverInfo: SERVER,
-        instructions: 'Each tool other than mouseflow_status, mouseflow_stop and mouseflow_run_status is one '
-          + 'skill on this person\'s MouseFlow account, and calling it moves the real mouse and keyboard on '
-          + 'their computer. Two consequences worth holding on to: the actions cannot be undone from here, '
-          + 'and a missing argument should be asked for rather than guessed. Nothing runs unless a worker is '
-          + 'listening on that machine; mouseflow_status says whether one is.',
+        /* СЛОВА ПОД НАБОР, А НЕ ОДНИ НА ВСЕ. Фраза «вызов двигает настоящую мышь» неверна для профиля, в
+         * котором двигать мышь нечем, - и это не придирка: модель читает инструкции как описание своих
+         * возможностей, а описание, обещающее больше, чем дано, она проверяет вызовом. См.
+         * instructionsFor в _mcp-tools.mjs. */
+        instructions: instructionsFor(profile),
       }));
       return;
     }
@@ -314,21 +321,29 @@ async function handler(req, res) {
     if (method === 'tools/list') {
       /* Fixed, and that is the change: this used to append one tool per skill, so the list - and the
        * tokens it costs in every request, and the permission dialog somebody reads - grew with the
-       * library. Skills are found through mouseflow_recordings and run through mouseflow_run. */
-      res.status(200).json(rpc(id, {
-        tools: [
-          ...READ_TOOLS,
-          HELP_TOOL,
-          SCHEDULE_TOOL, SCHEDULES_TOOL, UNSCHEDULE_TOOL,
-          ...CASE_TOOLS,
-          START_TOOL, STOP_RECORDING_TOOL,
-          STATUS_TOOL, STOP_TOOL, RUN_STATUS_TOOL, RUN_TOOL, DO_TOOL,
-        ],
-      }));
+       * library. Skills are found through mouseflow_recordings and run through mouseflow_run.
+       *
+       * И СУЖЕННЫЙ ПРОФИЛЕМ, если о нём попросили адресом. Набор один, отбор один - toolsFor. */
+      res.status(200).json(rpc(id, { tools: toolsFor(profile) }));
       return;
     }
 
     if (method === 'tools/call') {
+      /* ПРОФИЛЬ СПРАШИВАЕТСЯ И ЗДЕСЬ, а не только в списке.
+       *
+       * Профиль, который прячет инструмент из `tools/list` и исполняет его по прямому вызову, - косметика:
+       * клиент кэширует список с прошлого подключения, а модель помнит имена и из старого разговора.
+       * Отказ - обычный ответ инструмента с текстом, а не ошибка транспорта: вызывающему нужно
+       * предложение, с которым можно что-то сделать, и оно называет, какой адрес это умеет. */
+      const wanted = String((params && params.name) || '');
+      if (!inProfile(profile, wanted)) {
+        res.status(200).json(rpc(id, say(
+          `This connector does not carry ${wanted || 'that tool'}. It is set to the "${profile}" half of `
+          + 'MouseFlow, and that tool belongs to the other one. The connector URL decides: drop '
+          + '?profile= from it for the whole set.', true,
+        )));
+        return;
+      }
       res.status(200).json(rpc(id, await callTool(sql, who, params, req)));
       return;
     }
