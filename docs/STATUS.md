@@ -18,6 +18,7 @@ document — read it before doing anything to the product's shape. **Steps 0, 1�
 | | |
 |---|---|
 | **this file** | where things are, what is next, and how to start on a new machine |
+| [`ROADMAP.md`](ROADMAP.md) | **what is left, on one page, with checkboxes.** Holds *status*; the plans below hold *reasoning*. Change a box here, change the why there |
 | [`SPLIT-PLAN.md`](SPLIT-PLAN.md) | **the current work.** Two products from one engine: what divides, what must not, and the sequence. Its §4.1 carries two corrections found while executing it — read those, they are the shape of the problem |
 | [`QA-ROADMAP.md`](QA-ROADMAP.md) | the eight-item QA direction, closed. **Section 0 is the house rules — read it before touching anything** |
 | [`MEMORY-PLAN.md`](MEMORY-PLAN.md) | skills as a tiered artifact, and the memory of applications (built — see its §4 progress notes). Also holds the shell/tooling notes section 0 of the roadmap lacks |

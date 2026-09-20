@@ -801,6 +801,12 @@ Each step ends the way this repository requires: `npm test` green with zero FAIL
 web/tsconfig.json` clean, `npm run build` in `web/` ok, the docs page updated, push, `build.json` shows the
 commit, and one concrete thing named for the owner to check.
 
+**Ticking boxes lives in [`ROADMAP.md`](ROADMAP.md)** (since 2026-09-20), which tracks these steps and the
+leftovers of every other plan on one page. This section keeps what a tracker cannot carry: why each step
+exists, what "done" means for it, and the corrections found while doing it. Two lists of the same work
+drift within a week — so the roadmap links here rather than restating, and when a step's shape changes it
+changes here first.
+
 **Rewritten 2026-09-18**, after a day in which the owner made six decisions that changed what was left. What
 changed, in one line each: the Dashboard, the Gallery and Teams left P1 whole, so §5.2 shrank from a page
 split to one query parameter; P1 runs on the local agent alone; Activity became Logs; and two of the
@@ -843,7 +849,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 | **§5.5-B** threads with conversation state | A second kind of memory beside `app_memory`, and a `thread_id` answered again in the extension and the desktop driver. Wanted only if 5.5-A shows people asking follow-ups |
 | **§7.1** the PWA | Still the right thing for a phone that is not a chat app. Behind the messenger because the messenger costs a token and this costs a mobile layout |
 | **§6.3 + .NET 10** packaging the Windows agent | The technical answer is settled (yes, .NET 10, Windows first). The commercial one is not: nothing has been measured saying the installer is what loses people. Ask one buyer before buying a certificate |
-| **Attachments with their own field** | Today an attached file is part of the goal and is capped at 4000 characters, because that is what the queue path stores. A real attachment field would have to cross the queue, three loops and the extension — worth it only when somebody hits the cap for a real reason |
+| **Attachments with their own field** | An attached file is part of the goal, and the cap was 4000 characters because that is what the queue stored. **The premise changed on 2026-09-20**: the cap is 20 000, in one constant all three doors read, paid for by putting the opening message inside the cached prefix (`withCachedOpening`, `api/_vision.mjs`) — the goal never changes during a run, and it was being re-sent at full price on every turn. A separate field would still have to cross the queue, three loops and the extension; now it has to wait for somebody to hit **20 000** for a real reason |
 | **Replacing `@insightis/ui`** | 228 vendored files from another Devart product. The name never reaches a built bundle and source maps are not published, so the exposure is the repository and the Sentry project. Only needed if sources are ever handed to a client |
 | ~~0~~ | `db/022_queue_machine.sql`'s header — **already fixed; the roadmap row was stale, 2026-09-18** | Its header has said `ПРИМЕНЕНА 2026-09-11` for a week. The row survived two rewrites of this plan because nobody checked the file, which is the whole failure mode a housekeeping list has: it outlives the housekeeping |
 
