@@ -39,8 +39,14 @@ concrete thing named for the owner to check.
 - [ ] **13 · Transcription route** — dictation through OpenAI, server-held key, capped, its own `LIMITS`
       key. Ships **with** the sentence that says where the audio goes, before the microphone is armed:
       it reverses the on-device promise `dictation.ts` currently makes. [§7](SPLIT-PLAN.md)
-- [ ] **14 · One messenger channel (Telegram)** — a message becomes a `run_queue` row; unknown senders are
-      paired, not served. [§7.2](SPLIT-PLAN.md) · design notes below
+- [ ] **14a · Telegram as a front door** — type, attach, read the plan, press Approve, *then* a `run_queue`
+      row. Unknown senders are paired, not served. Touches no driver and neither agent: approval happens
+      before the run exists. [§7.2](SPLIT-PLAN.md) · design notes below
+- [ ] **14b · A checkpoint answered from the messenger** — the cloud path is ungated on purpose (*"нет шлюза
+      — нет инструмента"*, `api/_brain.mjs`). A messenger is the first thing that makes "somebody is
+      watching" true there, and it costs a waiting state on `run_queue`, a pause the worker protocol can
+      express, the same pause handled in PowerShell **and** Swift, and a timeout that fails with words.
+      Bigger than 14a, and a safety gain for runs that have none today. [§7.2](SPLIT-PLAN.md)
 - [ ] **15 · Docs set split into two indexes** — each product's documentation should read as one product's.
       [§12](SPLIT-PLAN.md)
 

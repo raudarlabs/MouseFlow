@@ -758,6 +758,68 @@ enough to queue work on somebody's computer.
 pairing rule, `mouseflow_status` answered before anything is queued, and checkpoint gates on anything
 one-way. The PWA stays on the list; it stops being the *first* thing.
 
+#### The whole chat core in the bot, not only an ingress (owner, 2026-09-20)
+
+> «а мы сможем сделать там полноценного бота? тоесть перенести наше ядро чата — чтобы юзер тоже вводил
+> текст или аттачил файл, мы строили план — и он нажимал approve»
+
+**Yes, and the first surprise is that the flow he describes needs no new engine machinery at all.** Typing a
+sentence, attaching a file, seeing a plan and pressing *Approve* all happen **before** the run starts — which
+is to say before a `run_queue` row exists. Everything in that sentence is already built and is reachable from
+a serverless function:
+
+| What the owner asked for | What serves it |
+|---|---|
+| types text | one message body → the goal |
+| attaches a file | the same text-extraction Create does; the cap is 20 000 characters since 2026-09-20 |
+| we build a plan | `askForPlan` — a separate model call returning `{title, checkpoints[]}`, deliberately *before* the loop |
+| presses approve | an inline keyboard button → `queueOne` → the machine claims it with the same `?worker=claim` |
+| watches it | `said`, the run log, `run_artifact` evidence frames — a frame is a photo a bot can send |
+
+So **step 14 is two steps, and they are not the same size.** Naming them apart is the point of this note:
+
+**14a — the messenger as a front door, approval BEFORE the run.** Webhook, the four stranger states, the
+pairing rule, the plan, the button, the queue row, the outcome posted back. Nothing in the decision loop is
+touched, and nothing in either agent. This is the owner's sentence, end to end.
+
+**14b — a checkpoint answered from the messenger, DURING the run.** This is the expensive one, and the code
+says why in its own words (`api/_brain.mjs`, above `toolsFor`):
+
+> «Инструмент чекпоинта предлагается только когда есть кому ответить: модель, которой дали средство
+> остановиться там, где остановка ничем не обрабатывается, встанет навсегда. Нет шлюза — нет инструмента, и
+> это решение принимает драйвер, потому что только он знает, смотрит ли кто-нибудь.»
+
+The cloud driver therefore calls `toolsFor(false, …)` (`api/_step.mjs`) and the model never sees
+`reached_checkpoint`. A messenger is the first thing that makes "somebody is watching" true on that path, and
+turning the gate on there costs four things, none of them Telegram-shaped:
+
+1. **A waiting state on the row.** `run_queue.state` is `queued → claimed → done | failed`, and its own
+   comment says *"nothing goes back"*. Waiting is not going back — it is a fifth value — but the claim sweep,
+   the staleness expiry and `queueOne`'s busy check all read that column and all three must learn it.
+2. **The agent has to survive a pause**, in PowerShell *and* in Swift. Today the reply to step *n* is what
+   produces step *n+1*; a pause is a reply that says "ask again, nothing to do", which is a new shape in the
+   worker protocol and therefore a change in two languages.
+3. **A timeout is not optional.** A run that waits forever holds the one mouse — exactly the failure the
+   comment above predicts. The wait has a ceiling and the ceiling fails the run **with words**.
+4. **The answer arrives asynchronously**, from a webhook, and must be matched to the run that asked — which
+   is the same `(sender → account)` mapping 14a already has to build.
+
+**14b is a safety improvement, not only a feature.** Cloud runs are ungated *today*: a run started by
+`mouseflow_do` from a phone has no gate on anything one-way, because there was no one to ask. This gives the
+ungated path its first mouth.
+
+**One implementation, many readers — the plan builder has to move.** `askForPlan` lives in
+`web/src/lib/plan.ts`, in the browser bundle, and a serverless route cannot import the web app. The prompt,
+the `outline` tool schema and the parse move to `api/_plan.mjs`; `plan.ts` keeps the fetch and imports the
+rest, the way `web/src/features/create/attach.ts` imports `GOAL_MAX` from `api/_brain.mjs`. Two prompts that
+produce "the plan" would drift, and the one that drifts is always the one nobody is looking at.
+
+**What 14a must not do quietly.** A bot token in an environment variable is a door to a real mouse; `WHERE`
+already exists so that one refusal is worded once, and the same discipline applies here. An unknown sender is
+**paired, not served**; a rate limit is ours to add; an edited message never replies; the sender **id** is
+stored, never the name. And the run still refuses if `workerSeen` says no machine has ever taken work —
+"press Approve" must not be the first place somebody learns their computer was asleep.
+
 ---
 
 ## 8. Limits, and what a second deployment would cost

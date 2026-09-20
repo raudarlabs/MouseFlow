@@ -12,74 +12,30 @@
  * и понимаете, что вас поняли не так, ДО того как что-то нажато на вашей машине. Ровно это и стоит одного
  * лишнего вызова модели.
  *
+ * ЧТО ОТСЮДА УЕХАЛО И ПОЧЕМУ. Промпт, схема инструмента `outline` и разбор ответа лежат в api/_plan.mjs:
+ * у плана появился второй зритель - мессенджер строит его на сервере, до постановки в очередь
+ * (SPLIT-PLAN §7.2, шаг 14a), а серверная функция не может импортировать веб-приложение. Здесь остались
+ * fetch и слова отказов: у страницы своя дверь (кука на /api/claude) и свой способ объяснить её ошибку.
+ *
  * СТРУКТУРА через инструмент, а не через «ответь JSON». Прокси уже пробрасывает `tools` и `tool_choice`
  * (api/claude.js), а модель, которой велено вызвать инструмент, отдаёт валидный объект по схеме - в отличие
  * от модели, которую попросили «вернуть JSON» и которая обернёт его в три абзаца вежливости.
  */
-import { mediaType } from './desktop-engine';
+import { planFrom, planRequest } from '../../../api/_plan.mjs';
 import { planModel } from './model-config';
+
+/* Тип плана - оттуда же, откуда промпт: страница и вебхук обязаны показывать одну и ту же форму.
+ * Реэкспортом, потому что его импортируют из этого файла с тех пор, как он здесь появился. */
+import type { Plan } from '../../../api/_plan.mjs';
+
+export type { Checkpoint, Plan } from '../../../api/_plan.mjs';
 
 const MODEL = 'claude-opus-5'; // the fallback; the configured choice comes from model-config
 const TIMEOUT_MS = 45_000;
 
-/** Немного. План - это то, что читают за пять секунд перед нажатием, а не документ. */
-const CHECKPOINTS_MAX = 6;
-
-export interface Checkpoint {
-  title: string;
-  detail: string;
-}
-
-export interface Plan {
-  /** Короткое имя того, что будет сделано. Не цель дословно: цель - предложение, это - заголовок. */
-  title: string;
-  checkpoints: Checkpoint[];
-}
-
-const OUTLINE_TOOL = {
-  name: 'outline',
-  description: 'Say what you intend to do, before doing any of it.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      title: {
-        type: 'string',
-        description: 'Four to eight words naming the task, as a person would refer to it later.',
-      },
-      checkpoints: {
-        type: 'array',
-        description: `Three to ${CHECKPOINTS_MAX} checkpoints, in order.`,
-        items: {
-          type: 'object',
-          properties: {
-            title: { type: 'string', description: 'Two to five words. What this stage achieves.' },
-            detail: { type: 'string', description: 'One sentence on how, and what you will check.' },
-          },
-          required: ['title', 'detail'],
-        },
-      },
-    },
-    required: ['title', 'checkpoints'],
-  },
-};
-
-const SYSTEM = `You are about to operate a real computer for someone, and you are showing them your intention first so they can correct you before anything happens.
-
-Write the checkpoints you expect to pass through. Rules:
-- Three to ${CHECKPOINTS_MAX}. Fewer than three is not a plan; more than six is a script, and you cannot know the screen that far ahead.
-- Each one is a state you will have REACHED, not a keystroke. "The reply is drafted", not "click the reply button".
-- Say what you will check before a one-way action - sending, submitting, deleting - because that is the checkpoint somebody wants to see.
-- If the goal is ambiguous, do not resolve the ambiguity silently. Make the reading you intend explicit in a checkpoint, so it can be corrected.
-- If the goal asks for something you must refuse - typing a password, an irreversible action it did not ask for - say so in a checkpoint instead of planning around it.
-- You have not looked at the screen yet unless a picture is attached. Do not claim to know what is on it.`;
-
 const clip = (value: unknown, max: number) =>
   String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
 
-/**
- * Один вызов, до цикла. Возвращает план или причину, по которой его нет — и «нет плана» никогда не должно
- * молча превращаться в «запускаем без предупреждения»: решает вызывающий, а не этот файл.
- */
 export async function askForPlan(
   goal: string,
   where: 'desktop' | 'browser',
@@ -89,25 +45,7 @@ export async function askForPlan(
   const cutoff = new AbortController();
   const timer = setTimeout(() => cutoff.abort(), TIMEOUT_MS);
 
-  /* Картинка приезжает первой, потому что и в цикле она приезжает первой: модель, которой сначала дали
-   * текст, отвечает на текст и смотрит на картинку как на подтверждение. */
-  const content: unknown[] = [];
-  if (screen) {
-    content.push({
-      type: 'image',
-      /* mediaType(), not `image/${format}`: the agent already answers a full MIME type, so prefixing
-       * produced "image/image/jpeg" and the API answers 400 to anything but its four exact strings.
-       * The helper promotes what it recognises and falls back to JPEG - what both agents encode -
-       * rather than forwarding a remote value to be refused. */
-      source: { type: 'base64', media_type: mediaType(screen.format), data: screen.png },
-    });
-  }
-  content.push({
-    type: 'text',
-    text: `${goal}\n\nThis will run ${
-      where === 'desktop' ? 'on the whole desktop of this machine' : 'in one tab of this browser'
-    }.${screen ? ' The picture above is what is on screen right now.' : ''}`,
-  });
+  const ask = planRequest({ goal, where, screen });
 
   let res: Response;
   let text: string;
@@ -119,13 +57,7 @@ export async function askForPlan(
       signal: cutoff.signal,
       body: JSON.stringify({
         model: await planModel().catch(() => MODEL),
-        max_tokens: 900,
-        system: SYSTEM,
-        tools: [OUTLINE_TOOL],
-        /* Заставленный вызов. Без него модель иногда отвечает прозой, и разбирать прозу обратно в чекпоинты
-         * значит угадывать - а угаданный план хуже отсутствующего. */
-        tool_choice: { type: 'tool', name: 'outline' },
-        messages: [{ role: 'user', content }],
+        ...ask,
       }),
     });
     text = await res.text();
@@ -158,25 +90,5 @@ export async function askForPlan(
     return { error: 'the model answered with something that is not JSON' };
   }
 
-  const blocks = Array.isArray(body?.content) ? body.content : [];
-  const call = blocks.find(
-    (b): b is { type: string; name: string; input?: unknown } =>
-      !!b && typeof b === 'object' && (b as { type?: string }).type === 'tool_use',
-  );
-  const input = call?.input as { title?: unknown; checkpoints?: unknown } | undefined;
-  if (!input) return { error: 'the model did not answer with a plan' };
-
-  const checkpoints = (Array.isArray(input.checkpoints) ? input.checkpoints : [])
-    .map((row) => ({
-      title: clip((row as { title?: unknown })?.title, 60),
-      detail: clip((row as { detail?: unknown })?.detail, 220),
-    }))
-    /* Пустой чекпоинт - это строка, которую человек прочтёт как «шаг, о котором ничего не сказали».
-     * Выбрасывается, а не показывается заглушкой. */
-    .filter((row) => row.title || row.detail)
-    .slice(0, CHECKPOINTS_MAX);
-
-  if (!checkpoints.length) return { error: 'the plan came back empty' };
-
-  return { plan: { title: clip(input.title, 80) || clip(goal, 80), checkpoints } };
+  return planFrom(body, goal);
 }
