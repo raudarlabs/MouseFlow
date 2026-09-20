@@ -10,7 +10,7 @@
 import { flowBody, parseMacro, summarize } from './_macro.mjs';
 import { flowFor } from './_flow-for.mjs';
 import { advance, startLoop } from './_step.mjs';
-import { EARLIER_RUNS, earlierRuns } from './_brain.mjs';
+import { EARLIER_RUNS, GOAL_MAX, earlierRuns } from './_brain.mjs';
 import { ALLOWED_MODELS } from './_vision.mjs';
 import { readSettings } from './admin.js';
 import { fillGoal, missingParams } from '../extension/skills.js';
@@ -598,7 +598,7 @@ export async function workerRoute(action, req, res, sql, who) {
             (user_id, client_id, kind, goal, model, flow_id, outcome, summary, error,
              steps, said, extension, started_at, finished_at, checks, case_id)
           values
-            (${who.id}, ${job.id}, 'agent', ${String(state.goal || '').slice(0, 4000)},
+            (${who.id}, ${job.id}, 'agent', ${String(state.goal || '').slice(0, GOAL_MAX)},
              ${String(state.model || '').slice(0, 60)}, ${String(job.flow_id).slice(0, 80)},
              ${outcome}, ${said ? String(said).slice(0, 2000) : null},
              ${error ? String(error).slice(0, 2000) : null},

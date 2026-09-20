@@ -52,6 +52,8 @@ export interface Message {
 export const WAVE_TURNS: number;
 export const MAX_WAVES: number;
 export const DEFAULT_SHOT_W: number;
+/** Знаков на цель вместе с приложенными файлами. Один потолок на Create, очередь и страницу. */
+export const GOAL_MAX: number;
 export const MAX_TOKENS: number;
 export const SETTLE_MAX_MS: number;
 export const SYSTEM: string;

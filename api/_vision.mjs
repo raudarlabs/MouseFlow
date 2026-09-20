@@ -52,13 +52,56 @@ export const MAX_BODY_BYTES = 4_000_000;
  * для модели - то же самое. Массив на входе пропускается как есть: вызывающий, который уже собрал блоки,
  * знает про них больше, чем это место. */
 const EPHEMERAL = { type: 'ephemeral' };
+
+/* ТРЕТЬЯ ОТМЕТКА - НА ПЕРВОМ СООБЩЕНИИ, и вот что она кеширует.
+ *
+ * Префикс запроса - system, tools, messages. Первые две отметки закрывают system+tools; на этом кеш и
+ * кончался, а сразу за ним лежит `messages[0]` - открывающее сообщение, то есть ЦЕЛЬ: что попросили,
+ * признак готовности, фон прошлых прогонов и всё, что человек приложил файлом. За прогон оно не меняется
+ * ни разу, а отправлялось заново на каждом из тринадцати ходов по полной цене. Отметка на нём двигает
+ * границу кеша за него.
+ *
+ * ИМЕННО ЭТО ДЕЛАЕТ ВОЗМОЖНЫМ БОЛЬШОЙ GOAL_MAX (api/_brain.mjs): двадцать килобайт приложенного текста
+ * платятся один раз записью в кеш, а не тринадцать раз отправкой.
+ *
+ * КОПИЕЙ, А НЕ НА МЕСТЕ, и это не стиль. `loop.messages` уезжает в `run_queue.loop` jsonb между ходами
+ * (api/_step.mjs), поэтому отметка, поставленная на месте, СОХРАНИЛАСЬ БЫ В БАЗЕ и уехала бы во все
+ * будущие запросы этого прогона - и в те, где она уже не первая. Тот же довод, по которому ниже копируется
+ * общий массив TOOLS, только цена ошибки выше: там расползлось бы по процессу, здесь - по таблице.
+ *
+ * СТРОКА СТАНОВИТСЯ БЛОКОМ: openingMessage (api/_brain.mjs) отдаёт content строкой, а отметку можно
+ * поставить только на блок. Массив с одним текстовым блоком для модели - то же самое, что строка.
+ *
+ * УЖЕ ОТМЕЧЕННОЕ НЕ ОТМЕЧАЕТСЯ ДВАЖДЫ: вызывающий, собравший блоки сам, знает про них больше. */
+function withCachedOpening(messages) {
+  if (!Array.isArray(messages) || !messages.length) return messages;
+  const first = messages[0];
+  if (!first || typeof first !== 'object') return messages;
+
+  if (typeof first.content === 'string') {
+    if (!first.content) return messages;
+    return [
+      { ...first, content: [{ type: 'text', text: first.content, cache_control: EPHEMERAL }] },
+      ...messages.slice(1),
+    ];
+  }
+  if (Array.isArray(first.content) && first.content.length) {
+    const last = first.content[first.content.length - 1];
+    if (!last || typeof last !== 'object' || last.cache_control) return messages;
+    return [
+      { ...first, content: [...first.content.slice(0, -1), { ...last, cache_control: EPHEMERAL }] },
+      ...messages.slice(1),
+    ];
+  }
+  return messages;
+}
 /* Rebuilt field by field rather than forwarded wholesale, so a caller cannot smuggle in options this is not
  * meant to pay for. */
 export function payloadFor(body) {
   const payload = {
     model: body.model,
     max_tokens: Math.min(Number(body.max_tokens) || 4096, MAX_TOKENS_CAP),
-    messages: body.messages,
+    messages: withCachedOpening(body.messages),
   };
   if (typeof body.system === 'string' && body.system) {
     payload.system = [{ type: 'text', text: body.system, cache_control: EPHEMERAL }];

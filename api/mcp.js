@@ -51,6 +51,8 @@ import {
   inProfile, instructionsFor, profileAsked, toolsFor,
 } from './_mcp-tools.mjs';
 import { workerRoute } from './_mcp-worker.mjs';
+/* Потолок цели - один на все три двери, что её сохраняют. См. заметку у GOAL_MAX в _brain.mjs. */
+import { GOAL_MAX } from './_brain.mjs';
 
 /* ------------------------------------------------------------------------------- the route */
 
@@ -229,7 +231,7 @@ async function handler(req, res) {
     const id = String(body.id || '').trim();
     if (!/^[A-Za-z0-9_.:-]{1,80}$/.test(id)) return res.status(400).json({ error: 'that is not a run id' });
     if (verb === 'start') {
-      const loop = { goal: String(body.goal || '').slice(0, 4000), steps: [], startedAt: new Date().toISOString() };
+      const loop = { goal: String(body.goal || '').slice(0, GOAL_MAX), steps: [], startedAt: new Date().toISOString() };
       await sql`
         insert into run_queue (id, user_id, flow_id, tool_name, args, state, claimed_by, claimed_at, loop)
         values (${id}, ${who.id}, '#page', 'page', '{}'::jsonb, 'claimed', 'page', now(), ${JSON.stringify(loop)})

@@ -56,6 +56,49 @@ group('ПРЕФИКС КЕШИРУЕТСЯ - то, что не менялось,
     JSON.stringify(Object.keys(out.tools[2])));
 }
 
+/* ТРЕТЬЯ ОТМЕТКА - НА ЦЕЛИ. Открывающее сообщение за прогон не меняется ни разу, а лежит сразу за
+ * границей кеша, то есть уходило заново на каждом ходу по полной цене. Это же и есть то, что делает
+ * возможным GOAL_MAX в 20000 знаков: приложенный файл платится записью кеша один раз, а не тринадцать
+ * раз отправкой. */
+group('ЦЕЛЬ ТОЖЕ КЕШИРУЕТСЯ - она не меняется за прогон, а стоила как меняющаяся');
+{
+  const out = payloadFor({
+    model: 'claude-opus-5', system: 's', tools: [{ name: 'finish' }],
+    messages: [{ role: 'user', content: 'Send the invoice' }, { role: 'assistant', content: 'ok' }],
+  });
+  check('строка стала блоком - на строку отметку не поставить',
+    Array.isArray(out.messages[0].content) && out.messages[0].content[0].type === 'text',
+    JSON.stringify(out.messages[0].content));
+  check('и текст тот же, слово в слово', out.messages[0].content[0].text === 'Send the invoice');
+  check('и он помечен', JSON.stringify(out.messages[0].content[0].cache_control) === EPH);
+  check('а следующие сообщения не тронуты - кеш кончается на цели',
+    out.messages[1].content === 'ok', JSON.stringify(out.messages[1]));
+
+  /* НЕ НА МЕСТЕ. `loop.messages` уезжает в run_queue.loop между ходами: отметка, поставленная на месте,
+   * сохранилась бы В БАЗЕ и вернулась бы во все будущие запросы прогона, уже не первым сообщением. */
+  const shared = [{ role: 'user', content: 'Send the invoice' }];
+  payloadFor({ model: 'claude-opus-5', messages: shared });
+  check('исходный массив сообщений НЕ мутирован - иначе отметка уехала бы в базу',
+    shared[0].content === 'Send the invoice', JSON.stringify(shared[0]));
+
+  /* Вызывающий, собравший блоки сам, знает про них больше: отметка ставится на последний блок. */
+  const blocks = payloadFor({
+    model: 'claude-opus-5',
+    messages: [{ role: 'user', content: [{ type: 'image', source: {} }, { type: 'text', text: 'goal' }] }],
+  });
+  check('у готовых блоков помечается последний',
+    JSON.stringify(blocks.messages[0].content[1].cache_control) === EPH
+      && !blocks.messages[0].content[0].cache_control,
+    JSON.stringify(blocks.messages[0].content));
+
+  const already = [{ role: 'user', content: [{ type: 'text', text: 'g', cache_control: { type: 'ephemeral' } }] }];
+  check('уже отмеченное не отмечается дважды',
+    payloadFor({ model: 'claude-opus-5', messages: already }).messages === already);
+
+  check('пустых сообщений это не трогает',
+    JSON.stringify(payloadFor({ model: 'claude-opus-5', messages: [] }).messages) === '[]');
+}
+
 group('НА ЧЁМ ЭТО ДЕРЖИТСЯ: `finish` - последний инструмент, во всех режимах');
 {
   /* Отметка ставится на ПОЗИЦИЮ. Пока finish последний, кешируется вся схема; уедь он из конца - и
