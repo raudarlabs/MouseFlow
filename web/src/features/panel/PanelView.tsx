@@ -33,8 +33,6 @@ import { STAYS_HERE, WHERE_AUDIO_GOES } from '../../../../api/_transcribe.mjs';
  * замечает задержку примерно с этого порога. Чаще - это опрос ради ощущения, а не ради ответа. */
 const POLL_MS = 2000;
 
-const TOLD_KEY = 'mf.panel.dictation.told';
-
 type Stage =
   | { at: 'writing' }
   | { at: 'planning' }
@@ -47,21 +45,12 @@ export function PanelView() {
   const [stage, setStage] = useState<Stage>({ at: 'writing' });
   const [problem, setProblem] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement | null>(null);
-  /* Читал ли уже этот человек, куда уходит голос. Локально и на эту машину: обещание показывается до
-   * первой диктовки, а не каждый раз - см. строку под полем. */
-  const [told, setTold] = useState(() => {
-    try { return localStorage.getItem(TOLD_KEY) === 'yes'; } catch (_) { return false; }
-  });
 
   /* Надиктованное дописывается к набранному, а не заменяет его: человек, начавший печатать и
    * договоривший голосом, имел в виду одну просьбу. Тот же выбор, что у композера Create. */
   const dictation = useDictation((text) => {
     setGoal((was) => (was ? `${was} ${text}` : text).slice(0, GOAL_MAX));
     box.current?.focus();
-    /* Прочитано доказывается НЕ нажатием, а состоявшейся диктовкой: нажать и передумать - это не «я
-     * понял, куда уходит звук». */
-    setTold(true);
-    try { localStorage.setItem(TOLD_KEY, 'yes'); } catch (_) { /* приватное окно - покажем ещё раз */ }
   });
 
   /* Окно открывается по горячей клавише и должно быть готово принимать текст сразу - иначе первое, что
@@ -174,88 +163,94 @@ export function PanelView() {
         </>
       ) : (
         <>
-          <textarea
-            ref={box}
-            value={goal}
-            onChange={(ev) => setGoal(ev.target.value.slice(0, GOAL_MAX))}
-            onKeyDown={(ev) => {
-              /* Enter отправляет, Shift+Enter переносит строку - как в любом поле, куда пишут фразу, а
-               * не документ. Панель открывают ради одной просьбы. */
-              if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); void ask(); }
-              /* ESCAPE ЗДЕСЬ НЕ ОБРАБАТЫВАЕТСЯ НАРОЧНО. Закрывает панель агент - см. монитор в
-               * Panel.build(). `window.close()` отсюда был мёртвым кодом: WebKit исполняет его только
-               * для окна, открытого скриптом, а наше открыто загрузкой. И даже живым он работал бы
-               * только на этой странице, то есть не на экране входа - там, где закрыть нужнее всего. */
-            }}
-            disabled={stage.at === 'planning'}
-            rows={3}
-            placeholder={dictation.recognising
-              ? 'Recognising what you said…'
-              : dictation.listening
-                ? 'Listening — say what it should do'
-                : 'What should it do on this computer?'}
+          {/* ПОЛЕ И КНОПКИ - ОДИН БЛОК, а не поле и панель под ним. Рамка одна, кнопки внутри неё
+            * справа снизу: так устроен всякий композер, к которому человек привык, и так окно на одну
+            * фразу тратит на обвязку ровно одну строку.
+            *
+            * Рамку рисует ОБЁРТКА, а не textarea: у поля её нет вовсе, иначе внутри общей рамки была бы
+            * вторая. Фокус при этом обязан быть виден - его подсвечивает обёртка через focus-within. */}
+          <div
             className={cn(
-              'min-h-0 flex-1 resize-none rounded border border-stroke bg-surface-card2 px-2 py-1.5',
-              'text-[0.9rem] text-ink-primary placeholder:text-ink-inactive focus:outline-none',
-              'disabled:opacity-disabled',
+              'flex min-h-0 flex-1 flex-col rounded-lg border border-stroke bg-surface-card2',
+              'focus-within:border-ink-inactive',
             )}
-          />
-          {/* ОДНА СТРОКА ВНИЗУ: язык, микрофон, отправка - справа, как в любом композере. Панель это
-            * окно на одну фразу, и каждая строка, которую оно занимает, отнимается у текста. */}
-          <div className="flex items-center gap-1.5">
-            {/* КУДА УХОДИТ ГОЛОС - СКАЗАНО ДО ПЕРВОЙ ДИКТОВКИ И ТОЛЬКО ДО НЕЁ.
-              *
-              * Правило §7 требует, чтобы это стояло на экране ПРЕЖДЕ, чем включат микрофон, - и оно не
-              * про постоянную строку, а про момент. Кто уже диктовал, тот прочитал; место в маленьком
-              * окне ему дороже повторения. Кто ещё нет - прочитает раньше, чем нажмёт.
-              *
-              * И остаётся вторым способом: подпись на самой кнопке (title), которая никуда не девается. */}
-            {dictation.supported && !told && (
-              <Typography variant="p" className="flex-1 text-[0.7rem] text-ink-inactive">
-                {dictation.via === 'openai' ? WHERE_AUDIO_GOES : STAYS_HERE}
-              </Typography>
-            )}
-            <span className="flex-1" />
-            {dictation.supported && (
-              <select
-                value={dictation.lang}
-                onChange={(ev) => dictation.setLang(ev.target.value)}
-                aria-label="Language to dictate in"
-                className={cn(
-                  'rounded border border-stroke bg-surface-card2 px-1.5 py-1 text-[0.75rem]',
-                  'text-ink-body focus:outline-none',
-                )}
-              >
-                {dictation.choices.map((tag) => (
-                  <option key={tag} value={tag}>{langName(tag)}</option>
-                ))}
-              </select>
-            )}
-            {dictation.supported && (
+            /* Щелчок по пустому месту рамки - это щелчок по полю: человек целится в «сюда писать», а не
+             * в конкретный прямоугольник внутри. */
+            onMouseDown={(ev) => { if (ev.target === ev.currentTarget) box.current?.focus(); }}
+          >
+            <textarea
+              ref={box}
+              value={goal}
+              onChange={(ev) => setGoal(ev.target.value.slice(0, GOAL_MAX))}
+              onKeyDown={(ev) => {
+                /* Enter отправляет, Shift+Enter переносит строку - как в любом поле, куда пишут фразу, а
+                 * не документ. Панель открывают ради одной просьбы.
+                 *
+                 * ESCAPE ЗДЕСЬ НЕ ОБРАБАТЫВАЕТСЯ НАРОЧНО. Закрывает панель агент - см. монитор в
+                 * Panel.build(). Отсюда это было мёртвым кодом: WebKit исполняет закрытие только для
+                 * окна, открытого скриптом, а наше открыто загрузкой; и работало бы только на этой
+                 * странице, то есть не на экране, где закрыть нужнее всего. */
+                if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); void ask(); }
+              }}
+              disabled={stage.at === 'planning'}
+              placeholder={dictation.recognising
+                ? 'Recognising what you said…'
+                : dictation.listening
+                  ? 'Listening — say what it should do'
+                  : 'What should it do on this computer?'}
+              className={cn(
+                'min-h-0 flex-1 resize-none bg-transparent px-2.5 pt-2 text-[0.9rem]',
+                'text-ink-primary placeholder:text-ink-inactive focus:outline-none',
+                'disabled:opacity-disabled',
+              )}
+            />
+            <div className="flex items-center justify-end gap-1.5 px-2 pb-2">
+              {dictation.supported && (
+                <select
+                  value={dictation.lang}
+                  onChange={(ev) => dictation.setLang(ev.target.value)}
+                  aria-label="Language to dictate in"
+                  className={cn(
+                    'rounded border border-stroke bg-surface-page px-1.5 py-1 text-[0.75rem]',
+                    'text-ink-body focus:outline-none',
+                  )}
+                >
+                  {dictation.choices.map((tag) => (
+                    <option key={tag} value={tag}>{langName(tag)}</option>
+                  ))}
+                </select>
+              )}
+              {dictation.supported && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-pressed={dictation.listening}
+                  aria-label={dictation.listening ? 'Stop dictating' : 'Dictate'}
+                  /* ЕДИНСТВЕННОЕ, ЧТО ОСТАЛОСЬ ОТ ФРАЗЫ ПРО ЗВУК, и это решение владельца (2026-09-21):
+                   * строку он убрал ради места, дважды и явно. Подпись места не занимает и остаётся
+                   * ответом на вопрос «куда уходит мой голос» - см. SPLIT-PLAN §7. */
+                  title={dictation.via === 'openai' ? WHERE_AUDIO_GOES : STAYS_HERE}
+                  disabled={dictation.recognising || stage.at === 'planning'}
+                  onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
+                  className={cn('px-2', dictation.listening && 'text-fb-red-text')}
+                >
+                  {dictation.recognising
+                    ? <Loader2 className="size-4 animate-spin" />
+                    : dictation.listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+                </Button>
+              )}
               <Button
                 size="sm"
-                variant="ghost"
-                aria-pressed={dictation.listening}
-                aria-label={dictation.listening ? 'Stop dictating' : 'Dictate'}
-                title={dictation.via === 'openai' ? WHERE_AUDIO_GOES : STAYS_HERE}
-                disabled={dictation.recognising || stage.at === 'planning'}
-                onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
-                className={cn('px-2', dictation.listening && 'text-fb-red-text')}
-              >
-                {dictation.recognising
+                aria-label="Plan it"
+                disabled={!goal.trim() || stage.at === 'planning'}
+                leftSlot={stage.at === 'planning'
                   ? <Loader2 className="size-4 animate-spin" />
-                  : dictation.listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+                  : <Send className="size-4" />}
+                onClick={() => void ask()}
+              >
+                {stage.at === 'planning' ? 'Planning…' : 'Plan it'}
               </Button>
-            )}
-            <Button
-              size="sm"
-              aria-label="Plan it"
-              disabled={!goal.trim() || stage.at === 'planning'}
-              leftSlot={stage.at === 'planning' ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-              onClick={() => void ask()}
-            >
-              {stage.at === 'planning' ? 'Planning…' : 'Plan it'}
-            </Button>
+            </div>
           </div>
         </>
       )}

@@ -790,6 +790,23 @@ page called `window.close()`, which WebKit only honours for a window script open
 only on `/panel` — not on the screen where somebody was actually stuck. The titlebar is ordinary now, and
 Escape is handled by the agent with a local key monitor, so it closes the panel whatever it is showing.
 
+#### A departure from §7, made by the owner and written down as one
+
+§7 says the sentence naming where the audio goes is *"shown before the microphone is armed, not after"*.
+**In the panel it is not shown at all.** The owner asked for it removed, twice and explicitly, and the
+reason is real: the panel is a window for one sentence, and the paragraph was taking a quarter of its
+height. The objection was raised once — somebody who only ever uses the panel would never read it — and
+overruled. That is the owner's call to make, and it is recorded here rather than left as a rule the code
+quietly stopped following.
+
+**What survives, and why it was not removed with the rest:** the sentence is the mic button's `title`. It
+costs no space, so it does not argue with the reason the line went, and it keeps the answer to "where
+does my voice go" one hover away instead of nowhere. The full sentence still stands on the Create page,
+which is the surface where there is room for it.
+
+The controls moved inside the input box at the owner's request — language, microphone, send, bottom right
+of one rounded field, the way every composer a person has already used is built.
+
 2. **A tray/hotkey that opens a small dictation window.** The agent already serves loopback; the window is a
    browser window, so the recogniser stays in one place.
 3. **The agent records the audio itself and posts it up.** With OpenAI doing the recognition this stops
