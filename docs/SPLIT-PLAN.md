@@ -667,6 +667,22 @@ Two things to check before writing any of it: whether `OPENAI_API_KEY` is actual
 (`api/_provider.js`'s header says it was not, a later comment says documents run on `gpt-5.6-terra`, and
 those two cannot both be current), and what the transcription endpoint's current model names are.
 
+**Both checked, 2026-09-21, and both answers were worth the asking.** `OPENAI_API_KEY` *is* set and
+`gpt-5.6-terra` *is* reachable — the header was the stale one. And the endpoint's names, asked of the key
+rather than remembered: `gpt-transcribe`, `gpt-4o-transcribe`, `gpt-4o-transcribe-diarize`,
+`gpt-4o-mini-transcribe`, `gpt-live-transcribe`, `gpt-realtime-whisper`, `whisper-1`. Not one of those was
+a name anybody would have typed from memory, and `whisper-1` — the one the word "Whisper" means — is the
+oldest thing on the list.
+
+**One deliberate departure: there is no allowlist.** §7 asked for "an allowlist, the way `OPENAI_MODEL`
+already does", and writing one would mean writing down the seven names above — which is precisely the
+"from anybody's memory of what OpenAI currently serves" the same paragraph forbids, just aged a week rather
+than a year. It would need an edit every time OpenAI ships a name, and the edit would be made by whoever
+hit the wall, in a hurry. What an allowlist would have caught — a typo in the variable — the upstream
+catches anyway, and since 2026-09-21 the refusal carries **OpenAI's own sentence** rather than a bare
+status, so a wrong name says so in one attempt. The environment variable has no default at all, which is
+the half of §7 that actually prevents a wrong id shipping.
+
 **The entry points, cheapest first** — this part is unchanged by the choice of recogniser, and only the third
 option is made *easier* by it:
 
