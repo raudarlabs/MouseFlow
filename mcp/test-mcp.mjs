@@ -3135,8 +3135,15 @@ check('and a role that says "not a text box" still wins over the inference',
   classifyTyping({ action: 'type', control: 'Send', role: 'AXButton', keys: 22 }, null, 'Enter').field === false);
 
 /* Dictation sends the user's voice somewhere. Which somewhere is a product decision, not a detail, and
- * these hold it: local first, and said out loud either way. */
-group('dictation prefers the machine, and says so when it cannot');
+ * these hold it: said out loud either way, and the person can choose.
+ *
+ * THE PREMISE OF THIS GROUP REVERSED ON 2026-09-21, and it is rewritten rather than patched. It used to
+ * read "prefers the machine": on-device first, a server only when the language pack was missing. The
+ * owner chose OpenAI for quality - a real argument, since a dictated goal is full of application names,
+ * button labels and Russian - and that makes the audio leave the machine EVERY time. The on-device path
+ * is kept as the other half of a switch rather than deleted, and what is pinned below is the pair: two
+ * recognisers, one switch, one sentence saying which is in use (SPLIT-PLAN §7, шаг 13). */
+group('dictation says where the voice goes, and the choice is the person\'s');
 const speech = read('../web/src/features/create/dictation.ts');
 check('on-device availability is asked BEFORE falling back to a server',
   /available\(\{ langs: \[lang\], processLocally: true/.test(speech)
@@ -3156,9 +3163,38 @@ check('and changing it stops recognition, so the control cannot show one languag
   /const setLang = useCallback\(\(tag: string\) => \{[\s\S]{0,120}live\.current\?\.abort\(\)/.test(speech));
 check('the choices are deduped by base language, so "ru" and "ru-RU" are not two lines',
   /have\.split\('-'\)\[0\] === base/.test(speech));
+const composer = read('../web/src/features/create/CreateView.tsx');
+/* ОДНА ФРАЗА НА ВСЕХ. Страница показывает её, маршрут отдаёт её же: две редакции обещания о том, куда
+ * уходит голос, - это одно обещание и одна ложь. Поэтому пин смотрит не на текст, а на ИМПОРТ. */
 check('where the audio goes is on screen before the microphone is pressed',
-  /dictation is sent to Google to be recognised/.test(read('../web/src/features/create/CreateView.tsx'))
-  && /dictation stays on this computer/.test(read('../web/src/features/create/CreateView.tsx')));
+  /WHERE_AUDIO_GOES/.test(composer) && /STAYS_HERE/.test(composer)
+  && /from '\.\.\/\.\.\/\.\.\/\.\.\/api\/_transcribe\.mjs'/.test(composer));
+/* ЗНАЧЕНИЯМИ, А НЕ ИСХОДНИКОМ: строки в модуле склеены по строчкам, и регулярка по тексту поймала бы
+ * перенос, а не смысл. Здесь проверяется ровно то, что прочтёт человек. */
+const audioWords = await import('../api/_transcribe.mjs');
+check('and the sentences themselves say the two things they must',
+  /leaves this computer/.test(audioWords.WHERE_AUDIO_GOES)
+  && /OpenAI/.test(audioWords.WHERE_AUDIO_GOES)
+  && /no audio is sent anywhere/.test(audioWords.STAYS_HERE));
+/* ВЫБОР БЕЗ ВЫХОДА ИЗ НЕГО - НЕ ВЫБОР. С каждой стороны переключателя стоит кнопка на другую. */
+check('and each side of the switch offers the other',
+  /setVia\('browser'\)/.test(composer) && /setVia\('openai'\)/.test(composer));
+check('OpenAI is the default, and the other path is kept rather than deleted',
+  /localStorage\.getItem\(VIA_KEY\) === 'browser' \? 'browser' : 'openai'/.test(speech)
+  && /processLocally = true/.test(speech));
+/* МИКРОФОН НЕ ПЕРЕЖИВАЕТ ЭКРАН. Работающий MediaRecorder держит живой поток с устройства и красную точку
+ * во вкладке; уйти со страницы и оставить его - худшее, что этот файл может сделать. */
+/* МЕСТО, А НЕ СЧЁТ. Первая редакция считала вхождения «остановить дорожки» и требовала «хотя бы два» -
+ * а их три (конец записи, переключатель, уход с экрана), так что удаление ЛЮБОГО одного её проходило.
+ * Проверено мутацией: убрали ровно тот, который тут и сторожат, и пин промолчал. Теперь он смотрит
+ * внутрь размонтирования - то есть в то самое место. */
+const unmount = speech.slice(speech.indexOf('useEffect(() => () => {'));
+check('and the recording stops with the screen, tracks and all',
+  /stream\.getTracks\(\)\.forEach\(\(t\) => t\.stop\(\)\)/.test(unmount.slice(0, 400))
+  && /live\.current\?\.abort\(\)/.test(unmount.slice(0, 400)));
+/* ТРЕТЬЕ СОСТОЯНИЕ есть только у серверного пути: запись кончилась, текста ещё нет. */
+check('the pause between speaking and text is shown, not hidden',
+  /recognising/.test(speech) && /Recognising/.test(composer));
 check('only FINAL speech reaches the goal — interim text would rewrite itself under the cursor',
   /if \(result\.isFinal\) sink\.current\(text\);/.test(speech)
   && /else pending \+= text;/.test(speech));

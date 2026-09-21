@@ -1,20 +1,34 @@
-/* Диктовка цели голосом.
+/* Диктовка цели голосом — ДВА РАСПОЗНАВАТЕЛЯ, ОДИН ПЕРЕКЛЮЧАТЕЛЬ, ОДНА ФРАЗА (SPLIT-PLAN §7, шаг 13).
  *
- * ЛОКАЛЬНО, ЕСЛИ МОЖНО - и это не оптимизация, а главное решение в файле. По умолчанию Chrome отправляет
- * звук с микрофона на свои серверы; для продукта, который смотрит в экран и обещает говорить, что именно
- * уходит с машины, тихо добавить такое было бы повторением ошибки, которую мы уже один раз отзывали.
+ * ЧТО ЗДЕСЬ БЫЛО И ПОЧЕМУ ЭТО НЕ ВЫБРОШЕНО. Файл начинался с решения, которое его заголовок называл
+ * главным: по умолчанию Chrome отправляет звук с микрофона на свои серверы, и для продукта, который
+ * смотрит в чужой экран и обещает говорить, что именно с него уходит, тихо добавить такое было бы
+ * повторением ошибки, которую мы уже один раз отзывали. Поэтому спрашивался `processLocally: true`, и
+ * при наличии языкового пакета звук не покидал машину вовсе.
  *
- * Поэтому порядок такой: спросить `available({ processLocally: true })`, и если язык есть на устройстве -
- * поставить `processLocally = true`, чтобы звук не покидал машину вовсе. Если пакета нет, но он
- * скачиваемый - предложить скачать. Если локально язык не поддерживается - работать через сервер, но
- * СКАЗАТЬ ОБ ЭТОМ до нажатия, а не после.
+ * ЧТО ИЗМЕНИЛОСЬ. Владелец выбрал распознавание у OpenAI - за качество, и довод настоящий: в
+ * продиктованной цели имена приложений, подписи кнопок и русский, то есть ровно то, где браузерный
+ * распознаватель слабее всего. Проверено на живом голосовом в телеграме в тот же день.
  *
- * `where` - это то, что читает человек, поэтому оно часть состояния, а не деталь реализации.
+ * ЦЕНА НАЗВАНА, А НЕ УМОЛЧАНА: в этом режиме звук уходит с машины КАЖДЫЙ РАЗ. Поэтому решение прежнего
+ * заголовка не выброшено, а стало ВТОРЫМ РЕЖИМОМ - и переключателем, а не мёртвым кодом. Человек с
+ * языковым пакетом, который предпочтёт не отправлять звук, по-прежнему может диктовать.
+ *
+ * `where` - это то, что читает человек, поэтому оно часть состояния, а не деталь реализации. И сами
+ * фразы про то, куда уходит звук, живут в api/_transcribe.mjs, у маршрута: две редакции одного обещания -
+ * это одно обещание и одна ложь.
+ *
+ * ДВА РЕЖИМА РАБОТАЮТ ПО-РАЗНОМУ, И ЭТО ВИДНО ГЛАЗОМ. Браузерный отдаёт слова по мере речи (`interim`);
+ * серверный не отдаёт ничего, пока не остановишь запись, - сначала `listening`, потом `recognising`, и
+ * только потом текст. Скрывать эту разницу нечем и незачем: кнопка говорит, что происходит.
  *
  * Типы объявлены здесь: lib.dom ещё не знает ни `processLocally`, ни статических available()/install(),
  * а `any` в этом месте спрятал бы ровно те поля, ради которых всё написано.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+/* Фразы и потолок - оттуда же, откуда их берёт маршрут. Одно обещание о том, куда уходит голос. */
+import { refusedAudio } from '../../../../api/_transcribe.mjs';
 
 interface RecognitionAlternative { transcript: string }
 interface RecognitionResult { isFinal: boolean; 0: RecognitionAlternative; length: number }
@@ -53,7 +67,25 @@ const Speech = (): RecognitionClass | null => {
 };
 
 /** Where the audio goes. `unknown` until asked - never assumed, because the answer decides what we say. */
-export type Where = 'unknown' | 'on-this-computer' | 'a-server' | 'downloadable' | 'no';
+export type Where = 'unknown' | 'on-this-computer' | 'a-server' | 'downloadable' | 'no' | 'openai';
+
+/** Какой распознаватель выбран. `openai` - по умолчанию с 2026-09-21; `browser` - прежний путь. */
+export type Via = 'openai' | 'browser';
+
+const VIA_KEY = 'mouseflow.dictation.via';
+
+export function dictationVia(): Via {
+  try {
+    return localStorage.getItem(VIA_KEY) === 'browser' ? 'browser' : 'openai';
+  } catch (_) {
+    /* Приватное окно, запрещённые куки: умолчание - это ответ, а не поломка. */
+    return 'openai';
+  }
+}
+
+export function rememberDictationVia(via: Via) {
+  try { localStorage.setItem(VIA_KEY, via); } catch (_) { /* см. выше */ }
+}
 
 /* Язык, на котором человек говорит. ВЫБОР, А НЕ ДОГАДКА.
  *
@@ -109,9 +141,36 @@ export function langName(tag: string): string {
   }
 }
 
+/* ЧТО ЗАПИСЫВАТЬ. Chrome и Firefox умеют webm/opus, Safari - mp4; спрашивается у браузера, а не
+ * утверждается, потому что запись в формате, который он не поддерживает, падает в момент нажатия. */
+const RECORD_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
+
+function recordType(): string | null {
+  if (typeof MediaRecorder === 'undefined') return null;
+  for (const type of RECORD_TYPES) {
+    try { if (MediaRecorder.isTypeSupported(type)) return type; } catch (_) { /* пробуем следующий */ }
+  }
+  return null;
+}
+
+/* Base64 КУСКАМИ. `String.fromCharCode(...bytes)` на трёх мегабайтах переполняет стек аргументов - и
+ * падает не всегда, а начиная с какого-то размера записи, то есть у одного человека из десяти. */
+function toBase64(bytes: Uint8Array): string {
+  let said = '';
+  const step = 0x8000;
+  for (let i = 0; i < bytes.length; i += step) {
+    said += String.fromCharCode(...bytes.subarray(i, i + step));
+  }
+  return btoa(said);
+}
+
 export interface Dictation {
   supported: boolean;
   listening: boolean;
+  /** Запись кончилась, ответа ещё нет. Только у серверного распознавателя - у браузерного такой паузы нет. */
+  recognising: boolean;
+  via: Via;
+  setVia: (via: Via) => void;
   where: Where;
   lang: string;
   problem: string | null;
@@ -148,11 +207,14 @@ function inWords(code: string): string {
 export function useDictation(onText: (text: string) => void): Dictation {
   const Klass = Speech();
   const [lang, setLangState] = useState(dictationLang);
+  const [via, setViaState] = useState<Via>(dictationVia);
   const [listening, setListening] = useState(false);
+  const [recognising, setRecognising] = useState(false);
   const [where, setWhere] = useState<Where>('unknown');
   const [problem, setProblem] = useState<string | null>(null);
   const [interim, setInterim] = useState('');
   const live = useRef<Recognition | null>(null);
+  const tape = useRef<{ rec: MediaRecorder; stream: MediaStream } | null>(null);
   /* Колбэк в ref: распознавание живёт дольше рендера, и пересоздавать его из-за нового замыкания значило бы
    * обрывать человека на полуслове. */
   const sink = useRef(onText);
@@ -161,6 +223,9 @@ export function useDictation(onText: (text: string) => void): Dictation {
   /* Спрашивается один раз, до первого нажатия: строка про то, куда уйдёт звук, должна стоять на экране
    * ДО того, как микрофон включат, а не появляться задним числом. */
   useEffect(() => {
+    /* Серверный путь ничего не спрашивает у браузера: он не зависит ни от языкового пакета, ни от
+     * Web Speech вовсе. Известен сразу, и фраза про него стоит на экране до первого нажатия. */
+    if (via === 'openai') { setWhere(recordType() ? 'openai' : 'no'); return; }
     if (!Klass) { setWhere('no'); return; }
     let gone = false;
     void (async () => {
@@ -179,13 +244,87 @@ export function useDictation(onText: (text: string) => void): Dictation {
       }
     })();
     return () => { gone = true; };
-  }, [Klass, lang]);
+  }, [Klass, lang, via]);
 
   const stop = useCallback(() => {
+    if (tape.current) { tape.current.rec.stop(); return; }
     live.current?.stop();
   }, []);
 
+  /* ЗАПИСАТЬ И ОТПРАВИТЬ. Ничего не возвращается, пока человек не остановит запись: у эндпоинта
+   * транскрипции нет потока, и притворяться, что он есть, было бы интерфейсом, который врёт про паузу. */
+  const startRecording = useCallback(async () => {
+    const type = recordType();
+    if (!type) { setProblem('This browser cannot record audio.'); return; }
+    setProblem(null);
+    setInterim('');
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (_) {
+      /* Та же тупиковая ошибка, что у Web Speech, и тот же выход: повторное нажатие запроса не покажет. */
+      setProblem('The microphone was refused. Allow it for this site in the address bar, then try again.');
+      return;
+    }
+
+    const rec = new MediaRecorder(stream, { mimeType: type });
+    const parts: Blob[] = [];
+    rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) parts.push(ev.data); };
+    rec.onstop = () => {
+      stream.getTracks().forEach((t) => t.stop());
+      tape.current = null;
+      setListening(false);
+      void (async () => {
+        const blob = new Blob(parts, { type });
+        /* Потолок проверяется ЗДЕСЬ ТОЖЕ, хотя маршрут проверит его снова: отправить три мегабайта, чтобы
+         * узнать, что их не берут, - это ожидание, оплаченное каналом человека. Число одно, из
+         * api/_transcribe.mjs. */
+        const refused = refusedAudio({ bytes: blob.size, type });
+        if (refused) { setProblem(refused); return; }
+        if (!blob.size) { setProblem('Nothing was recorded.'); return; }
+        setRecognising(true);
+        try {
+          const res = await fetch('/api/transcribe', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              audio: toBase64(new Uint8Array(await blob.arrayBuffer())),
+              type,
+              language: lang.split('-')[0],
+            }),
+          });
+          const body = await res.json().catch(() => null);
+          if (!res.ok) {
+            /* Своими словами маршрута: он знает, почему отказал - нет ключа, не названа модель, потолок, -
+             * а эта страница не знает ничего. */
+            setProblem(String(body?.error?.message || `Recognition failed (HTTP ${res.status}).`));
+            return;
+          }
+          const text = String(body?.text || '');
+          if (!text) { setProblem(String(body?.said || 'Nothing was heard.')); return; }
+          sink.current(text);
+        } catch (err) {
+          setProblem(`Recognition could not reach the server: ${err instanceof Error ? err.message : 'unknown'}`);
+        } finally {
+          setRecognising(false);
+        }
+      })();
+    };
+
+    try {
+      rec.start();
+      tape.current = { rec, stream };
+      setListening(true);
+    } catch (_) {
+      stream.getTracks().forEach((t) => t.stop());
+      setProblem('The recording could not be started.');
+    }
+  }, [lang]);
+
   const start = useCallback(() => {
+    if (via === 'openai') { void startRecording(); return; }
     if (!Klass || live.current) return;
     setProblem(null);
     setInterim('');
@@ -228,7 +367,7 @@ export function useDictation(onText: (text: string) => void): Dictation {
       live.current = null;
       setListening(false);
     }
-  }, [Klass, lang, where]);
+  }, [Klass, lang, where, via, startRecording]);
 
   /* Смена языка ОСТАНАВЛИВАЕТ диктовку: распознавание уже запущено с прежним языком, и молча оставить его
    * работать значило бы, что переключатель показывает одно, а слушает другое. */
@@ -243,6 +382,25 @@ export function useDictation(onText: (text: string) => void): Dictation {
     setLangState(tag);
   }, []);
 
+  /* Переключатель ОСТАНАВЛИВАЕТ то, что идёт: распознаватель уже запущен, и оставить его работать значило
+   * бы, что надпись показывает одно, а слушает другое, - ровно тот же довод, что у смены языка. */
+  const setVia = useCallback((next: Via) => {
+    live.current?.abort();
+    live.current = null;
+    if (tape.current) {
+      tape.current.stream.getTracks().forEach((t) => t.stop());
+      try { tape.current.rec.stop(); } catch (_) { /* уже остановлен */ }
+      tape.current = null;
+    }
+    setListening(false);
+    setRecognising(false);
+    setInterim('');
+    setProblem(null);
+    setWhere('unknown');
+    rememberDictationVia(next);
+    setViaState(next);
+  }, []);
+
   const install = useCallback(async () => {
     if (!Klass?.install) return;
     setProblem(null);
@@ -254,12 +412,22 @@ export function useDictation(onText: (text: string) => void): Dictation {
     }
   }, [Klass, lang]);
 
-  /* Микрофон не должен пережить экран, с которого его включили. */
-  useEffect(() => () => { live.current?.abort(); live.current = null; }, []);
+  /* Микрофон не должен пережить экран, с которого его включили - ни один из двух. Работающий MediaRecorder
+   * держит красную точку в заголовке вкладки и живой поток с устройства; уйти со страницы и оставить его
+   * было бы худшим, что этот файл может сделать. */
+  useEffect(() => () => {
+    live.current?.abort();
+    live.current = null;
+    if (tape.current) {
+      tape.current.stream.getTracks().forEach((t) => t.stop());
+      try { tape.current.rec.stop(); } catch (_) { /* уже остановлен */ }
+      tape.current = null;
+    }
+  }, []);
 
   return {
-    supported: !!Klass && where !== 'no',
-    listening, where, lang, problem, interim, start, stop, install,
+    supported: via === 'openai' ? where !== 'no' : (!!Klass && where !== 'no'),
+    listening, recognising, via, setVia, where, lang, problem, interim, start, stop, install,
     setLang, choices: dictationChoices(lang),
   };
 }

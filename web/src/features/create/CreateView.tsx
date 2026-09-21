@@ -61,6 +61,8 @@ import {
   type Attached, FILES_MAX, GOAL_MAX, goalWith, readTextFile, sizeSaid, splitGoal,
 } from './attach';
 import { langName, useDictation } from './dictation';
+/* Фразы про то, куда уходит звук, - оттуда же, откуда их берёт маршрут распознавания. */
+import { STAYS_HERE, WHERE_AUDIO_GOES } from '../../../../api/_transcribe.mjs';
 import { SaveDictatedSkill } from './SaveDictatedSkill';
 import { PRODUCTS } from '@/lib/product';
 import { useProduct } from '@/shell/useProduct';
@@ -1289,20 +1291,46 @@ export const CreateView = () => {
             {dictation.supported && !running && (
               <span className="flex items-center gap-1.5">
                 <Mic className="size-3.5" />
-                {dictation.where === 'on-this-computer'
-                  ? `dictation stays on this computer · ${langName(dictation.lang)}`
-                  : dictation.where === 'downloadable' ? (
-                    <>
-                      {`dictation would go to Google · ${langName(dictation.lang)}`}
-                      <button
-                        type="button"
-                        onClick={() => void dictation.install()}
-                        className="underline underline-offset-2 hover:text-ink-body"
-                      >
-                        keep it on this computer
-                      </button>
-                    </>
-                  ) : 'dictation is sent to Google to be recognised'}
+                {/* ДВА РАСПОЗНАВАТЕЛЯ, И НАДПИСЬ ГОВОРИТ, КОТОРЫЙ СЕЙЧАС (SPLIT-PLAN §7, шаг 13).
+                  * Фраза берётся из api/_transcribe.mjs - той же, которую отдаёт маршрут: два текста
+                  * про то, куда уходит голос, - это одно обещание и одна ложь. И рядом стоит
+                  * переключатель, потому что выбор без выхода из него - это не выбор. */}
+                {dictation.via === 'openai' ? (
+                  <>
+                    {`${WHERE_AUDIO_GOES} · ${langName(dictation.lang)}`}
+                    <button
+                      type="button"
+                      onClick={() => dictation.setVia('browser')}
+                      className="underline underline-offset-2 hover:text-ink-body"
+                    >
+                      use this browser instead
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {dictation.where === 'on-this-computer'
+                      ? `${STAYS_HERE} · ${langName(dictation.lang)}`
+                      : dictation.where === 'downloadable' ? (
+                        <>
+                          {`dictation would go to Google · ${langName(dictation.lang)}`}
+                          <button
+                            type="button"
+                            onClick={() => void dictation.install()}
+                            className="underline underline-offset-2 hover:text-ink-body"
+                          >
+                            keep it on this computer
+                          </button>
+                        </>
+                      ) : 'dictation is sent to Google to be recognised'}
+                    <button
+                      type="button"
+                      onClick={() => dictation.setVia('openai')}
+                      className="underline underline-offset-2 hover:text-ink-body"
+                    >
+                      use OpenAI instead
+                    </button>
+                  </>
+                )}
                 {/* ЯЗЫК ВЫБИРАЕТСЯ, а не берётся из браузера молча. `navigator.language` - это список
                   * предпочитаемых языков, а не язык, на котором говорят вслух: на первой же живой машине
                   * интерфейс был русский, а оттуда пришёл английский, и русская речь распозналась как
@@ -1596,9 +1624,14 @@ export const CreateView = () => {
                   ? <MicOff className="size-4" />
                   : <Mic className="size-4" />}
                 onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
+                /* ТРЕТЬЕ СОСТОЯНИЕ - «узнаю», и оно есть только у серверного распознавателя: запись
+                 * кончилась, текста ещё нет. Браузерный отдаёт слова по ходу речи, и такой паузы у него
+                 * не бывает. Не показать её значило бы кнопку, которая на секунду выглядит бездельницей
+                 * ровно тогда, когда работа идёт. */
+                disabled={dictation.recognising}
                 className={cn(dictation.listening && 'text-fb-red-text')}
               >
-                {dictation.listening ? 'Stop' : 'Dictate'}
+                {dictation.recognising ? 'Recognising…' : dictation.listening ? 'Stop' : 'Dictate'}
               </Button>
             )}
             </span>
@@ -1625,9 +1658,11 @@ export const CreateView = () => {
           rows={2}
           placeholder={running
             ? 'Working…'
-            : dictation.listening
-              ? 'Listening — say what it should do'
-              : 'open my inbox and reply to Ann that the invoice is approved'}
+            : dictation.recognising
+              ? 'Recognising what you said…'
+              : dictation.listening
+                ? 'Listening — say what it should do'
+                : 'open my inbox and reply to Ann that the invoice is approved'}
           className={cn(
             'max-h-[9rem] min-h-[3rem] w-full resize-none bg-transparent px-1.5 py-1 text-ink-primary',
             'placeholder:text-ink-inactive focus:outline-none disabled:opacity-disabled',

@@ -36,9 +36,16 @@ concrete thing named for the owner to check.
       is a claim rather than a flag. One switch on `Input.refusal()`; the C# compiled for real. **Say out
       loud that macOS cannot enforce it**: the same Accessibility grant authorises the event tap and
       `CGEventPost`. [§6.1](SPLIT-PLAN.md)
-- [ ] **13 · Transcription route** — dictation through OpenAI, server-held key, capped, its own `LIMITS`
-      key. Ships **with** the sentence that says where the audio goes, before the microphone is armed:
-      it reverses the on-device promise `dictation.ts` currently makes. [§7](SPLIT-PLAN.md)
+- [x] **13 · Transcription — LIVE 2026-09-21.** `api/_transcribe.mjs` holds the words, the caps and the
+      call; `api/transcribe.js` is the page's door, capped under its own `transcribe` ceiling. The model
+      id has **no default at all** — it is asked of `/api/models`, which now lists recognisers. Three
+      ways in, all working: a voice message in Telegram (proved on a real run), the Create composer, and
+      the same route for anything later. Two recognisers, one switch, one sentence — the on-device path
+      is kept as the other half of a choice rather than deleted. [§7](SPLIT-PLAN.md)
+  - [ ] **The agent records audio itself** — §7's third entry point, and still the expensive one: a
+        rebuild of both binaries, a **microphone** permission on a product that has asked only for screen
+        and accessibility, and every macOS rebuild invalidates the TCC grants. Worth it once the habit is
+        real; a phone and a composer both have a microphone today.
 - [x] **14a · Telegram as a front door — LIVE 2026-09-21.** Type, attach, read the plan, press Approve,
       *then* a `run_queue` row. Unknown senders are paired, not served. Touches no driver and neither
       agent. Two tasks ran end to end from a phone, both `ok`. [§7.2](SPLIT-PLAN.md) · notes below
