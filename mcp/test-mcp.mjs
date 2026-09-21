@@ -5590,9 +5590,18 @@ group('веб-QA: проверки уровня dom, кейсы в браузе�
     /caseId: askedCase \|\| null,/.test(route) && /caseGoal: caseGoalText,/.test(route));
   check('и утверждения читаются в момент claim, а не копируются в очередь',
     /select id, name, args, expects from user_case[\s\S]{0,2000}?caseGoalText = caseGoal\(fillGoal\(skill, values\), expects\)/.test(route));
+  /* НА ОБОИХ ПУТЯХ, и проверяется именно это - а не «столько-то раз в файле».
+   *
+   * Считать вхождения было короче и оказалось неверно: те же слова теперь говорятся ещё и В ЧАТ, когда
+   * работа пришла из мессенджера, - счётчик сломался, хотя свойство не нарушено ничем. Пин, считающий
+   * совпадения, ловит любое УПОМИНАНИЕ строки; здесь важно, что отказ есть в двух конкретных местах. */
+  const inClaim = route.slice(route.indexOf("if (action === 'claim')"), route.indexOf("if (action === 'step')"));
+  const inStep = route.slice(route.indexOf("if (action === 'step')"));
   check('удалённый кейс и кейс без проверок - забор словами и на этом пути тоже',
-    (route.match(/the case was deleted between the ask and the run/g) || []).length === 2
-      && (route.match(/this case has no checks, so there is nothing it could prove/g) || []).length === 2);
+    /the case was deleted between the ask and the run/.test(inClaim)
+      && /the case was deleted between the ask and the run/.test(inStep)
+      && /this case has no checks, so there is nothing it could prove/.test(inClaim)
+      && /this case has no checks, so there is nothing it could prove/.test(inStep));
   check('и служебный ключ до навыка не доезжает',
     /args: stripCase\(args\),/.test(route));
   check('прогон расширения ложится под своим кейсом - иначе ряд точек о нём не узнает',

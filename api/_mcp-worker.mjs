@@ -22,8 +22,9 @@ import { overSpend, spentWhy } from './_spend.mjs';
 import { BROWSER_GOAL, DESKTOP_GOAL, jobId, scheduleId } from './_queue.mjs';
 import { caseGoal, caseIdOf, stripCase } from './_case.mjs';
 import { PAYLOAD_MAX_BYTES } from './_payload.mjs';
-import { outcomeMessage } from './_telegram.mjs';
-import { sendChat } from './_telegram-out.mjs';
+/* Исход работы, пришедшей из чата, отвечает туда же. Обе формы - в api/_telegram-out.mjs, потому что
+ * говорят в чат двое и с разных концов прогона; там же сказано, почему тишина хуже плохой новости. */
+import { tellChat, tellChatAbout } from './_telegram-out.mjs';
 
 /* And how long a worker's claim request may hold open with nothing to do. One request every half minute
  * beats one every three seconds, and an idle loop is not billed as CPU. */
@@ -254,29 +255,6 @@ async function saveRecording(sql, who, macro, health) {
   };
 }
 
-/* РАБОТА, ПРИШЕДШАЯ ИЗ ЧАТА, ОТВЕЧАЕТ В ЧАТ (SPLIT-PLAN §7.2, шаг 14a).
- *
- * Человек, нажавший Approve с телефона, больше ничего не видит: страницы перед ним нет, экрана машины он
- * не видит тем более. Исход, оставшийся только в журнале, для него не случился.
- *
- * ИЗ АРГУМЕНТОВ РАБОТЫ, а не из отдельной таблицы: очередь уже везёт `args`, и адрес чата замирает в ней в
- * момент постановки - ровно по тому же доводу, по которому там замирает привязка к машине (db/022). Чат,
- * отвязанный от аккаунта наутро, не должен менять адрес у работы, которая уже сделана.
- *
- * ЛУЧШЕЕ УСИЛИЕ И БЕЗ await НА КРИТИЧЕСКОМ ПУТИ: отчёт о прогоне уже записан, и потерянное сообщение - это
- * потерянное сообщение, а не потерянный прогон. Слова исхода - одни и те же, из api/_telegram.mjs: вторая
- * их редакция здесь разошлась бы с первой. */
-async function tellChat(args, ok, said) {
-  const at = args && typeof args === 'object' && args.telegram && typeof args.telegram === 'object'
-    ? args.telegram : null;
-  if (!at || !at.chatId) return;
-  try {
-    await sendChat(at.chatId, outcomeMessage({ ok, said }));
-  } catch (_) {
-    /* Сказано вслух выше: молчание здесь дешевле падения. */
-  }
-}
-
 export async function workerRoute(action, req, res, sql, who) {
   if (action === 'claim') {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST' });
@@ -288,12 +266,18 @@ export async function workerRoute(action, req, res, sql, who) {
 
     /* Anything a worker took and never came back from. Failed rather than requeued: a run that may be
      * half-done must not be repeated blind, and a person can ask for it again knowing what happened. */
-    await sql`
+    const lost = await sql`
       update run_queue set state = 'failed', ok = false, finished_at = now(),
              said = 'the machine took this job and never reported back'
       where user_id = ${who.id} and state = 'claimed'
         and claimed_at < now() - ${`${Math.round(CLAIM_STALE_MS / 1000)} seconds`}::interval
+      returning args
     `;
+    /* И ЭТО САМЫЙ ВАЖНЫЙ ИЗ ИСХОДОВ ДЛЯ ЧАТА, потому что он и есть тишина: машина взяла работу и пропала.
+     * Человек с телефона не видит ни экрана, ни очереди, и без этой строки «наверное, ещё идёт» длится
+     * ровно столько, сколько у него хватает терпения. Подметание уже здесь, у него на руках args, и
+     * сказать стоит один запрос, которого всё равно не будет в обычную минуту - строк тут обычно ноль. */
+    for (const one of lost) await tellChat(one.args, false, 'the machine took this job and never reported back');
 
     const by = String((req.body && req.body.worker) || 'worker').slice(0, 60);
     /* WHAT THIS CLAIMER CAN ACTUALLY DO, which the queue did not ask until it had to.
@@ -470,6 +454,7 @@ export async function workerRoute(action, req, res, sql, who) {
                    said = 'the skill was deleted between the ask and the run'
             where id = ${job.id}
           `;
+          await tellChat(job.args, false, 'the skill was deleted between the ask and the run');
           continue;
         }
         const row = flow[0];
@@ -512,6 +497,7 @@ export async function workerRoute(action, req, res, sql, who) {
                        said = 'the case was deleted between the ask and the run'
                 where id = ${job.id}
               `;
+              await tellChat(job.args, false, 'the case was deleted between the ask and the run');
               continue;
             }
             const expects = Array.isArray(found[0].expects) ? found[0].expects : [];
@@ -521,6 +507,7 @@ export async function workerRoute(action, req, res, sql, who) {
                        said = 'this case has no checks, so there is nothing it could prove'
                 where id = ${job.id}
               `;
+              await tellChat(job.args, false, 'this case has no checks, so there is nothing it could prove');
               continue;
             }
             const skill = { ...payload, id: row.client_id, name: row.name, params: payload.params || [] };
@@ -533,6 +520,7 @@ export async function workerRoute(action, req, res, sql, who) {
                          + (missing.length === 1 ? 'it' : 'them')}
                 where id = ${job.id}
               `;
+              await tellChat(job.args, false, `this case needs ${missing.join(', ')}`);
               continue;
             }
             caseGoalText = caseGoal(fillGoal(skill, values), expects);
@@ -911,6 +899,7 @@ export async function workerRoute(action, req, res, sql, who) {
           update run_queue set state = 'failed', ok = false, said = ${said}, finished_at = now(), loop = null
           where id = ${id} and user_id = ${who.id} and state = 'claimed'
         `;
+        await tellChat(job.args, false, said);
         return res.status(200).json({ ok: true, done: true, outcome: { ok: false, said } });
       }
       /* И В ЖУРНАЛ ПРОГОНОВ - с единственным шагом, которым этот прогон и был.
@@ -989,6 +978,11 @@ export async function workerRoute(action, req, res, sql, who) {
       where id = ${id} and user_id = ${who.id} and state = 'claimed'
       returning id
     `;
+    /* И В ЧАТ, ЕСЛИ РАБОТА ПРИШЛА ОТТУДА. Это тот самый путь, которого здесь не было: свободную цель из
+     * телеграма закрыл именно он - курьер взял её, не понял и отчитался сюда, - а человек остался с
+     * «Started. I will say how it went» и тишиной. Только когда строка ДЕЙСТВИТЕЛЬНО закрыта этим
+     * вызовом: отчёт по уже отменённой работе ничего не закрывает, и говорить о нём нечего. */
+    if (done.length === 1) await tellChatAbout(sql, who.id, id, ok, said);
     /* ИСХОД ВОЗВРАЩАЕТСЯ РАСПИСАНИЮ, если прогон завёлся им.
      *
      * Иначе расписание, чей скилл перестал работать, будет запускать его каждый час вечно - и у целевого

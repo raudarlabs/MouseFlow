@@ -53,6 +53,7 @@ import {
 import { workerRoute } from './_mcp-worker.mjs';
 /* Потолок цели - один на все три двери, что её сохраняют. См. заметку у GOAL_MAX в _brain.mjs. */
 import { GOAL_MAX } from './_brain.mjs';
+import { tellChat } from './_telegram-out.mjs';
 
 /* ------------------------------------------------------------------------------- the route */
 
@@ -200,8 +201,13 @@ async function handler(req, res) {
       update run_queue set state = 'cancelled', finished_at = now(),
              ok = false, said = 'cancelled before it finished'
       where user_id = ${who.id} and id = ${id} and state in ('queued', 'claimed')
-      returning id, claimed_at
+      returning id, claimed_at, args
     `;
+    /* И ЕСЛИ ЭТУ РАБОТУ ЖДУТ В ЧАТЕ - сказать туда. Отмена со страницы и ожидание с телефона - это два
+     * РАЗНЫХ человека, даже когда это один человек: нажавший кнопку получит ответ этого маршрута, а тот,
+     * кто держит телефон, не увидит ничего и будет считать, что прогон идёт. Говорит тот, кто закрыл
+     * строку; api/telegram.js на свой /stop отвечает сам и сюда не ходит. */
+    if (killed.length) await tellChat(killed[0].args, false, 'cancelled before it finished');
     if (!killed.length) return res.status(200).json({ ok: true, cancelled: false, said: 'nothing to cancel - it had already finished, or it is not yours' });
     return res.status(200).json({
       ok: true,
