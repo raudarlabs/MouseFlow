@@ -8,7 +8,7 @@ stood in three places "by comment"; `db/022`'s header contradicted the database 
 So: **change a status here, change the reasoning there.** If an item's shape changes, the plan is edited and
 this line follows — never the other way round.
 
-Updated **2026-09-20**. Live: `https://mouseflowapp.vercel.app`. Every step ends the same way —
+Updated **2026-09-21**. Live: `https://mouseflowapp.vercel.app`. Every step ends the same way —
 `npm test` zero FAIL, `npx tsc --noEmit -p web/tsconfig.json`, `npm run build` in `web/`, push, then one
 concrete thing named for the owner to check.
 
@@ -39,16 +39,15 @@ concrete thing named for the owner to check.
 - [ ] **13 · Transcription route** — dictation through OpenAI, server-held key, capped, its own `LIMITS`
       key. Ships **with** the sentence that says where the audio goes, before the microphone is armed:
       it reverses the on-device promise `dictation.ts` currently makes. [§7](SPLIT-PLAN.md)
-- [x] **14a · Telegram as a front door** — *code shipped 2026-09-20; not live until the owner does three
-      things.* Type, attach, read the plan, press Approve, *then* a `run_queue` row. Unknown senders are
-      paired, not served. Touches no driver and neither agent. [§7.2](SPLIT-PLAN.md) · design notes below
-  - [x] **`db/024_chat_channel.sql` applied 2026-09-21** — owner approval in chat, as with 022 and 023;
-        `--list` shows all 24 applied and both tables were read back from `information_schema`.
-  - [ ] **set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET`** on the deployment, then `setWebhook`
-        with that secret. Without the secret the route refuses every call: a webhook "temporarily without
-        the check" is an open door to a real mouse.
-  - [ ] **pair one chat and run one thing through it** — the first end-to-end proof, and the first agent
-        run since 2026-09-08.
+- [x] **14a · Telegram as a front door — LIVE 2026-09-21.** Type, attach, read the plan, press Approve,
+      *then* a `run_queue` row. Unknown senders are paired, not served. Touches no driver and neither
+      agent. Two tasks ran end to end from a phone, both `ok`. [§7.2](SPLIT-PLAN.md) · notes below
+  - [x] `db/024_chat_channel.sql` applied 2026-09-21, both tables read back from `information_schema`.
+  - [x] Both environment variables set, `setWebhook` called with the secret.
+  - [x] One chat paired, two tasks run. **Three bugs only a real run could find**, each now pinned:
+        the plan's `HTTP 401` explained nothing; a free desktop goal had no name in the queue dictionary,
+        so the agent's courier took it and answered "does not understand"; and a job could end in ten
+        places while only three of them said so in the chat.
 - [ ] **14b · A checkpoint answered from the messenger** — the cloud path is ungated on purpose (*"нет шлюза
       — нет инструмента"*, `api/_brain.mjs`). A messenger is the first thing that makes "somebody is
       watching" true there, and it costs a waiting state on `run_queue`, a pause the worker protocol can
@@ -91,18 +90,25 @@ Not in the sequence yet — these need shapes agreed before they are steps.
       (one constant, and the goal rides in the cached prefix), so the old "4 000 is too small" argument is
       spent. Revisit only when somebody hits the new cap for a real reason.
 
-## Owed measurements — nobody can answer these until somebody runs the agent
+## The first "after" — measured 2026-09-21, from two runs started in Telegram
 
-- [ ] **Run the agent at all.** Measured 2026-09-20: the last agent run in the database is **2026-09-08**.
-      Every timed step (807) and every successful run (64) predate prompt caching *and* `click_named`. Twelve
-      days of building, zero runs.
-- [ ] **QA item 6's done-condition** — median model decision under 4 000 ms, from a measured 5 035. Cannot
-      be read: there is no "after" in the data. [`QA-ROADMAP.md` §6](QA-ROADMAP.md)
-- [ ] **Steps per successful run** — where `click_named` would show. Median is 13, all of it from "before".
+Twelve days of building had produced **zero runs**: every one of the 807 timed steps and 64 successful runs
+in the database predated prompt caching *and* `click_named`. There was no "after" to read. There is now,
+and it is small — **20 timed steps across 2 runs** against 807 across 64. Read it as a direction, not as a
+replacement for the baseline.
+
+- [x] **Run the agent at all.** Two runs, 2026-09-21, both `ok`, 15 and 7 steps, driven from a phone.
+- [x] **QA item 6's done-condition — met.** Median model decision **2 959 ms**, from a measured 5 035.
+      The condition was "under 4 000". Range 1 848–5 297. [`QA-ROADMAP.md` §6](QA-ROADMAP.md)
+- [x] **The cache marker on the goal — working, and visible.** Every step after the first reads
+      **~9 900 tokens** from cache; the first writes it. That is the system prompt, the tool schema *and*
+      the opening message, which is what paid for the 20 000-character attachment ceiling.
+- [x] **`click_named` is exercised** — twice in the 15-step run, at 1 848 ms and 2 064 ms, among the
+      fastest decisions in either run.
+- [ ] **Steps per successful run** — 15 and 7 here against a median of 13 before. Two runs cannot move a
+      median; this needs a week of ordinary use, which it can now get.
 - [ ] **The memory of applications, §4.13** — turns per successful run, before and after. One `taught` fact
       exists; one row is not a measurement. Roll `MEMORY_LIVE` back if it costs more than it saves.
-- [ ] **The new cache marker on the goal** — shipped 2026-09-20, unmeasured for the same reason. `cached`
-      is already written into every step, so the number is there the moment anything runs.
 
 ## Waiting on the owner
 

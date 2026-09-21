@@ -846,9 +846,24 @@ lookup `whoIsCalling` uses — extracted to `byDeviceToken` so there is one answ
 rather than two that agree today. It costs no new screen, and the message carrying the token is deleted
 whether the token was valid or not: a mistyped line is still somebody's secret.
 
-**What is still owed before this is real:** `db/024_chat_channel.sql` applied (owner approval, as with 022
-and 023), the two environment variables set, `setWebhook` called, and one task run end to end. The code
-answers in words on a deployment where the table is missing, rather than reading as "you are blocked".
+**Live 2026-09-21.** Migration applied, both variables set, one chat paired, two tasks run end to end from
+a phone — both `ok`, 15 and 7 steps. Three bugs came out of those two runs, and every one of them was
+invisible to the test suite because each lived where two working halves meet:
+
+1. **`I could not build a plan for that (HTTP 401)`** — true and useless. A 401 from the model is an
+   expired key, a key without access to that model, or no key at all, fixed in three different places. The
+   upstream's own sentence was sitting in `answer.text` and was being thrown away.
+2. **A free desktop goal had no name.** It was queued as `#goal`, and a `#` id has always meant "either
+   claimer can do this" — so it sailed past the one check that matters and the agent's courier, which has
+   no model in it, answered *"asked to do something it does not understand"*. The fallback clause let it
+   through too, because a command has no skill by definition. It has a name of its own now, beside
+   `BROWSER_GOAL`, and neither agent needed a line changed: both already read `goal` before `command`.
+3. **Ten ways for a job to end, three of which said so.** The outcome message went into the step loop; the
+   job closed in `?worker=report`. The person got "Started. I will say how it went" and silence — while
+   the failure sat in the log. The pin now *counts* the terminal writes rather than listing three of them.
+
+**Silence is its own kind of failure,** and it is the one a messenger makes worst: "it did not work" can be
+re-read and argued with, and nothing reads as "probably still going" all day.
 
 ---
 
