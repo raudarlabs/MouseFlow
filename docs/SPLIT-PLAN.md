@@ -751,6 +751,26 @@ that it can be closed.
 Deliberately the same shape as the bot: plan first, Approve, the transcript shown verbatim. Somebody who
 learned one recognises the other; different words for the same act would be two products.
 
+#### Stage 2 shipped 2026-09-21, and the first live run corrected it
+
+The panel and the chord. `NSPanel`, floating, on every space and above full-screen windows, holding a
+pre-warmed `WKWebView`. Carbon's `RegisterEventHotKey` for `⌃⌥Space`, because a global monitor can see a
+key but not swallow it (the space would also land in the app in front) and an event tap can swallow but
+sees everything anybody types — asking that much trust to serve one combination is asking for more than
+the job needs. Off until switched on, released while a flow is recording, printed in the menu, and the
+panel is reachable by mouse for anybody who never turns the chord on.
+
+**What the first press showed, and the plan did not.** The window is sized for what the panel is *for* —
+one sentence, a plan, Approve. The first thing a person actually sees is **signing in**, which is somebody
+else's screen: a form, an SMS code, "try another way". At 620×260 it does not fit, so the panel looks
+broken on the single showing where it has to look right.
+
+Fixed by the thing already known rather than by a new mechanism: the address. Anything that is not
+`/panel` is a foreign screen and gets room. Sized on `didCommit` rather than `didFinish`, because a
+sign-in page paints long before it finishes loading and a window that grows at the end is a window seen
+small. The window is resizable, and our size is only restored over our own — a hand on the corner has said
+what size it wants, and arguing with it is worse than being wrong about the default.
+
 2. **A tray/hotkey that opens a small dictation window.** The agent already serves loopback; the window is a
    browser window, so the recogniser stays in one place.
 3. **The agent records the audio itself and posts it up.** With OpenAI doing the recognition this stops

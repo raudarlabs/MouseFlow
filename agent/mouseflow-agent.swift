@@ -6591,6 +6591,23 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
     private var web: WKWebView?
     /// Какому аккаунту принадлежит загруженная страница: сменили аккаунт - прогретое окно чужое.
     private var loadedFor: String?
+    /// Растянуто ли окно под чужой экран - чтобы вернуть размер composer'а, но не спорить с рукой.
+    private var grown = false
+
+    /* ДВА РАЗМЕРА, И ВТОРОЙ ПОЯВИЛСЯ ОТ ЖИВОГО ЗАПУСКА.
+     *
+     * Окно посчитано под то, ради чего панель существует: одна фраза, план, Approve. Но первое, что видит
+     * человек, - это ВХОД, а вход в аккаунт это чужой экран: форма, подтверждение по SMS, «другой способ».
+     * В 620x260 он не помещается, и панель в свой первый показ выглядит сломанной - ровно там, где у неё
+     * единственный шанс понравиться.
+     *
+     * Растягивать по содержимому (мостиком со страницы) было бы точнее и стоило бы JS-моста ради одного
+     * экрана, который человек видит один раз. Здесь хватает того, что УЖЕ известно: адрес. Мы знаем, куда
+     * грузили, и видим, куда нас увели; всё, что не /panel, - чужой экран, и ему нужно место.
+     *
+     * И окно сделано resizable. Угаданный размер - это догадка, а рука всегда права. */
+    private static let askSize = NSSize(width: 620, height: 260)
+    private static let elseSize = NSSize(width: 460, height: 720)
 
     private var address: String? {
         guard let link = Account.link, !link.base.isEmpty else { return nil }
@@ -6607,9 +6624,9 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     private func build() {
-        let frame = NSRect(x: 0, y: 0, width: 620, height: 260)
+        let frame = NSRect(origin: .zero, size: Panel.askSize)
         let panel = NSPanel(contentRect: frame,
-                            styleMask: [.titled, .closable, .fullSizeContentView, .utilityWindow],
+                            styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .utilityWindow],
                             backing: .buffered, defer: false)
         panel.title = "MouseFlow"
         panel.titlebarAppearsTransparent = true
@@ -6683,6 +6700,35 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     /// `window.close()` со страницы - Escape в панели закрывает её так же, как крестик.
     func webViewDidClose(_ webView: WKWebView) { hide() }
+
+    /* РАЗМЕР ПОДГОНЯЕТСЯ ПО АДРЕСУ, и делать это надо на didCommit, а не на didFinish: страница входа
+     * рисуется задолго до того, как загрузится вся, и окно, дорастающее в последний момент, человек
+     * успевает увидеть маленьким. */
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        fit(to: webView.url)
+    }
+
+    private func fit(to url: URL?) {
+        guard let panel = window else { return }
+        let ours = (url?.path ?? "") == "/panel"
+        /* Обратно - только если растягивали МЫ. Человек, потянувший окно за угол, сказал этим, какого
+         * размера оно ему нужно, и возвращать своё поверх его - это спорить с рукой. */
+        if ours && !grown { return }
+        if !ours && grown { return }
+        grown = !ours
+        let want = ours ? Panel.askSize : Panel.elseSize
+        var frame = panel.frame
+        /* Верхний край на месте: окно, растущее вниз, остаётся там, куда человек уже смотрит. */
+        frame.origin.y += frame.height - want.height
+        frame.size = want
+        /* И не за нижний край экрана. Окно входа выше композера втрое; на ноутбуке без клампа оно
+         * уезжает кнопкой «Отправить» под Dock, а это единственная кнопка, которая там нужна. */
+        if let area = (panel.screen ?? NSScreen.main)?.visibleFrame {
+            frame.origin.y = max(area.minY, min(frame.origin.y, area.maxY - frame.height))
+            frame.origin.x = max(area.minX, min(frame.origin.x, area.maxX - frame.width))
+        }
+        panel.setFrame(frame, display: true, animate: false)
+    }
 
     /* Страница не загрузилась - сказать это в самой панели, а не показать белый прямоугольник. Белое окно
      * без объяснения читается как «продукт сломался», а причина чаще всего в сети. */
