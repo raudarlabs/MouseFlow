@@ -26,10 +26,14 @@ import { type Plan, askForPlan } from '@/lib/plan';
 import { langName, useDictation } from '@/features/create/dictation';
 import { GOAL_MAX } from '@/features/create/attach';
 import { asPanel } from '@/lib/panel-auth';
+/* Обещание о том, куда уходит звук, - одно на всех, из того же модуля, что и у маршрута. */
+import { STAYS_HERE, WHERE_AUDIO_GOES } from '../../../../api/_transcribe.mjs';
 
 /* Как часто спрашивать, чем кончилось. Две секунды: прогон идёт минутами, а человек, глядящий в окно,
  * замечает задержку примерно с этого порога. Чаще - это опрос ради ощущения, а не ради ответа. */
 const POLL_MS = 2000;
+
+const TOLD_KEY = 'mf.panel.dictation.told';
 
 type Stage =
   | { at: 'writing' }
@@ -43,12 +47,21 @@ export function PanelView() {
   const [stage, setStage] = useState<Stage>({ at: 'writing' });
   const [problem, setProblem] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement | null>(null);
+  /* Читал ли уже этот человек, куда уходит голос. Локально и на эту машину: обещание показывается до
+   * первой диктовки, а не каждый раз - см. строку под полем. */
+  const [told, setTold] = useState(() => {
+    try { return localStorage.getItem(TOLD_KEY) === 'yes'; } catch (_) { return false; }
+  });
 
   /* Надиктованное дописывается к набранному, а не заменяет его: человек, начавший печатать и
    * договоривший голосом, имел в виду одну просьбу. Тот же выбор, что у композера Create. */
   const dictation = useDictation((text) => {
     setGoal((was) => (was ? `${was} ${text}` : text).slice(0, GOAL_MAX));
     box.current?.focus();
+    /* Прочитано доказывается НЕ нажатием, а состоявшейся диктовкой: нажать и передумать - это не «я
+     * понял, куда уходит звук». */
+    setTold(true);
+    try { localStorage.setItem(TOLD_KEY, 'yes'); } catch (_) { /* приватное окно - покажем ещё раз */ }
   });
 
   /* Окно открывается по горячей клавише и должно быть готово принимать текст сразу - иначе первое, что
@@ -187,24 +200,56 @@ export function PanelView() {
               'disabled:opacity-disabled',
             )}
           />
-          <div className="flex items-center gap-2">
+          {/* ОДНА СТРОКА ВНИЗУ: язык, микрофон, отправка - справа, как в любом композере. Панель это
+            * окно на одну фразу, и каждая строка, которую оно занимает, отнимается у текста. */}
+          <div className="flex items-center gap-1.5">
+            {/* КУДА УХОДИТ ГОЛОС - СКАЗАНО ДО ПЕРВОЙ ДИКТОВКИ И ТОЛЬКО ДО НЕЁ.
+              *
+              * Правило §7 требует, чтобы это стояло на экране ПРЕЖДЕ, чем включат микрофон, - и оно не
+              * про постоянную строку, а про момент. Кто уже диктовал, тот прочитал; место в маленьком
+              * окне ему дороже повторения. Кто ещё нет - прочитает раньше, чем нажмёт.
+              *
+              * И остаётся вторым способом: подпись на самой кнопке (title), которая никуда не девается. */}
+            {dictation.supported && !told && (
+              <Typography variant="p" className="flex-1 text-[0.7rem] text-ink-inactive">
+                {dictation.via === 'openai' ? WHERE_AUDIO_GOES : STAYS_HERE}
+              </Typography>
+            )}
+            <span className="flex-1" />
+            {dictation.supported && (
+              <select
+                value={dictation.lang}
+                onChange={(ev) => dictation.setLang(ev.target.value)}
+                aria-label="Language to dictate in"
+                className={cn(
+                  'rounded border border-stroke bg-surface-card2 px-1.5 py-1 text-[0.75rem]',
+                  'text-ink-body focus:outline-none',
+                )}
+              >
+                {dictation.choices.map((tag) => (
+                  <option key={tag} value={tag}>{langName(tag)}</option>
+                ))}
+              </select>
+            )}
             {dictation.supported && (
               <Button
                 size="sm"
                 variant="ghost"
                 aria-pressed={dictation.listening}
                 aria-label={dictation.listening ? 'Stop dictating' : 'Dictate'}
+                title={dictation.via === 'openai' ? WHERE_AUDIO_GOES : STAYS_HERE}
                 disabled={dictation.recognising || stage.at === 'planning'}
-                leftSlot={dictation.listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
                 onClick={() => (dictation.listening ? dictation.stop() : dictation.start())}
-                className={cn(dictation.listening && 'text-fb-red-text')}
+                className={cn('px-2', dictation.listening && 'text-fb-red-text')}
               >
-                {dictation.recognising ? 'Recognising…' : dictation.listening ? 'Stop' : 'Dictate'}
+                {dictation.recognising
+                  ? <Loader2 className="size-4 animate-spin" />
+                  : dictation.listening ? <MicOff className="size-4" /> : <Mic className="size-4" />}
               </Button>
             )}
-            <span className="flex-1" />
             <Button
               size="sm"
+              aria-label="Plan it"
               disabled={!goal.trim() || stage.at === 'planning'}
               leftSlot={stage.at === 'planning' ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
               onClick={() => void ask()}
@@ -212,26 +257,6 @@ export function PanelView() {
               {stage.at === 'planning' ? 'Planning…' : 'Plan it'}
             </Button>
           </div>
-          {/* Куда уходит голос - до микрофона, а не после, и теми же словами, что у маршрута. Панель
-            * маленькая, и соблазн убрать эту строку велик; она здесь именно поэтому. */}
-          {/* ЯЗЫК ВЫБИРАЕТСЯ И ЗДЕСЬ. Первая редакция панели показывала его только надписью - то есть
-            * человек видел «Русский» и не мог это изменить, не уходя на большую страницу. Строка,
-            * называющая настройку без способа её тронуть, хуже её отсутствия. */}
-          {dictation.supported && (
-            <span className="flex items-center gap-1.5 text-[0.7rem] text-ink-inactive">
-              {dictation.via === 'openai' ? 'Dictation goes to OpenAI ·' : 'Dictation stays here ·'}
-              <select
-                value={dictation.lang}
-                onChange={(ev) => dictation.setLang(ev.target.value)}
-                aria-label="Language to dictate in"
-                className="rounded border border-stroke bg-surface-card2 px-1 py-0.5 text-ink-body"
-              >
-                {dictation.choices.map((tag) => (
-                  <option key={tag} value={tag}>{langName(tag)}</option>
-                ))}
-              </select>
-            </span>
-          )}
         </>
       )}
       {(problem || dictation.problem) && (
