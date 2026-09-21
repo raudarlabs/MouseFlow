@@ -610,8 +610,11 @@ group('a goal can be carried out by an agent with no worker behind it');
   /* The loop is started ONCE, with the model resolved once - a model changed mid-run would hand the task
    * between two that never saw each other's reasoning. Matched on the call rather than on its exact argument
    * list, which grew an `earlier` when runs learned to see the three before them. */
+  /* ONCE means once, so that is what is counted. The earlier version matched the argument list verbatim
+   * and broke the day a free desktop goal arrived and `success` stopped being read off a payload - a true
+   * property guarded by a brittle string. Counting the calls says the thing itself. */
   check('the model is resolved once per run, not per step',
-    /loop = startLoop\(\{ goal, model, success: payload\.success \|\| null,/.test(route)
+    (route.match(/startLoop\(/g) || []).length === 1
     && /settings\['model\.desktop'\]/.test(route));
   check('the run reaches the account log like any other',
     /insert into user_run/.test(route));
@@ -5409,7 +5412,7 @@ group('тест-кейс: утверждения заранее, вердикт 
   /* ПРОВЕРКИ ДОПИСЫВАЮТСЯ К ЦЕЛИ - там же, где считается вердикт, и словами, а не полем: в конце прогона
    * машина стоит там, куда её привёл прогон, и дойти до «Sent Items» может потребоваться. */
   check('цель кейса - цель скилла плюс проверки, составленная общим модулем',
-    /export function caseGoal/.test(rules) && /const goal = caseGoal\(filled, expects\);/.test(route));
+    /export function caseGoal/.test(rules) && /\bgoal = caseGoal\(filled, expects\);/.test(route));
   /* Строка склеена в исходнике, поэтому пин ловит её вторую половину - ту, что несёт смысл. */
   check('и модель обязана вызвать expect, а не решить глазом',
     /with the expect tool, one call each/.test(rules)
@@ -6021,6 +6024,52 @@ group('кейс можно привязать к машине, и до мигр�
 }
 
 /* ------------------------------------------------------------------ ПРОФИЛИ НАБОРА (шаг 11) */
+
+group('свободная цель на десктопе: кому её можно отдать, и как забирающий о ней узнаёт');
+{
+  /* ЧТО СЛОМАЛОСЬ В ПЕРВЫЙ ЖЕ ПРОГОН ИЗ ТЕЛЕГРАМА. Работа встала в очередь с идентификатором на '#',
+   * и выбор строки в ?worker=claim пропускал такие МИМО проверки «умеешь ли ты цели»: команда на '#'
+   * означала «это умеют оба забирающих». Курьер агента её забрал, не нашёл ни тела, ни знакомой команды
+   * и ответил «This Mac was asked to do something it does not understand». Ход потрачен, мышь занята,
+   * человек в чате получил сообщение, по которому чинить нечего.
+   *
+   * Это ровно тот класс ошибки, который виден только в проде: очередь работает, агент работает, а
+   * встречаются они на строке, которой ни один из них не ждал. Поэтому здесь два пина - на условие
+   * выбора и на поле ответа, - и оба смотрят на МЕСТО, а не на слово. */
+  const worker = read('../api/_mcp-worker.mjs');
+  const queue = read('../api/_queue.mjs');
+
+  check('имя свободной десктопной цели живёт в словаре очереди, рядом с браузерной',
+    /export const DESKTOP_GOAL = '#goal\.desktop';/.test(queue)
+      && /export const BROWSER_GOAL = '#goal\.browser';/.test(queue));
+
+  /* Её забирает ТОЛЬКО тот, у кого модель в цикле. Проверяется, что она вынесена из обеих поблажек для
+   * команд: и из `like '#%'`, и из «нет такого созданного навыка» - вторая пропускала её заодно, потому
+   * что навыка у команды нет вовсе, и это была половина ошибки, которую легко не заметить. */
+  const claim = worker.slice(worker.indexOf('update run_queue set state = \'claimed\''),
+    worker.indexOf('returning id, flow_id, tool_name, args'));
+  check('и она вынесена из поблажки для команд - её берёт только умеющий цели',
+    /\$\{goalCapable\}[\s\S]{0,200}?q\.flow_id <> \$\{DESKTOP_GOAL\}/.test(claim), 'claim');
+  check('и обе поблажки оказались ВНУТРИ этого исключения, а не рядом с ним',
+    claim.indexOf('q.flow_id <> ${DESKTOP_GOAL}') < claim.indexOf("q.flow_id like '#%'")
+      && claim.indexOf('q.flow_id <> ${DESKTOP_GOAL}') < claim.indexOf("f.kind = 'created'"));
+
+  /* ОТВЕТ ЗАБИРАЮЩЕМУ НЕСЁТ `goal`. Оба агента смотрят на него РАНЬШЕ, чем на command: без поля они
+   * идут разбирать команду и отвечают «не понимаю». Ни одной правки в установленных двоичниках не
+   * понадобилось - правка была не там. */
+  check('и ответ на команду говорит, что это цель',
+    /command: job\.flow_id,[\s\S]{0,600}?goal: job\.flow_id === DESKTOP_GOAL/.test(worker), 'claim reply');
+  check('а оба агента смотрят на goal раньше, чем на команду',
+    /if job\.goal \{/.test(read('../agent/mouseflow-agent.swift'))
+      && /if \(Json\.Truth\(job, "goal", false\)\)/.test(read('../agent/mouseflow-agent.ps1')));
+
+  /* И ЦИКЛ УМЕЕТ НАЧАТЬСЯ БЕЗ НАВЫКА. Цель едет в аргументах работы; строку в user_flow ради одноразовой
+   * просьбы из чата не заводят - иначе библиотека человека наполняется тем, чего он туда не клал. */
+  check('первый шаг берёт цель из аргументов, когда навыка нет',
+    /job\.flow_id === DESKTOP_GOAL\)\s*\{\s*goal = String\(\(job\.args && job\.args\.goal\)/.test(worker));
+  check('и пустая такая работа отказывает словами, а не идёт с пустой целью',
+    /if \(!goal\) return fail\('This job carries no goal text to carry out\.'\)/.test(worker));
+}
 
 group('коннектор несёт половину набора, если о ней попросили');
 {

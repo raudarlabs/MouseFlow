@@ -27,7 +27,7 @@ import { neon } from '@neondatabase/serverless';
 import { byDeviceToken } from './_session.js';
 import { report, wrap } from './_report.js';
 import { overSpend } from './_spend.mjs';
-import { queueOne, workerSeen } from './_queue.mjs';
+import { DESKTOP_GOAL, queueOne, workerSeen } from './_queue.mjs';
 import { GOAL_MAX, goalWith, looksLikeText } from './_attach.mjs';
 import { planFrom, planRequest } from './_plan.mjs';
 import { callModel } from './_vision.mjs';
@@ -237,10 +237,13 @@ async function decide(sql, update, userId) {
     return say(update.chatId, SAY.expired);
   }
 
-  /* СВОБОДНАЯ ЦЕЛЬ, ТО ЕСТЬ РАБОТА ДЛЯ АГЕНТА, А НЕ ДЛЯ РАСШИРЕНИЯ. BROWSER_GOAL пометил бы её как
-   * «умеет только браузерное расширение», и агент бы её не взял. Словарь очереди - в api/_queue.mjs. */
+  /* СВОБОДНАЯ ЦЕЛЬ НА ДЕСКТОПЕ. Не BROWSER_GOAL - тот помечает работу как «умеет только браузерное
+   * расширение». И не выдуманное здесь имя: словарь очереди один на всех, api/_queue.mjs, и имя, которого
+   * в нём нет, доедет до агента командой, которой он не знает. */
   const put = await queueOne(sql, userId, {
-    flowId: '#goal', toolName: 'mouseflow_do', args: { goal: draft.goal, telegram: { chatId: draft.chat_id } },
+    flowId: DESKTOP_GOAL,
+    toolName: 'mouseflow_do',
+    args: { goal: draft.goal, telegram: { chatId: draft.chat_id } },
   });
   if (put.why) return say(update.chatId, put.why);
 

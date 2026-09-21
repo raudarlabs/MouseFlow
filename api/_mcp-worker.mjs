@@ -19,7 +19,7 @@ import { FAILS_BEFORE_PAUSE, decide, ruleOf, whenSaid } from './_schedule.mjs';
 import { checksOf } from './_expect.mjs';
 import { ARTIFACT_KEEP_DAYS, artifactId, dropWhich, tooBig } from './_artifact.mjs';
 import { overSpend, spentWhy } from './_spend.mjs';
-import { BROWSER_GOAL, jobId, scheduleId } from './_queue.mjs';
+import { BROWSER_GOAL, DESKTOP_GOAL, jobId, scheduleId } from './_queue.mjs';
 import { caseGoal, caseIdOf, stripCase } from './_case.mjs';
 import { PAYLOAD_MAX_BYTES } from './_payload.mjs';
 import { outcomeMessage } from './_telegram.mjs';
@@ -375,13 +375,25 @@ export async function workerRoute(action, req, res, sql, who) {
              * handed everything EXCEPT a created skill - and a flow row that has gone missing counts as
              * not-a-goal, so a stale job still gets claimed and fails with a reason rather than sitting in
              * the queue forever waiting for a claimer that will never be allowed to take it. */
+            /* СВОБОДНАЯ ЦЕЛЬ НА ДЕСКТОПЕ ВЫНЕСЕНА ИЗ ПОБЛАЖКИ ДЛЯ КОМАНД, и вот почему это отдельная
+             * строка, а не деталь. Команда на '#' раньше означала «это умеют оба забирающих», и обе
+             * следующие ветки её пропускали: like '#%' прямо, а «нет такого созданного навыка» -
+             * заодно, потому что у команды навыка нет вовсе. Для '#goal.desktop' это неверно: она и
+             * есть цель, то есть модель, решающая по одному шагу, и курьеру агента её брать нечем.
+             * Взятая им, она возвращается словами «asked to do something it does not understand» -
+             * наблюдалось на первом же прогоне из телеграма. */
             and (
               ${goalCapable}
-              or q.flow_id like '#%'
-              or not exists (
-                select 1 from user_flow f
-                where f.user_id = q.user_id and f.client_id = q.flow_id
-                  and f.deleted_at is null and f.kind = 'created'
+              or (
+                q.flow_id <> ${DESKTOP_GOAL}
+                and (
+                  q.flow_id like '#%'
+                  or not exists (
+                    select 1 from user_flow f
+                    where f.user_id = q.user_id and f.client_id = q.flow_id
+                      and f.deleted_at is null and f.kind = 'created'
+                  )
+                )
               )
             )
             /* МАШИНА, КОТОРОЙ ЭТА РАБОТА ПРЕДНАЗНАЧЕНА (пункт 7, часть 2).
@@ -433,7 +445,19 @@ export async function workerRoute(action, req, res, sql, who) {
         if (String(job.flow_id || '').startsWith('#')) {
           return res.status(200).json({
             ok: true,
-            job: { id: job.id, toolName: job.tool_name, args: job.args || {}, command: job.flow_id, flow: null },
+            job: {
+              id: job.id,
+              toolName: job.tool_name,
+              args: job.args || {},
+              command: job.flow_id,
+              flow: null,
+              /* И ОДНА ИЗ КОМАНД - ЦЕЛЬ. Оба агента смотрят на `goal` РАНЬШЕ, чем на `command`: истина
+               * здесь отправляет их шагать через ?worker=step, ложь - разбирать команду. Без этого поля
+               * свободная цель доходила до конца их разбора и получала «does not understand» - при том
+               * что оба уже умеют всё, что для неё нужно, и объявляют это как `steps: true`. Ни одной
+               * правки в установленных двоичниках, потому что правка была не там. */
+              goal: job.flow_id === DESKTOP_GOAL,
+            },
           });
         }
         const flow = await sql`
@@ -675,51 +699,70 @@ export async function workerRoute(action, req, res, sql, who) {
        *
        * Deliberately not a separate "begin" call. The agent has just claimed the job and taken a picture;
        * one shape of request for every step is one thing for it to implement and one thing to get right. */
-      const flow = await sql`
-        select client_id, kind, name, payload from user_flow
-        where user_id = ${who.id} and client_id = ${job.flow_id} and deleted_at is null
-      `;
-      if (!flow.length) return fail('the skill was deleted between the ask and the run');
-      const row = flow[0];
-      if (row.kind !== 'created') return fail('this skill is a recording, not a goal - it is replayed, not decided');
+      /* СВОБОДНАЯ ЦЕЛЬ НА ДЕСКТОПЕ - РАБОТА БЕЗ НАВЫКА, и это второй её вид, а не исключение.
+       *
+       * До мессенджера (SPLIT-PLAN §7.2, шаг 14a) облачный цикл всегда вёл СКИЛЛ: строка очереди несла
+       * flow_id, а цель складывалась из его payload и параметров. Просьба, написанная в чат, никакого
+       * навыка за собой не имеет - и заводить ради неё строку в user_flow значило бы, что библиотека
+       * человека наполняется одноразовыми «сделай то-то», которые он туда не клал.
+       *
+       * Поэтому цель едет В АРГУМЕНТАХ РАБОТЫ, а flow_id помечен как команда - тем же способом, что
+       * '#record.start' и '#goal.browser'. Кейса у такой работы нет по определению: кейс - это проверки
+       * НАЗВАННОГО навыка. */
+      let goal = null;
+      let success = null;
+      if (job.flow_id === DESKTOP_GOAL) {
+        goal = String((job.args && job.args.goal) || '').trim();
+        if (!goal) return fail('This job carries no goal text to carry out.');
+      } else {
+        const flow = await sql`
+          select client_id, kind, name, payload from user_flow
+          where user_id = ${who.id} and client_id = ${job.flow_id} and deleted_at is null
+        `;
+        if (!flow.length) return fail('the skill was deleted between the ask and the run');
+        const row = flow[0];
+        if (row.kind !== 'created') return fail('this skill is a recording, not a goal - it is replayed, not decided');
 
-      const payload = row.payload || {};
-      const skill = { ...payload, id: row.client_id, name: row.name, params: payload.params || [] };
-      /* КЕЙС ЧИТАЕТСЯ СЕЙЧАС, А НЕ БЕРЁТСЯ ИЗ СТРОКИ ОЧЕРЕДИ. В args работы лежит только его id: и
-       * утверждения, и значения параметров живут на кейсе, поэтому кейс, отредактированный утром, ночью
-       * проверяется в новой редакции - а не в той, что скопировали при постановке расписания месяц назад.
-       * Забор тот же, что у удалённого скилла: сказать словами, а не упасть. */
-      const askedCase = caseIdOf(job.args);
-      let expects = null;
-      let caseArgs = null;
-      if (askedCase) {
-        const found = await sql`
-          select id, name, args, expects from user_case
-          where id = ${askedCase} and user_id = ${who.id} and deleted_at is null
-        `.catch(() => []);
-        if (!found.length) return fail('the case was deleted between the ask and the run');
-        expects = Array.isArray(found[0].expects) ? found[0].expects : [];
-        if (!expects.length) return fail('this case has no checks, so there is nothing it could prove');
-        caseArgs = found[0].args && typeof found[0].args === 'object' ? found[0].args : {};
+        const payload = row.payload || {};
+        success = payload.success || null;
+        const skill = { ...payload, id: row.client_id, name: row.name, params: payload.params || [] };
+        /* КЕЙС ЧИТАЕТСЯ СЕЙЧАС, А НЕ БЕРЁТСЯ ИЗ СТРОКИ ОЧЕРЕДИ. В args работы лежит только его id: и
+         * утверждения, и значения параметров живут на кейсе, поэтому кейс, отредактированный утром, ночью
+         * проверяется в новой редакции - а не в той, что скопировали при постановке расписания месяц назад.
+         * Забор тот же, что у удалённого скилла: сказать словами, а не упасть. */
+        const askedCase = caseIdOf(job.args);
+        let expects = null;
+        let caseArgs = null;
+        if (askedCase) {
+          const found = await sql`
+            select id, name, args, expects from user_case
+            where id = ${askedCase} and user_id = ${who.id} and deleted_at is null
+          `.catch(() => []);
+          if (!found.length) return fail('the case was deleted between the ask and the run');
+          expects = Array.isArray(found[0].expects) ? found[0].expects : [];
+          if (!expects.length) return fail('this case has no checks, so there is nothing it could prove');
+          caseArgs = found[0].args && typeof found[0].args === 'object' ? found[0].args : {};
+        }
+        /* АРГУМЕНТЫ СКИЛЛА - БЕЗ СЛУЖЕБНЫХ КЛЮЧЕЙ. У кейса они свои и приезжают из его строки; присланное с
+         * работой перекрывает их, чтобы «прогони этот кейс, но для Ann» осталось возможным. Скилл про кейсы
+         * не знает и знать не должен: `__case` снимается здесь, потому что тем же объектом кормится агент
+         * при реплее записи. */
+        const args = stripCase({ ...(caseArgs || {}), ...(job.args || {}) });
+        /* missingParams first, as its own comment instructs: fillGoal substitutes an empty string for
+         * anything it cannot resolve, so calling it alone turns a missing argument into a goal with a hole in
+         * it and a run that does something almost right. */
+        const missing = missingParams(skill, args);
+        if (missing.length) {
+          return fail(`This skill needs ${missing.join(', ')}. Ask the user for the missing value rather than `
+            + 'guessing one: the goal is carried out on their real computer and cannot be undone from here.');
+        }
+        const filled = fillGoal(skill, args);
+        if (!filled || !filled.trim()) return fail('This skill has no goal text to carry out.');
+        /* Цель кейса - цель скилла плюс его проверки, составленные там же, где считается вердикт: одни слова
+         * на оба драйвера, когда второй до них дойдёт. Без кейса возвращает цель как есть. */
+        goal = caseGoal(filled, expects);
       }
-      /* АРГУМЕНТЫ СКИЛЛА - БЕЗ СЛУЖЕБНЫХ КЛЮЧЕЙ. У кейса они свои и приезжают из его строки; присланное с
-       * работой перекрывает их, чтобы «прогони этот кейс, но для Ann» осталось возможным. Скилл про кейсы
-       * не знает и знать не должен: `__case` снимается здесь, потому что тем же объектом кормится агент
-       * при реплее записи. */
-      const args = stripCase({ ...(caseArgs || {}), ...(job.args || {}) });
-      /* missingParams first, as its own comment instructs: fillGoal substitutes an empty string for
-       * anything it cannot resolve, so calling it alone turns a missing argument into a goal with a hole in
-       * it and a run that does something almost right. */
-      const missing = missingParams(skill, args);
-      if (missing.length) {
-        return fail(`This skill needs ${missing.join(', ')}. Ask the user for the missing value rather than `
-          + 'guessing one: the goal is carried out on their real computer and cannot be undone from here.');
-      }
-      const filled = fillGoal(skill, args);
-      if (!filled || !filled.trim()) return fail('This skill has no goal text to carry out.');
-      /* Цель кейса - цель скилла плюс его проверки, составленные там же, где считается вердикт: одни слова
-       * на оба драйвера, когда второй до них дойдёт. Без кейса возвращает цель как есть. */
-      const goal = caseGoal(filled, expects);
+
 
       /* Resolved once, here, so every step of one run is decided by one model. A model changed mid-run
        * would hand the task between two that never saw each other's reasoning. */
@@ -762,7 +805,7 @@ export async function workerRoute(action, req, res, sql, who) {
           return (pref && pref.value) || null;
         } catch (_) { return null; }
       })();
-      loop = startLoop({ goal, model, success: payload.success || null, earlier, zone });
+      loop = startLoop({ goal, model, success, earlier, zone });
       /* Who is driving. A worker runs the loop itself and never writes here; recorded so that a machine
        * with both cannot end up driving one mouse twice. */
       await sql`update run_queue set stepping = true where id = ${id} and user_id = ${who.id}`;
