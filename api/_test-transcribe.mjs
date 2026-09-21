@@ -135,7 +135,7 @@ group('голосовое в мессенджере - та же диктовка
   check('услышанное показывается дословно', /Heard: "\$\{heard\}"/.test(tg));
   check('и выше плана, а не под ним',
     tg.indexOf('Heard: "${heard}"') < tg.indexOf("plan && plan.title ? String(plan.title)"));
-  check('и доезжает до сообщения с кнопками', /planMessage\(\{ plan, files, heard \}\)/.test(route));
+  check('и доезжает до сообщения с кнопками', /planMessage\(\{ plan, files, heard, id \}\)/.test(route));
   check('нераспознанное голосовое отвечает словами, а не тишиной',
     /heardNothing/.test(tg) && /SAY\.heardNothing/.test(route));
   /* И ПОМОЩЬ ГОВОРИТ, КУДА УХОДИТ ГОЛОС - до того, как человек первый раз зажмёт микрофон. */

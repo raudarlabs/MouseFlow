@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 
 import {
+  tagFor, tagIn,
   CHANNEL, DRAFT_TTL_MS, SAY, commandOf, draftId, expired, keyboardFor, looksLikeDeviceToken,
   outcomeMessage, planMessage, refusedDocument, routeOf, updateOf, verdictOf,
 } from './_telegram.mjs';
@@ -138,8 +139,15 @@ group('нажатие: неизвестная кнопка - это НЕ «на�
   check('подделка с двоеточием внутри - null', verdictOf('ok:d1:ok:d2') === null);
 
   const kb = keyboardFor('dabc');
-  check('две кнопки, и одобрение первым', kb.inline_keyboard[0].length === 2
-    && kb.inline_keyboard[0][0].callback_data === 'ok:dabc');
+  /* ТРИ КНОПКИ С 2026-09-21. Средняя появилась потому, что с двумя неверно понятая задача стоила ВСЕЙ
+   * работы заново - а «вся работа» это тридцать секунд надиктованного или приложенный файл.
+   * Порядок закреплён: Approve первым, Cancel последним - то, что нельзя нажать по ошибке рядом с ним. */
+  check('три кнопки, одобрение первым, отмена последней', kb.inline_keyboard[0].length === 3
+    && kb.inline_keyboard[0][0].callback_data === 'ok:dabc'
+    && kb.inline_keyboard[0][1].callback_data === 'ch:dabc'
+    && kb.inline_keyboard[0][2].callback_data === 'no:dabc');
+  check('и правка - это третий вердикт, а не «наверное, одобрили»',
+    verdictOf('ch:dabc').verdict === 'changing');
   /* callback_data у телеграма - 64 байта. Идентификатор, не влезший в кнопку, - это кнопка, которая не
    * работает, и узнать об этом можно только в проде. */
   check('и данные кнопки влезают в 64 байта телеграма',
@@ -301,6 +309,59 @@ group('ни одно закрытие работы не остаётся без�
   /* СЛОВА ИСХОДА - ОДНИ. Вторая их редакция в воркере разошлась бы с первой первым же уточнением. */
   check('и слова исхода берутся из общего модуля, а не пишутся в воркере',
     /from '\.\/_telegram-out\.mjs'/.test(worker) && !/Not done -/.test(worker));
+}
+
+
+/* -------------------------------------------------------------- «Change»: правка вместо переделки
+ *
+ * ЗАЧЕМ ТРЕТЬЯ КНОПКА. С двумя неверно понятая задача стоила ВСЕЙ работы заново, а «вся работа» - это
+ * тридцать секунд надиктованного или приложенный файл, который ещё надо найти. Cancel дёшев только для
+ * той задачи, которую набрали одной строкой.
+ *
+ * И ПОЧЕМУ ЭТО НЕ РЕЖИМ. Напрашивалось состояние: нажал - бот ждёт правку - следующее сообщение читается
+ * как правка. Состояние плохо тем, чем везде: человек нажимает, отвлекается и через три часа пишет НОВУЮ
+ * задачу, которую режим приклеит к старой. Телеграм уже хранит нужную связь сам - ответ несёт то
+ * сообщение, на которое отвечают, - поэтому метка печатается в плане, а правкой считается ОТВЕТ на неё.
+ * Режима нет; написанное не в ответ остаётся новой задачей. */
+group('правка плана держится на ответе, а не на режиме');
+{
+  check('метка узнаётся в тексте', tagIn(`plan text\n\n${tagFor('d1abc')}`) === 'd1abc');
+  check('и её нет там, где её нет', tagIn('just a sentence about #tags') === null);
+  check('чужая решётка не считается меткой', tagIn('#hello') === null && tagIn('#123') === null);
+  check('пусто не бросает', tagIn('') === null && tagIn(null) === null);
+
+  const planned = planMessage({ plan: { title: 'X', checkpoints: [{ title: 'a', detail: 'b' }] }, id: 'd1abc' });
+  check('план несёт свою метку', tagIn(planned) === 'd1abc');
+  check('и зовёт ответить, а не только нажать', /reply to this message/i.test(planned));
+  /* Обещание, ради которого всё: приложенное и надиктованное НЕ теряются. Сказать это надо там, где
+   * человек решает, нажать Cancel или Change. */
+  check('и обещает, что приложенное сохранится', /attached or said is kept/.test(planned));
+
+  const reply = (text, to) => updateOf({
+    message: { message_id: 9, from: { id: 42 }, chat: { id: 42, type: 'private' }, text, reply_to_message: { text: to } },
+  });
+  const amend = routeOf({ row: allowed, update: reply('no, in Safari', planned) });
+  check('ответ на план - это правка, а не новая задача', amend.act === 'amend' && amend.draftId === 'd1abc');
+  /* РАНЬШЕ КОМАНД: правка, начинающаяся со слэша, - обычная человеческая фраза, и разбирать её как
+   * команду значило бы ответить «не понял» на осмысленное. */
+  check('и слэш в начале правки её не ломает',
+    routeOf({ row: allowed, update: reply('/tmp is the folder, not Documents', planned) }).act === 'amend');
+  check('а ответ на сообщение БЕЗ метки - обычная новая задача',
+    routeOf({ row: allowed, update: reply('do something else', 'hello there') }).act === 'goal');
+  check('и написанное не в ответ - тоже',
+    routeOf({ row: allowed, update: updateOf(dm('do something else')) }).act === 'goal');
+  check('незнакомец не может править чужой план',
+    routeOf({ row: null, update: reply('no, in Safari', planned) }).act === 'greet');
+
+  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8');
+  /* ПРАВКА ДОПИСЫВАЕТСЯ К ПРЕЖНЕЙ ЦЕЛИ, А НЕ ЗАМЕНЯЕТ ЕЁ. «Нет, в Safari» само по себе не задача; смысл
+   * есть только рядом с прежней целью - в которой уже лежит файл и надиктованное. */
+  check('прежняя цель берётся из черновика и несёт правку',
+    /Correction from the person who asked/.test(route) && /\{ carry: was\.goal \}/.test(route));
+  check('и править можно только нерешённое',
+    /state !== 'offered' && was\.state !== 'changing'/.test(route));
+  check('и Change спрашивает ответом, а не молча ждёт следующей строки',
+    /force_reply: true/.test(route));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

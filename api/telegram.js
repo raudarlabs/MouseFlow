@@ -35,7 +35,7 @@ import { callModel } from './_vision.mjs';
 import { callTelegram, fileUrl, sendChat } from './_telegram-out.mjs';
 import {
   CHANNEL, SAY, draftId, expired, keyboardFor, outcomeMessage, planMessage, refusedDocument,
-  routeOf, updateOf, verdictOf,
+  routeOf, tagFor, updateOf, verdictOf,
 } from './_telegram.mjs';
 
 /* Модель для плана. Одна строка, одна причина: план - это один вызов перед прогоном, и он не должен стоить
@@ -147,7 +147,7 @@ async function stop(sql, update, userId) {
 }
 
 /* ЦЕЛЬ → ПЛАН → ДВЕ КНОПКИ. Работа в очередь здесь НЕ ставится. */
-async function offer(sql, update, userId) {
+async function offer(sql, update, userId, { carry = null } = {}) {
   /* Потолок частоты - на самом дорогом, что тут есть, и это вызов модели. У незнакомца его нет вовсе:
    * ему мы ничего не считаем, потому что ничего для него и не считаем - до спаривания ни один вызов
    * модели не происходит. */
@@ -187,7 +187,13 @@ async function offer(sql, update, userId) {
 
   /* Подпись под голосовым телеграм не присылает, так что одно из двух всегда пусто; склейка на случай
    * дня, когда присылать начнёт, - и потому что «сказал и дописал» это одна просьба, а не две. */
-  const goal = goalWith([update.text, heard].filter(Boolean).join(' '), files);
+  /* ПРАВКА НЕ ЗАМЕНЯЕТ ЗАДАЧУ, А ДОПИСЫВАЕТСЯ К НЕЙ. «Нет, в Safari» само по себе не задача; смысл у
+   * него есть только рядом с прежней целью - а в прежней цели уже лежит приложенный файл и то, что было
+   * надиктовано, то есть ровно то, ради сохранения чего кнопка и появилась. */
+  const said = [update.text, heard].filter(Boolean).join(' ');
+  const goal = carry
+    ? `${carry}\n\nCorrection from the person who asked: ${said}`
+    : goalWith(said, files);
   if (!goal) return say(update.chatId, SAY.empty);
   if (goal.length > GOAL_MAX) {
     return say(update.chatId, `That is ${goal.length - GOAL_MAX} characters over what one goal can hold.`);
@@ -238,7 +244,22 @@ async function offer(sql, update, userId) {
     insert into chat_draft (id, channel, sender_id, user_id, chat_id, goal, plan)
     values (${id}, ${CHANNEL}, ${update.senderId}, ${userId}, ${update.chatId}, ${goal}, ${JSON.stringify(plan)})
   `;
-  return say(update.chatId, planMessage({ plan, files, heard }), { reply_markup: keyboardFor(id) });
+  return say(update.chatId, planMessage({ plan, files, heard, id }), { reply_markup: keyboardFor(id) });
+}
+
+/* ОТВЕТ НА ПЛАН - ЭТО ПРАВКА. Прежняя цель достаётся из черновика и НЕ пересобирается: одобряют то, что
+ * показали, а показанное считалось из неё - вместе с приложенным файлом и надиктованным. */
+async function amend(sql, update, userId, draftId) {
+  const [was] = await sql`
+    select id, goal, state from chat_draft where id = ${draftId} and user_id = ${userId}
+  `;
+  /* Поправить можно только то, что ещё не решено: правка одобренного плана - это второй прогон, о котором
+   * человек думает, что он первый. */
+  if (!was || (was.state !== 'offered' && was.state !== 'changing')) {
+    return say(update.chatId, SAY.changeGone);
+  }
+  await sql`update chat_draft set state = 'changing', decided_at = now() where id = ${was.id}`;
+  return offer(sql, update, userId, { carry: was.goal });
 }
 
 /* НАЖАТИЕ. Половина этой функции - про то, чтобы одно нажатие не стало двумя прогонами. */
@@ -268,6 +289,13 @@ async function decide(sql, update, userId) {
   }
 
   if (said.verdict === 'declined') return say(update.chatId, SAY.declined);
+
+  /* ПРАВКА: спросить, что не так, ОТВЕТОМ на наше сообщение. force_reply ставит курсор в поле ответа
+   * сам, так что жест не надо объяснять дважды; метка черновика едет в тексте вопроса, потому что
+   * связь «этот ответ - к этому плану» хранит сам телеграм, а не мы. */
+  if (said.verdict === 'changing') {
+    return say(update.chatId, `${SAY.changeAsk}\n\n${tagFor(draft.id)}`, { reply_markup: { force_reply: true } });
+  }
 
   if (expired(draft.created_at)) {
     await sql`update chat_draft set state = 'expired' where id = ${draft.id}`;
@@ -345,6 +373,7 @@ async function handler(req, res) {
     if (route.act === 'stop') { await stop(sql, update, userId); return ok(res, 'stopped'); }
     if (route.act === 'decide') { await decide(sql, update, userId); return ok(res, 'decided'); }
     if (route.act === 'goal') { await offer(sql, update, userId); return ok(res, 'offered'); }
+    if (route.act === 'amend') { await amend(sql, update, userId, route.draftId); return ok(res, 'amended'); }
     return ok(res, 'nothing to do');
   } catch (err) {
     if (/chat_draft/.test(String(err.message))) {

@@ -69,6 +69,11 @@ export const SAY = {
   /* Голосовое, из которого ничего не вышло. Тишина в ответ на голосовое читалась бы как «не расслышал и
    * стесняюсь сказать», а человек в этот момент решает, повторить или напечатать. */
   heardNothing: 'I could not make out anything in that recording. Say it again, or type it.',
+  /* Правка спрашивается ОТВЕТОМ, и сказать это надо прямо: человек, который просто напишет следующей
+   * строкой, получит новую задачу и не поймёт, куда делась прежняя. */
+  changeAsk: 'What should be different? Reply to this message and say it - the task and anything you '
+    + 'attached or dictated are kept, and you will get a new plan.',
+  changeGone: 'That plan is no longer open, so there is nothing to change. Send the task again.',
 };
 
 /**
@@ -108,6 +113,8 @@ export function updateOf(body) {
    * приехало» - это вопрос с правильным ответом. */
   const heard = (m.voice && typeof m.voice === 'object' && m.voice)
     || (m.audio && typeof m.audio === 'object' && m.audio) || null;
+  /* НА ЧТО ЭТО ОТВЕТ. Правка плана держится РОВНО НА ЭТОМ ПОЛЕ и больше ни на чём - см. tagIn ниже. */
+  const to = m.reply_to_message && typeof m.reply_to_message === 'object' ? m.reply_to_message : null;
   return {
     kind: 'message',
     senderId: m.from && m.from.id != null ? String(m.from.id) : '',
@@ -124,6 +131,7 @@ export function updateOf(body) {
         mime: String(doc.mime_type || ''),
       }
       : null,
+    replyTo: to ? String(to.text || to.caption || '') : null,
     voice: heard
       ? {
         fileId: String(heard.file_id || ''),
@@ -192,6 +200,17 @@ export function routeOf({ row, update }) {
    * /status, ответивший незнакомцу про чужую машину, рассказал бы о чужом аккаунте. */
   if (state !== 'allowed' || !(row && row.user_id)) return { act: 'greet' };
 
+  /* ПРАВКА - ЭТО ОТВЕТ НА СООБЩЕНИЕ С МЕТКОЙ. Место в списке выбрано дважды, и оба раза не случайно.
+   *
+   * НИЖЕ «я тебя не знаю»: правка чужого плана - это чужая работа на чужой машине, и метку можно
+   * подсмотреть - она напечатана в сообщении. Маршрут и так не пустил бы незнакомца дальше, но правило
+   * «кого обслуживаем» обязано жить в ОДНОМ месте, иначе второе однажды окажется мягче первого.
+   *
+   * ВЫШЕ команд: человек, поправляющий задачу словами «/tmp, а не Documents», начинает со слэша, и
+   * разбирать это как команду значило бы ответить «не понял» на совершенно осмысленную фразу. */
+  const amending = update.replyTo ? tagIn(update.replyTo) : null;
+  if (amending && (update.text || update.voice)) return { act: 'amend', draftId: amending };
+
   if (command) {
     if (command.name === 'status') return { act: 'status' };
     if (command.name === 'stop') return { act: 'stop' };
@@ -217,7 +236,7 @@ export function refusedDocument(doc) {
  * Цикл реактивный: плана он не получает и о нём не узнаёт (см. api/_plan.mjs). Чекпоинты с номерами,
  * притворяющиеся программой, - худший вид полировки, потому что выглядят как гарантия. В чате это опаснее,
  * чем на странице: человек не видит экрана и у него нет ничего, кроме этих строк. */
-export function planMessage({ plan, files = [], heard = null }) {
+export function planMessage({ plan, files = [], heard = null, id = null }) {
   const lines = [];
   /* ЧТО УСЛЫШАНО - ПЕРВОЙ СТРОКОЙ, ВЫШЕ ПЛАНА. У продиктованной задачи появился новый способ пойти не
    * туда, которого у напечатанной нет: распознавание. План, построенный по неверно услышанной фразе,
@@ -236,22 +255,56 @@ export function planMessage({ plan, files = [], heard = null }) {
     '',
     'This is what I intend, not a script - the run decides each step from what is on screen, and it may '
     + 'go another way.',
-    'Approve to start it on your machine.',
+    'Approve to start it on your machine. Change, or reply to this message, to correct it - '
+    + 'what you attached or said is kept.',
   );
+  /* Метка последней строкой и отдельно от текста: она для машины, и человеку не должно казаться, что её
+   * надо читать. Без неё ответ на это сообщение некуда отнести - см. tagFor. */
+  if (id) lines.push('', tagFor(id));
   return lines.join('\n');
 }
 
+/* МЕТКА ЧЕРНОВИКА В САМОМ СООБЩЕНИИ - и это вместо режима разговора.
+ *
+ * «Change» напрашивался как состояние: нажал - бот перешёл в режим «жду правку» - следующее сообщение
+ * читается как правка. Состояние здесь плохо ровно тем, чем везде: человек нажимает, отвлекается, и через
+ * три часа пишет НОВУЮ задачу, которую режим приклеит к старой. Сторожить это пришлось бы таймером, то
+ * есть вторым состоянием поверх первого.
+ *
+ * Телеграм уже хранит нужную связь сам: ответ на сообщение несёт то сообщение целиком. Поэтому метка
+ * печатается в плане, а правкой считается ОТВЕТ на сообщение с меткой. Режима нет; написанное не в ответ
+ * остаётся новой задачей, как и было. И жест виден: у ответа в телеграме своя стрелка, которую все знают.
+ *
+ * Вид метки - решётка и идентификатор: короткая, не мешает читать и не встречается в человеческом тексте. */
+export const tagFor = (id) => `#${id}`;
+
+export function tagIn(said) {
+  const m = /#(d[a-z0-9]{1,24})\b/.exec(String(said || ''));
+  return m ? m[1] : null;
+}
+
+/* ТРИ КНОПКИ, И СРЕДНЯЯ ПОЯВИЛАСЬ ПОТОМУ, ЧТО ОТМЕНА СТОИЛА СЛИШКОМ ДОРОГО.
+ *
+ * С двумя кнопками неверно понятая задача стоила ВСЕЙ работы заново - а «вся работа» это тридцать секунд
+ * надиктованного или приложенный файл, который ещё надо найти. Change сохраняет их: правится цель, а
+ * приложенное и услышанное уже внутри неё.
+ *
+ * Порядок - Approve, Change, Cancel: сначала то, чего хотят чаще всего, последним - то, что нельзя нажать
+ * по ошибке рядом с Approve. */
 export const keyboardFor = (id) => ({
   inline_keyboard: [[
     { text: 'Approve', callback_data: `ok:${id}` },
+    { text: 'Change', callback_data: `ch:${id}` },
     { text: 'Cancel', callback_data: `no:${id}` },
   ]],
 });
 
 /** Что нажали. Неизвестная кнопка - null, а не «наверное, одобрили». */
+const VERDICTS = { ok: 'approved', no: 'declined', ch: 'changing' };
+
 export function verdictOf(data) {
-  const m = /^(ok|no):([A-Za-z0-9]{1,48})$/.exec(String(data || ''));
-  return m ? { verdict: m[1] === 'ok' ? 'approved' : 'declined', draftId: m[2] } : null;
+  const m = /^(ok|no|ch):([A-Za-z0-9]{1,48})$/.exec(String(data || ''));
+  return m ? { verdict: VERDICTS[m[1]], draftId: m[2] } : null;
 }
 
 /** Просрочен ли показанный план. Считается от времени показа, а не от нажатия. */
