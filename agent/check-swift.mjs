@@ -632,6 +632,39 @@ group('панель нативная только снаружи, и аккор�
     !!panel && /\.resizable/.test(panel)
     && /if ours && !grown \{ return \}/.test(panel) && /if !ours && grown \{ return \}/.test(panel));
 
+  /* ЗАКРЫТЬ МОЖНО, И ЭТОГО ПУНКТА НЕ БЫЛО ДО ЖИВОГО ЗАПУСКА. С fullSizeContentView страница ложилась
+   * поверх кнопки закрытия: кнопка на месте, нажать нельзя, выйти можно было только выключив агента.
+   * Панель без выхода - это ловушка, а не огрех оформления. */
+  /* БЕЗ КОММЕНТАРИЕВ: причина исправления в них и НАЗВАНА - иначе следующий читатель вернёт
+   * fullSizeContentView, не зная, чем это кончилось. Пин обязан смотреть на код, а не на объяснение. */
+  const panelCode = (panel || '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  check('кнопку закрытия не накрывает страница',
+    !!panel && !/fullSizeContentView/.test(panelCode) && /\.closable/.test(panelCode));
+  /* И ESCAPE ЗАКРЫВАЕТ - НАТИВНО. Со страницы это было мёртвым кодом (WebKit исполняет window.close()
+   * только для окна, открытого скриптом) и работало бы только на /panel, то есть не на экране входа. */
+  check('и Escape закрывает панель, чем бы она сейчас ни была занята',
+    !!panel && /addLocalMonitorForEvents\(matching: \.keyDown\)/.test(panel)
+    && /event\.keyCode == 53/.test(panel) && /return nil/.test(panel));
+  /* ИСКАТЬ ОТСУТСТВИЕ МОЖНО ТОЛЬКО В КОДЕ - в этом файле уже есть такой пин, и ловушка та же: комментарий
+   * рядом РАССКАЗЫВАЕТ про удалённое поведение теми же словами, которыми его ищут. Поймано дважды за
+   * десять минут, на swift и на tsx. */
+  const pageCode = readFileSync(join(ROOT, 'web/src/features/panel/PanelView.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  check('и страница больше не делает вид, что закрывает себя сама', !/window\.close\(\)/.test(pageCode));
+
+  /* ВХОДА В ПАНЕЛИ НЕТ, И ЭТО ТОЖЕ НАШЛОСЬ ЖИВЫМ ЗАПУСКОМ. У WKWebView своё хранилище кук, поэтому по
+   * горячей клавише встречал экран входа с кодом по SMS - просивший то, что уже есть: этот Mac привязан
+   * к аккаунту токеном, иначе он не брал бы работу. */
+  check('панель предъявляет аккаунт токеном устройства, а не просит войти',
+    !!panel && /addUserScript/.test(panelCode) && /window\.__mouseflow/.test(panelCode));
+  /* И ТОЛЬКО НА СВОЁМ АДРЕСЕ, проверкой ВНУТРИ скрипта: forMainFrameOnly не спасёт от перехода на чужой
+   * сайт в том же фрейме. Токен - это право двигать мышь на этой машине. */
+  check('и отдаёт его только своему же развёртыванию',
+    !!panel && /location\.origin !== new URL\(base\)\.origin/.test(panelCode));
+  check('и страница шлёт его заголовком, которым whoIsCalling уже умеет читать',
+    /authorization: `Bearer \$\{token\}`/.test(
+      readFileSync(join(ROOT, 'web/src/lib/panel-auth.ts'), 'utf8')));
+
   const hotkey = slice('enum Hotkey {');
   check('аккорд найден', !!hotkey);
   /* CARBON, А НЕ ВТОРОЙ EVENT TAP. Tap видит ВСЁ, что человек печатает; просить такого доверия ради

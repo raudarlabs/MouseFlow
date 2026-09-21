@@ -29,6 +29,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 /* Фразы и потолок - оттуда же, откуда их берёт маршрут. Одно обещание о том, куда уходит голос. */
 import { refusedAudio } from '../../../../api/_transcribe.mjs';
+/* И диктовка тоже: в панели куки нет, а речь узнаётся тем же маршрутом. */
+import { asPanel } from '@/lib/panel-auth';
 
 interface RecognitionAlternative { transcript: string }
 interface RecognitionResult { isFinal: boolean; 0: RecognitionAlternative; length: number }
@@ -288,7 +290,7 @@ export function useDictation(onText: (text: string) => void): Dictation {
           const res = await fetch('/api/transcribe', {
             method: 'POST',
             credentials: 'same-origin',
-            headers: { 'content-type': 'application/json' },
+            headers: { 'content-type': 'application/json', ...asPanel() },
             body: JSON.stringify({
               audio: toBase64(new Uint8Array(await blob.arrayBuffer())),
               type,

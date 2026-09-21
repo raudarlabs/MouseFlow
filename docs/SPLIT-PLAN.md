@@ -771,6 +771,25 @@ sign-in page paints long before it finishes loading and a window that grows at t
 small. The window is resizable, and our size is only restored over our own — a hand on the corner has said
 what size it wants, and arguing with it is worse than being wrong about the default.
 
+**Then the owner asked the better question: why is there a sign-in at all?** There is not one, now. The
+Mac is already attached to the account by a device token — it would not be taking work otherwise — and
+asking for a password while holding the key is not security, it is an extra screen. The agent hands the
+token to the page it loads (`window.__mouseflow`), and the page sends it as `Authorization: Bearer`, which
+`whoIsCalling` has always accepted as one of its three ways in; the browser extension uses the same one.
+Nothing new was invented: what changed is what the panel presents, not how it is checked.
+
+Two constraints on that, both pinned. The token goes **only to our own deployment**, and the origin check
+lives *inside* the injected script rather than around it — `forMainFrameOnly` does not survive a
+navigation to somebody else's site in the same frame, and a script that compares the origin at execution
+time does. And it is JSON-encoded rather than glued into quotes: this token is ours and harmless, but a
+string built by concatenation is eventually built out of something else.
+
+**And the window could not be closed.** `fullSizeContentView` put the web page over the traffic lights —
+the close button was there, visible in the window tree, and unclickable. Escape did not help either: the
+page called `window.close()`, which WebKit only honours for a window script opened, and which existed
+only on `/panel` — not on the screen where somebody was actually stuck. The titlebar is ordinary now, and
+Escape is handled by the agent with a local key monitor, so it closes the panel whatever it is showing.
+
 2. **A tray/hotkey that opens a small dictation window.** The agent already serves loopback; the window is a
    browser window, so the recogniser stays in one place.
 3. **The agent records the audio itself and posts it up.** With OpenAI doing the recognition this stops

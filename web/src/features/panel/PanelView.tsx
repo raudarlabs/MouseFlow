@@ -25,6 +25,7 @@ import { cn } from '@insightis/ui/cn';
 import { type Plan, askForPlan } from '@/lib/plan';
 import { langName, useDictation } from '@/features/create/dictation';
 import { GOAL_MAX } from '@/features/create/attach';
+import { asPanel } from '@/lib/panel-auth';
 
 /* Как часто спрашивать, чем кончилось. Две секунды: прогон идёт минутами, а человек, глядящий в окно,
  * замечает задержку примерно с этого порога. Чаще - это опрос ради ощущения, а не ради ответа. */
@@ -77,7 +78,7 @@ export function PanelView() {
       const res = await fetch('/api/queue', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', ...asPanel() },
         body: JSON.stringify({ goal: goal.trim() }),
       });
       const body = await res.json().catch(() => null);
@@ -102,7 +103,8 @@ export function PanelView() {
     let gone = false;
     const tick = async () => {
       try {
-        const res = await fetch(`/api/queue?id=${encodeURIComponent(stage.id)}`, { credentials: 'same-origin' });
+        const res = await fetch(`/api/queue?id=${encodeURIComponent(stage.id)}`,
+          { credentials: 'same-origin', headers: asPanel() });
         const body = await res.json().catch(() => null);
         if (gone || !body?.done) return;
         setStage({ at: 'over', good: body.good === true, said: String(body.said || '') });
@@ -167,7 +169,10 @@ export function PanelView() {
               /* Enter отправляет, Shift+Enter переносит строку - как в любом поле, куда пишут фразу, а
                * не документ. Панель открывают ради одной просьбы. */
               if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); void ask(); }
-              if (ev.key === 'Escape') window.close();
+              /* ESCAPE ЗДЕСЬ НЕ ОБРАБАТЫВАЕТСЯ НАРОЧНО. Закрывает панель агент - см. монитор в
+               * Panel.build(). `window.close()` отсюда был мёртвым кодом: WebKit исполняет его только
+               * для окна, открытого скриптом, а наше открыто загрузкой. И даже живым он работал бы
+               * только на этой странице, то есть не на экране входа - там, где закрыть нужнее всего. */
             }}
             disabled={stage.at === 'planning'}
             rows={3}

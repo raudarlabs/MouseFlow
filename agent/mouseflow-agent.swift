@@ -6593,6 +6593,8 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
     private var loadedFor: String?
     /// Растянуто ли окно под чужой экран - чтобы вернуть размер composer'а, но не спорить с рукой.
     private var grown = false
+    /// Наблюдатель за Escape. Держится, пока жив агент: панель одна, и пересоздавать его не на чем.
+    private var escape: Any?
 
     /* ДВА РАЗМЕРА, И ВТОРОЙ ПОЯВИЛСЯ ОТ ЖИВОГО ЗАПУСКА.
      *
@@ -6625,12 +6627,20 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
 
     private func build() {
         let frame = NSRect(origin: .zero, size: Panel.askSize)
+        /* БЕЗ fullSizeContentView, И ЭТО ИСПРАВЛЕНИЕ, А НЕ ВКУС.
+         *
+         * С ним содержимое занимает и полосу заголовка - то есть WKWebView ложится ПОВЕРХ кнопки
+         * закрытия. Кнопка остаётся на месте, её видно в дереве окна, и нажать её нельзя: сверху лежит
+         * веб-страница. Панель, которую человек не может закрыть, - это не «некрасиво», это ловушка;
+         * выйти из неё можно было только выключив агента.
+         *
+         * Красивее было бы оставить содержимое во всю высоту и подвинуть страницу вниз на высоту
+         * заголовка - но это та же полоса, только нарисованная нами, и с ней пришлось бы согласовывать
+         * тему страницы. Обычный заголовок утилитарного окна тонкий и стоит ноль. */
         let panel = NSPanel(contentRect: frame,
-                            styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .utilityWindow],
+                            styleMask: [.titled, .closable, .resizable, .utilityWindow],
                             backing: .buffered, defer: false)
         panel.title = "MouseFlow"
-        panel.titlebarAppearsTransparent = true
-        panel.titleVisibility = .hidden
         panel.isFloatingPanel = true
         panel.level = .floating
         /* Во всех пространствах и поверх полноэкранных: аккорд, который не работает, пока открыт Zoom, -
@@ -6642,6 +6652,37 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
         panel.standardWindowButton(.zoomButton)?.isHidden = true
 
         let config = WKWebViewConfiguration()
+        /* ТОКЕН УСТРОЙСТВА ОТДАЁТСЯ СТРАНИЦЕ, И ВХОДА НЕТ ВОВСЕ.
+         *
+         * У WKWebView своё хранилище кук, отдельно от Safari, поэтому первое, что встречал человек по
+         * горячей клавише, - экран входа с кодом по SMS. Он просил то, что у нас УЖЕ ЕСТЬ: этот Mac
+         * привязан к аккаунту токеном, иначе он не брал бы работу. Просить пароль при наличии ключа - это
+         * не безопасность, это лишний экран.
+         *
+         * `whoIsCalling` умеет читать такой токен из заголовка Authorization - это один из трёх способов
+         * быть собой, и им же пользуется расширение. Страница кладёт его в заголовок сама (см.
+         * web/src/lib/panel-auth.ts); отсюда он только приезжает.
+         *
+         * ТОЛЬКО НА СВОЁМ АДРЕСЕ, и проверка стоит ВНУТРИ скрипта, а не снаружи: forMainFrameOnly не
+         * спасёт от перехода на чужой сайт в том же фрейме, а скрипт, сверяющий origin в момент
+         * исполнения, - спасёт. Токен это право двигать мышь на этой машине, и отдавать его куда-либо,
+         * кроме своего же развёртывания, нельзя.
+         *
+         * JSON-кодированием, а не склейкой в кавычках: токен наш и безобиден, но строка, собранная
+         * склейкой, однажды собирается из чего-то другого. */
+        if let link = Account.link,
+           let tokenData = try? JSONSerialization.data(withJSONObject: [link.token]),
+           let baseData = try? JSONSerialization.data(withJSONObject: [link.base]),
+           let tokenJS = String(data: tokenData, encoding: .utf8),
+           let baseJS = String(data: baseData, encoding: .utf8) {
+            let source = "(function(){try{"
+                + "var base = \(baseJS)[0];"
+                + "if (location.origin !== new URL(base).origin) return;"
+                + "window.__mouseflow = { token: \(tokenJS)[0] };"
+                + "}catch(e){}})();"
+            config.userContentController.addUserScript(
+                WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         /* Сессия ПЕРЕЖИВАЕТ перезапуск агента: иначе входить пришлось бы каждое утро, и панель стала бы
          * самым медленным способом сказать одну фразу. */
         config.websiteDataStore = .default()
@@ -6650,6 +6691,22 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
         view.navigationDelegate = self
         view.autoresizingMask = [.width, .height]
         panel.contentView = view
+
+        /* ESCAPE ЗАКРЫВАЕТ, И ЭТО ОБЯЗАН ДЕЛАТЬ АГЕНТ, А НЕ СТРАНИЦА.
+         *
+         * Сначала Escape ловила страница и звала window.close(). Это мёртвый код: WebKit исполняет
+         * window.close() только для окна, которое само же и открыл скриптом, а наше открыто загрузкой.
+         * И даже будь оно живым - работало бы только на /panel, то есть не на экране входа, где человек
+         * как раз и застревает.
+         *
+         * Локальный монитор видит нажатия, адресованные НАШЕМУ приложению, и только пока панель открыта.
+         * Возврат nil съедает клавишу: Escape в панели значит «закрой панель», а не «отмени то, что я
+         * печатал». */
+        escape = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self, self.window?.isVisible == true, event.keyCode == 53 else { return event }
+            self.hide()
+            return nil
+        }
 
         window = panel
         web = view

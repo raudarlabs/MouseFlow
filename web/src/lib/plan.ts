@@ -23,6 +23,9 @@
  */
 import { planFrom, planRequest } from '../../../api/_plan.mjs';
 import { planModel } from './model-config';
+/* Панель предъявляет аккаунт токеном устройства, а не кукой: у WKWebView своё хранилище кук. Пусто во
+ * всякой обычной вкладке - см. web/src/lib/panel-auth.ts. */
+import { asPanel } from './panel-auth';
 
 /* Тип плана - оттуда же, откуда промпт: страница и вебхук обязаны показывать одну и ту же форму.
  * Реэкспортом, потому что его импортируют из этого файла с тех пор, как он здесь появился. */
@@ -53,7 +56,7 @@ export async function askForPlan(
     res = await fetch('/api/claude', {
       method: 'POST',
       credentials: 'same-origin',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', ...asPanel() },
       signal: cutoff.signal,
       body: JSON.stringify({
         model: await planModel().catch(() => MODEL),
