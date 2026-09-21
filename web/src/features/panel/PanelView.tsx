@@ -148,7 +148,7 @@ export function PanelView() {
   return (
     /* ВЫСОТА ПО СОДЕРЖИМОМУ, А НЕ ПО ОКНУ: её меряют и отсылают наверх. Отступ маленький - скруглённую
      * рамку рисует само окно, и вторая рамка внутри читалась бы как коробка в коробке. */
-    <div ref={root} className="flex flex-col gap-2 bg-surface-page p-2.5 text-ink-primary">
+    <div ref={root} className="flex flex-col gap-2 bg-surface-page p-2 text-ink-primary">
       {stage.at === 'offered' ? (
         <>
           <Typography variant="h1" weight="semibold" className="px-1 text-[0.92rem]">{stage.plan.title}</Typography>
@@ -193,7 +193,11 @@ export function PanelView() {
          * занимает одну строку, а не половину экрана. */
         <div
           className={cn(
-            'flex items-end gap-1 rounded-2xl border border-stroke bg-surface-card2 py-1.5 pr-1.5 pl-3',
+            /* ПО ЦЕНТРУ, А НЕ ПО НИЖНЕМУ КРАЮ. С `items-end` язык, микрофон и отправка липли ко дну, и
+             * на длинном тексте выходило, что выбор языка стоит посередине высоты, а две кнопки рядом -
+             * внизу: три элемента одной строки в двух разных местах. Центр - единственное положение,
+             * при котором они остаются одной строкой и на одной, и на шести. */
+            'flex items-center gap-1 rounded-2xl border border-stroke bg-surface-card2 py-1.5 pr-1.5 pl-3',
             'focus-within:border-ink-inactive',
           )}
           /* Щелчок по пустому месту рамки - это щелчок по полю: человек целится в «сюда писать», а не в
@@ -221,7 +225,7 @@ export function PanelView() {
                 ? 'Listening — say what it should do'
                 : 'What should it do on this computer?'}
             className={cn(
-              'flex-1 resize-none self-center bg-transparent py-1 text-[0.92rem] leading-6',
+              'flex-1 resize-none bg-transparent py-1 text-[0.92rem] leading-6',
               'text-ink-primary placeholder:text-ink-inactive focus:outline-none disabled:opacity-disabled',
             )}
           />
@@ -231,7 +235,7 @@ export function PanelView() {
               onChange={(ev) => dictation.setLang(ev.target.value)}
               aria-label="Language to dictate in"
               className={cn(
-                'shrink-0 self-center rounded-lg border-0 bg-transparent py-1 pr-1 text-[0.72rem]',
+                'shrink-0 rounded-lg border-0 bg-transparent py-1 pr-1 text-[0.72rem]',
                 'text-ink-inactive hover:text-ink-body focus:outline-none',
               )}
             >

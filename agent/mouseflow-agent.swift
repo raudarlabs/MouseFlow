@@ -6619,7 +6619,14 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessage
      * прыгало бы при каждом слове. */
     private static let width: CGFloat = 640
     /// Пока страница не сказала своего - столько. Одна строка с кнопками, как у всякого композера.
-    private static let firstHeight: CGFloat = 132
+    private static let firstHeight: CGFloat = 76
+    /* НИЖНИЙ ПРЕДЕЛ - ОТДЕЛЬНОЕ ЧИСЛО, И ЭТО БЫЛА ОШИБКА.
+     *
+     * Сначала полом служила та же firstHeight: `max(firstHeight, …)`. То есть окно не могло стать ниже
+     * СВОЕГО СТАРТОВОГО размера - и под пилюлей в одну строку оставалась синяя пустота ровно в ту
+     * разницу, которую страница честно просила убрать. Стартовый размер - это «пока не знаем», а пол -
+     * это «ниже не бывает»; одно число на две роли ведёт себя правильно ровно в одном случае из двух. */
+    private static let minHeight: CGFloat = 44
     /// Больше экрана окно не станет, что бы ни прислала страница.
     private static let maxHeightShare: CGFloat = 0.8
 
@@ -6644,8 +6651,16 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessage
          *
          * ВЫХОД ПРИ ЭТОМ НЕ ПРОПАЛ, И ЕГО ТЕПЕРЬ ТРИ: Escape, щелчок мимо окна и тот же аккорд ещё раз.
          * Это больше, чем было с крестиком, и все три - привычные жесты, а не кнопка, которую надо найти. */
+        /* БЕЗ .nonactivatingPanel, И ЭТО ПОЧИНКА ВВОДА, А НЕ ВКУС.
+         *
+         * Неактивирующая панель принимает нажатия, не делая приложение активным, - и звучит это ровно
+         * как то, чего хочется от всплывающей строки. На деле оно ломает две вещи, которые человек
+         * замечает в первую же минуту: ⌘V и прочие команды правки не работают (их разносит главное
+         * меню активного приложения, а активным становится не наше), и удержание клавиши печатает одну
+         * букву вместо повтора. Мы всё равно активируем приложение в show(), так что отказываться
+         * нечего было и с самого начала. */
         let panel = KeyPanel(contentRect: frame,
-                             styleMask: [.borderless, .nonactivatingPanel],
+                             styleMask: [.borderless],
                              backing: .buffered, defer: false)
         panel.isFloatingPanel = true
         panel.level = .floating
@@ -6762,7 +6777,7 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessage
         guard let panel = window else { return }
         let area = (panel.screen ?? NSScreen.main)?.visibleFrame
         let ceiling = (area?.height ?? 900) * Panel.maxHeightShare
-        let want = max(Panel.firstHeight, min(asked.rounded(), ceiling))
+        let want = max(Panel.minHeight, min(asked.rounded(), ceiling))
         guard abs(panel.frame.height - want) > 1 else { return }
         var frame = panel.frame
         /* Верхний край на месте: окно растёт вниз, а не прыгает - человек смотрит в первую строку. */
@@ -7018,6 +7033,43 @@ final class MenuActions: NSObject, NSMenuDelegate {
 var panelHotkeyItem: NSMenuItem?
 
 let menuActions = MenuActions()
+
+/* ГЛАВНОЕ МЕНЮ - РАДИ ОДНОЙ ВЕЩИ: ЧТОБЫ РАБОТАЛО ⌘V.
+ *
+ * Агент - accessory, у него нет ни иконки в Dock, ни строки меню, и главного меню у него не было вовсе.
+ * Пока единственным окном была рамка вокруг экрана, это ничего не стоило. С появлением поля ввода стало
+ * стоить: в macOS команды правки разносит ИМЕННО главное меню - ⌘V это не «встроенное поведение поля», а
+ * пункт Paste со своим сочетанием клавиш. Нет пункта - нет вставки, и человек первым делом обнаруживает,
+ * что в панель нельзя вставить скопированный путь.
+ *
+ * Меню при этом НЕ ВИДНО: у accessory-приложения строки меню нет. Оно существует только как таблица
+ * сочетаний клавиш, и именно поэтому в нём ровно правка и ничего больше - ни About, ни Quit: пункты,
+ * которых никто не увидит, но которые перехватят ⌘Q у приложения впереди.
+ *
+ * Стандартные селекторы, а не свои обработчики: undo:/cut:/copy:/paste: идут по цепочке отклика в то, что
+ * сейчас в фокусе, и WKWebView отвечает на них сам. Своя реализация была бы второй - и худшей.
+ */
+let mainMenu = NSMenu()
+let editHolder = NSMenuItem()
+mainMenu.addItem(editHolder)
+let editMenu = NSMenu(title: "Edit")
+editHolder.submenu = editMenu
+for (title, action, key) in [
+    ("Undo", #selector(UndoManager.undo), "z"),
+    ("Redo", #selector(UndoManager.redo), "Z"),
+    ("Cut", #selector(NSText.cut(_:)), "x"),
+    ("Copy", #selector(NSText.copy(_:)), "c"),
+    ("Paste", #selector(NSText.paste(_:)), "v"),
+    ("Select All", #selector(NSText.selectAll(_:)), "a"),
+] as [(String, Selector, String)] {
+    let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+    /* Заглавная буква в сочетании означает Shift - AppKit берёт его из самого символа, и указывать
+     * .shift отдельно значило бы потребовать Shift дважды. */
+    item.keyEquivalentModifierMask = key == key.uppercased() && key != key.lowercased()
+        ? [.command, .shift] : [.command]
+    editMenu.addItem(item)
+}
+app.mainMenu = mainMenu
 
 let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 if let button = statusItem.button {
