@@ -23,6 +23,8 @@ declare global {
   interface Window {
     /** Ставит агент, и только на своём же адресе. Отсутствует во всяком обычном браузере. */
     __mouseflow?: { token?: string };
+    /** Мост WKWebView. Есть только внутри панели; в браузере его нет, и это способ отличить одно от другого. */
+    webkit?: { messageHandlers?: { mouseflow?: { postMessage: (body: unknown) => void } } };
   }
 }
 
@@ -44,3 +46,26 @@ export function asPanel(): Record<string, string> {
   const token = panelToken();
   return token ? { authorization: `Bearer ${token}` } : {};
 }
+
+/* ВЫСОТА - ЕДИНСТВЕННОЕ, ЧТО СТРАНИЦА ГОВОРИТ ОКНУ.
+ *
+ * Панель без хрома должна быть ровно такой, как её содержимое: одна строка, пока не начали печатать, и
+ * выше - когда появился план. Угадать это снаружи нельзя, поэтому меряет тот, кто знает, - страница.
+ *
+ * ОДНО СООБЩЕНИЕ И НИЧЕГО БОЛЬШЕ. Мост из веб-страницы в нативное окно - это не место для «а что ещё
+ * отсюда можно попросить»: чем он уже, тем меньше о нём надо думать. Агент сверяет имя и проверяет число.
+ *
+ * В браузере моста нет, и функция молчит: страница /panel открывается и вкладкой тоже.
+ */
+export function tellPanelHeight(px: number) {
+  try {
+    const post = window.webkit?.messageHandlers?.mouseflow?.postMessage;
+    if (!post) return;
+    window.webkit!.messageHandlers!.mouseflow!.postMessage({ height: Math.ceil(px) });
+  } catch (_) {
+    /* Не панель, или мост закрыт - высота просто не поменяется. */
+  }
+}
+
+/** Внутри ли мы нативной панели. Читается как условие, а не как проверка наличия функции. */
+export const inPanel = (): boolean => !!window.webkit?.messageHandlers?.mouseflow;

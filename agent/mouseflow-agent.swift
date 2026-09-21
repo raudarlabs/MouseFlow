@@ -6584,32 +6584,44 @@ final class ScreenFrame {
  * неактивирующей. Но человек нажал аккорд, чтобы ПЕЧАТАТЬ, а окно без фокуса клавиатуры - это окно, в
  * которое сначала надо ткнуть мышью, то есть аккорд, не сэкономивший ничего.
  */
-final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
+/* Окно без хрома: у панели нет заголовка, рамки и кнопок - только скруглённый прямоугольник со страницей
+ * внутри. Borderless-окно по умолчанию не может стать ключевым, то есть в него нельзя печатать; это
+ * единственное, ради чего здесь нужен подкласс. */
+final class KeyPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler {
     static let shared = Panel()
 
     private var window: NSPanel?
     private var web: WKWebView?
     /// Какому аккаунту принадлежит загруженная страница: сменили аккаунт - прогретое окно чужое.
     private var loadedFor: String?
-    /// Растянуто ли окно под чужой экран - чтобы вернуть размер composer'а, но не спорить с рукой.
-    private var grown = false
     /// Наблюдатель за Escape. Держится, пока жив агент: панель одна, и пересоздавать его не на чем.
     private var escape: Any?
+    /// Уходим ли со сцены сами - чтобы не спрятаться дважды и не мигнуть.
+    private var hiding = false
 
-    /* ДВА РАЗМЕРА, И ВТОРОЙ ПОЯВИЛСЯ ОТ ЖИВОГО ЗАПУСКА.
+    /* РАЗМЕР ГОВОРИТ СТРАНИЦА, А НЕ УГАДЫВАЕТ ОКНО - и это третья редакция, каждая от живого запуска.
      *
-     * Окно посчитано под то, ради чего панель существует: одна фраза, план, Approve. Но первое, что видит
-     * человек, - это ВХОД, а вход в аккаунт это чужой экран: форма, подтверждение по SMS, «другой способ».
-     * В 620x260 он не помещается, и панель в свой первый показ выглядит сломанной - ровно там, где у неё
-     * единственный шанс понравиться.
+     * Сначала размер был один и посчитан под композер; на первом же показе в него не поместился экран
+     * входа. Потом их стало два, по адресу: /panel - маленькое, всё прочее - высокое. Оба раза окно
+     * ДОГАДЫВАЛОСЬ о содержимом, и выглядело это как коробка с пустотой внутри.
      *
-     * Растягивать по содержимому (мостиком со страницы) было бы точнее и стоило бы JS-моста ради одного
-     * экрана, который человек видит один раз. Здесь хватает того, что УЖЕ известно: адрес. Мы знаем, куда
-     * грузили, и видим, куда нас увели; всё, что не /panel, - чужой экран, и ему нужно место.
+     * Догадка кончается там, где появляется мост: страница меряет свою высоту и присылает её сюда
+     * (`window.webkit.messageHandlers.mouseflow`). Ради одного экрана входа мост был бы избыточен - но
+     * он же снимает и вторую задачу: поле, которое растёт по мере набора текста, и окно, которое растёт
+     * вместе с ним. Именно так выглядит всё, к чему человек привык.
      *
-     * И окно сделано resizable. Угаданный размер - это догадка, а рука всегда права. */
-    private static let askSize = NSSize(width: 620, height: 260)
-    private static let elseSize = NSSize(width: 460, height: 720)
+     * Ширина остаётся нашей: по горизонтали содержимое ничего не решает, а окно, гуляющее в ширину,
+     * прыгало бы при каждом слове. */
+    private static let width: CGFloat = 640
+    /// Пока страница не сказала своего - столько. Одна строка с кнопками, как у всякого композера.
+    private static let firstHeight: CGFloat = 132
+    /// Больше экрана окно не станет, что бы ни прислала страница.
+    private static let maxHeightShare: CGFloat = 0.8
 
     private var address: String? {
         guard let link = Account.link, !link.base.isEmpty else { return nil }
@@ -6626,32 +6638,30 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     private func build() {
-        let frame = NSRect(origin: .zero, size: Panel.askSize)
-        /* БЕЗ fullSizeContentView, И ЭТО ИСПРАВЛЕНИЕ, А НЕ ВКУС.
+        let frame = NSRect(x: 0, y: 0, width: Panel.width, height: Panel.firstHeight)
+        /* БЕЗ ЗАГОЛОВКА И БЕЗ РАМКИ. Заголовок «MouseFlow» над полем ввода не сообщал ничего - человек
+         * сам нажал аккорд и знает, что вызвал, - а стоил полосы и вида «диалог» вместо «строка ввода».
          *
-         * С ним содержимое занимает и полосу заголовка - то есть WKWebView ложится ПОВЕРХ кнопки
-         * закрытия. Кнопка остаётся на месте, её видно в дереве окна, и нажать её нельзя: сверху лежит
-         * веб-страница. Панель, которую человек не может закрыть, - это не «некрасиво», это ловушка;
-         * выйти из неё можно было только выключив агента.
-         *
-         * Красивее было бы оставить содержимое во всю высоту и подвинуть страницу вниз на высоту
-         * заголовка - но это та же полоса, только нарисованная нами, и с ней пришлось бы согласовывать
-         * тему страницы. Обычный заголовок утилитарного окна тонкий и стоит ноль. */
-        let panel = NSPanel(contentRect: frame,
-                            styleMask: [.titled, .closable, .resizable, .utilityWindow],
-                            backing: .buffered, defer: false)
-        panel.title = "MouseFlow"
+         * ВЫХОД ПРИ ЭТОМ НЕ ПРОПАЛ, И ЕГО ТЕПЕРЬ ТРИ: Escape, щелчок мимо окна и тот же аккорд ещё раз.
+         * Это больше, чем было с крестиком, и все три - привычные жесты, а не кнопка, которую надо найти. */
+        let panel = KeyPanel(contentRect: frame,
+                             styleMask: [.borderless, .nonactivatingPanel],
+                             backing: .buffered, defer: false)
         panel.isFloatingPanel = true
         panel.level = .floating
+        /* Прозрачное окно со скруглённым содержимым внутри: скругление рисует слой контейнера, а окно
+         * под ним не должно проступать квадратными углами. */
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
         /* Во всех пространствах и поверх полноэкранных: аккорд, который не работает, пока открыт Zoom, -
          * это аккорд, о котором перестают помнить. */
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        panel.standardWindowButton(.zoomButton)?.isHidden = true
 
         let config = WKWebViewConfiguration()
+
         /* ТОКЕН УСТРОЙСТВА ОТДАЁТСЯ СТРАНИЦЕ, И ВХОДА НЕТ ВОВСЕ.
          *
          * У WKWebView своё хранилище кук, отдельно от Safari, поэтому первое, что встречал человек по
@@ -6686,11 +6696,37 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
         /* Сессия ПЕРЕЖИВАЕТ перезапуск агента: иначе входить пришлось бы каждое утро, и панель стала бы
          * самым медленным способом сказать одну фразу. */
         config.websiteDataStore = .default()
+        /* Мост для высоты. Единственное, что страница говорит агенту, - сколько места ей нужно. */
+        config.userContentController.add(self, name: "mouseflow")
+
         let view = WKWebView(frame: frame, configuration: config)
         view.uiDelegate = self
         view.navigationDelegate = self
         view.autoresizingMask = [.width, .height]
-        panel.contentView = view
+        /* Фон рисует страница, а не WebKit: под скруглением не должно быть белого прямоугольника, который
+         * успевает мигнуть до первой отрисовки. Ключ приватный, поэтому через setValue - другого способа
+         * у WKWebView нет, и это известная цена. */
+        view.setValue(false, forKey: "drawsBackground")
+
+        /* Скругление - на контейнере, а не на самом WebView: слой WebKit'а он себе перерисовывает, и
+         * углы на нём держатся не всегда. Контейнер с masksToBounds обрезает что угодно внутри. */
+        let box = NSView(frame: frame)
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 16
+        box.layer?.masksToBounds = true
+        box.autoresizingMask = [.width, .height]
+        box.addSubview(view)
+        panel.contentView = box
+
+        /* ЩЕЛЧОК МИМО ОКНА ЗАКРЫВАЕТ - второй выход из трёх, и самый привычный для всплывающей строки
+         * ввода. hidesOnDeactivate тут не годится: он про уход ПРИЛОЖЕНИЯ на второй план, а нам нужен
+         * уход самой панели - щелчок по другому окну того же Finder'а это тоже «я передумал». */
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.didResignKeyNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            guard let self = self, !self.hiding else { return }
+            self.hide()
+        }
 
         /* ESCAPE ЗАКРЫВАЕТ, И ЭТО ОБЯЗАН ДЕЛАТЬ АГЕНТ, А НЕ СТРАНИЦА.
          *
@@ -6710,6 +6746,32 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
 
         window = panel
         web = view
+    }
+
+    /* СКОЛЬКО МЕСТА ПРОСИТ СТРАНИЦА. Единственное сообщение, которое она шлёт, и единственное, которое
+     * здесь принимается: имя сверяется, число проверяется, всё прочее молча игнорируется - мост в
+     * нативное окно не место для «а что ещё можно отсюда попросить». */
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "mouseflow",
+              let body = message.body as? [String: Any],
+              let asked = body["height"] as? Double, asked.isFinite, asked > 0 else { return }
+        resize(to: CGFloat(asked))
+    }
+
+    private func resize(to asked: CGFloat) {
+        guard let panel = window else { return }
+        let area = (panel.screen ?? NSScreen.main)?.visibleFrame
+        let ceiling = (area?.height ?? 900) * Panel.maxHeightShare
+        let want = max(Panel.firstHeight, min(asked.rounded(), ceiling))
+        guard abs(panel.frame.height - want) > 1 else { return }
+        var frame = panel.frame
+        /* Верхний край на месте: окно растёт вниз, а не прыгает - человек смотрит в первую строку. */
+        frame.origin.y += frame.height - want
+        frame.size.height = want
+        if let area = area {
+            frame.origin.y = max(area.minY, min(frame.origin.y, area.maxY - frame.height))
+        }
+        panel.setFrame(frame, display: true, animate: false)
     }
 
     /* Показать. Идемпотентно: второе нажатие аккорда при открытой панели её ПРЯЧЕТ - так ведёт себя всё,
@@ -6738,8 +6800,14 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
     }
 
     func hide() {
+        /* Флаг на время ухода: orderOut отнимает у окна ключевой статус, а на это подписан тот самый
+         * наблюдатель, который зовёт hide(). Без флага получилось бы «спрятать спрятанное». */
+        hiding = true
         window?.orderOut(nil)
-        /* Свежесть - здесь, после закрытия. См. заголовок. */
+        hiding = false
+        /* Свежесть - здесь, после закрытия. См. заголовок. И размер возвращается к одной строке вместе
+         * со страницей: следующее открытие начинается с того же, с чего и первое. */
+        resize(to: Panel.firstHeight)
         if let where_ = address, let url = URL(string: where_) { web?.load(URLRequest(url: url)) }
     }
 
@@ -6758,43 +6826,14 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
     /// `window.close()` со страницы - Escape в панели закрывает её так же, как крестик.
     func webViewDidClose(_ webView: WKWebView) { hide() }
 
-    /* РАЗМЕР ПОДГОНЯЕТСЯ ПО АДРЕСУ, и делать это надо на didCommit, а не на didFinish: страница входа
-     * рисуется задолго до того, как загрузится вся, и окно, дорастающее в последний момент, человек
-     * успевает увидеть маленьким. */
+    /* НОВАЯ СТРАНИЦА - НАЧИНАЕМ С ОДНОЙ СТРОКИ и ждём, что она скажет сама.
+     *
+     * Раньше размер угадывался ПО АДРЕСУ: /panel - маленькое, всё прочее - высокое. Догадка держалась
+     * ровно до второго чужого экрана. Теперь высоту присылает страница (см. userContentController), а
+     * здесь остаётся только вернуть окно к исходной строке на время загрузки - иначе экран входа,
+     * закрывшись, оставил бы после себя окно в семьсот точек. */
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        fit(to: webView.url)
-    }
-
-    private func fit(to url: URL?) {
-        guard let panel = window else { return }
-        let ours = (url?.path ?? "") == "/panel"
-        /* Обратно - только если растягивали МЫ. Человек, потянувший окно за угол, сказал этим, какого
-         * размера оно ему нужно, и возвращать своё поверх его - это спорить с рукой. */
-        if ours && !grown { return }
-        if !ours && grown { return }
-        grown = !ours
-        let want = ours ? Panel.askSize : Panel.elseSize
-        var frame = panel.frame
-        /* Верхний край на месте: окно, растущее вниз, остаётся там, куда человек уже смотрит. */
-        frame.origin.y += frame.height - want.height
-        frame.size = want
-        /* И не за нижний край экрана. Окно входа выше композера втрое; на ноутбуке без клампа оно
-         * уезжает кнопкой «Отправить» под Dock, а это единственная кнопка, которая там нужна. */
-        if let area = (panel.screen ?? NSScreen.main)?.visibleFrame {
-            frame.origin.y = max(area.minY, min(frame.origin.y, area.maxY - frame.height))
-            frame.origin.x = max(area.minX, min(frame.origin.x, area.maxX - frame.width))
-        }
-        panel.setFrame(frame, display: true, animate: false)
-    }
-
-    /* Страница не загрузилась - сказать это в самой панели, а не показать белый прямоугольник. Белое окно
-     * без объяснения читается как «продукт сломался», а причина чаще всего в сети. */
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        Panel.show(error: error.localizedDescription, in: webView)
-    }
-
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        Panel.show(error: error.localizedDescription, in: webView)
+        resize(to: Panel.firstHeight)
     }
 
     private static func show(error: String, in web: WKWebView) {

@@ -807,6 +807,27 @@ which is the surface where there is room for it.
 The controls moved inside the input box at the owner's request — language, microphone, send, bottom right
 of one rounded field, the way every composer a person has already used is built.
 
+#### The third sizing, and the one that stopped guessing (2026-09-21)
+
+The owner put our panel beside Claude's bar and called ours a lump. He was right, and the diagnosis is
+one word: **guessing**. The window had a title bar it did not need, a border around a border, and a height
+decided by whoever wrote the constant — first one size, then two picked by address. Every version was the
+window guessing at its contents, and a guess that is too big looks like a box with nothing in it.
+
+So the panel became a rounded rectangle with no chrome at all, and the height is **told, not guessed**: the
+page measures itself and posts one number over a script-message bridge. That bridge was deliberately
+avoided when the only problem was the sign-in screen — too much machinery for a screen seen once — and it
+pays for itself here twice over, because the same mechanism gives the field that grows as you type.
+
+The bridge carries exactly one message, checked by name, and the number is checked rather than believed:
+a non-finite or zero height would turn the window into a dot or the whole screen. It clamps to one row at
+the bottom and 80% of the display at the top.
+
+**Removing the title bar removed the close button, so the ways out had to be counted.** There were one;
+there are three: Escape (a local key monitor in the agent), a click outside (the panel hides when it stops
+being key), and the chord again. All three are gestures somebody already has, rather than a button to find
+— and the hide guards against its own notification, since `orderOut` is what takes the key status away.
+
 2. **A tray/hotkey that opens a small dictation window.** The agent already serves loopback; the window is a
    browser window, so the recogniser stays in one place.
 3. **The agent records the audio itself and posts it up.** With OpenAI doing the recognition this stops
