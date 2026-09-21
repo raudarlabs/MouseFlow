@@ -65,7 +65,18 @@ async function fromNeonAuth(req) {
 async function fromDeviceToken(req, sql) {
   const header = String(req.headers.authorization || '');
   const presented = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
-  if (!presented.startsWith(DEVICE_TOKEN_PREFIX)) return null;
+  return byDeviceToken(sql, presented);
+}
+
+/* ТОТ ЖЕ ТОКЕН, НО ПРЕДЪЯВЛЕННЫЙ НЕ ЗАГОЛОВКОМ.
+ *
+ * Мессенджер спаривает чат с аккаунтом по тому же токену устройства (SPLIT-PLAN §7.2, шаг 14a), только
+ * приезжает он строкой в сообщении `/pair mf_…`, а не в Authorization. Ответ на вопрос «чей это токен»
+ * обязан быть один: вторая проверка - это второе мнение о том, кто вы, и однажды они разойдутся именно
+ * там, куда никто не смотрит. Поэтому проверка вынута сюда целиком, а fromDeviceToken стал тем, чем и
+ * был, - чтением заголовка. */
+export async function byDeviceToken(sql, presented) {
+  if (!String(presented || '').startsWith(DEVICE_TOKEN_PREFIX)) return null;
 
   const rows = await sql`
     select t.user_id, u.name, u.email, u.image

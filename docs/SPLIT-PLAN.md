@@ -820,6 +820,36 @@ already exists so that one refusal is worded once, and the same discipline appli
 stored, never the name. And the run still refuses if `workerSeen` says no machine has ever taken work —
 "press Approve" must not be the first place somebody learns their computer was asleep.
 
+#### 14a shipped 2026-09-20 — five files, and three of them exist only because something already existed
+
+| File | Why it is not in the route |
+|---|---|
+| `api/_plan.mjs` | the outline tool, the prompt, the parse. `web/src/lib/plan.ts` kept the fetch |
+| `api/_attach.mjs` | `goalWith` / `splitGoal` / `looksLikeText`. The goal string is parsed **back** when a task is reopened, so two ways of building it would show a phone-attached file as three screens of csv |
+| `api/_telegram.mjs` | every decision with a right answer — who is served, what is a command, what a stranger is told. 67 executed checks |
+| `api/_telegram-out.mjs` | the one door outward. Two callers at opposite ends of a run: the webhook while somebody waits, the worker when the machine has finished |
+| `api/telegram.js` | the consequences — the database, the model call, the queue row |
+
+**Three things the route does that are worth naming, because each fails silently:**
+
+- **The secret is checked before the body is read.** The function's address is easy to learn; Telegram's
+  header is the only thing separating it from whoever learned it. No secret in the environment is a
+  **refusal**, not a pass — a webhook "temporarily without the check" is an open door to a real mouse.
+- **Approval is one conditional `UPDATE`, not read-then-write.** Telegram repeats a callback on a bad
+  connection, and the gap between reading a draft and writing it is exactly wide enough for a second run
+  on somebody's actual machine.
+- **No plan means no button.** "The plan failed, starting anyway" is the precise case the plan exists for:
+  the person is not looking at the screen, and these lines are all they have.
+
+**Pairing reuses the device token rather than inventing a code.** `/pair mf_…` in a DM, verified by the same
+lookup `whoIsCalling` uses — extracted to `byDeviceToken` so there is one answer to "whose token is this"
+rather than two that agree today. It costs no new screen, and the message carrying the token is deleted
+whether the token was valid or not: a mistyped line is still somebody's secret.
+
+**What is still owed before this is real:** `db/024_chat_channel.sql` applied (owner approval, as with 022
+and 023), the two environment variables set, `setWebhook` called, and one task run end to end. The code
+answers in words on a deployment where the table is missing, rather than reading as "you are blocked".
+
 ---
 
 ## 8. Limits, and what a second deployment would cost

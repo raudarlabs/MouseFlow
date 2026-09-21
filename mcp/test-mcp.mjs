@@ -3317,10 +3317,15 @@ group('в api/ нет ничего, что не должно быть маршр
    * кука страницы против токена устройства у MCP, и `whoIsCalling` - единственное, что решает, чей это
    * аккаунт. Редакцию не повторяет - зовёт writeMemory (api/_memory.mjs), тот же выбор, что у cases.js с
    * expects через _case.mjs: одна проверка, а не вторая копия того же правила. */
+  /* telegram.js - SPLIT-PLAN §7.2, шаг 14a. Единственный маршрут, которого зовёт НЕ человек и не его
+   * машина, а чужая служба, - и поэтому единственный, у которого проверка «это правда телеграм» стоит
+   * раньше чтения тела. Своя дверь, а не тул в mcp.js, по той же причине, что у schedules.js и memory.js:
+   * у него свой предъявитель (секрет вебхука), а одна проверка прав на три разных входа - это три мнения
+   * о том, кто вы. Работу он ставит тем же queueOne, что и все: направление связи не переворачивается. */
   const expected = ['account.js', 'admin.js', 'artifacts.js', 'auth.js', 'cases.js', 'chat.js', 'chats.js',
     'claude.js', 'compose.js', 'docs.js', 'gallery.js', 'insights.js', 'mcp.js', 'memory.js', 'models.js',
-    'oauth.js', 'params.js', 'schedules.js', 'skill-md.js', 'sync.js', 'team.js', 'transcript.js',
-    'well-known.js'];
+    'oauth.js', 'params.js', 'schedules.js', 'skill-md.js', 'sync.js', 'team.js', 'telegram.js',
+    'transcript.js', 'well-known.js'];
   const unexpected = routes.filter((n) => !expected.includes(n));
   check('и новых маршрутов не появилось незамеченными', unexpected.length === 0, unexpected.join(', '));
   /* И наоборот - что каждый ожидаемый на месте: список, из которого файл пропал, молча перестаёт его

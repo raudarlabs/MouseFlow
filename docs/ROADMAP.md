@@ -39,9 +39,16 @@ concrete thing named for the owner to check.
 - [ ] **13 · Transcription route** — dictation through OpenAI, server-held key, capped, its own `LIMITS`
       key. Ships **with** the sentence that says where the audio goes, before the microphone is armed:
       it reverses the on-device promise `dictation.ts` currently makes. [§7](SPLIT-PLAN.md)
-- [ ] **14a · Telegram as a front door** — type, attach, read the plan, press Approve, *then* a `run_queue`
-      row. Unknown senders are paired, not served. Touches no driver and neither agent: approval happens
-      before the run exists. [§7.2](SPLIT-PLAN.md) · design notes below
+- [x] **14a · Telegram as a front door** — *code shipped 2026-09-20; not live until the owner does three
+      things.* Type, attach, read the plan, press Approve, *then* a `run_queue` row. Unknown senders are
+      paired, not served. Touches no driver and neither agent. [§7.2](SPLIT-PLAN.md) · design notes below
+  - [ ] **apply `db/024_chat_channel.sql`** — owner approval, as with 022 and 023. Until then the route
+        says so in words rather than pretending the sender is blocked.
+  - [ ] **set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET`** on the deployment, then `setWebhook`
+        with that secret. Without the secret the route refuses every call: a webhook "temporarily without
+        the check" is an open door to a real mouse.
+  - [ ] **pair one chat and run one thing through it** — the first end-to-end proof, and the first agent
+        run since 2026-09-08.
 - [ ] **14b · A checkpoint answered from the messenger** — the cloud path is ungated on purpose (*"нет шлюза
       — нет инструмента"*, `api/_brain.mjs`). A messenger is the first thing that makes "somebody is
       watching" true there, and it costs a waiting state on `run_queue`, a pause the worker protocol can

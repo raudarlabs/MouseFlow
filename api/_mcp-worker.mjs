@@ -22,6 +22,8 @@ import { overSpend, spentWhy } from './_spend.mjs';
 import { BROWSER_GOAL, jobId, scheduleId } from './_queue.mjs';
 import { caseGoal, caseIdOf, stripCase } from './_case.mjs';
 import { PAYLOAD_MAX_BYTES } from './_payload.mjs';
+import { outcomeMessage } from './_telegram.mjs';
+import { sendChat } from './_telegram-out.mjs';
 
 /* And how long a worker's claim request may hold open with nothing to do. One request every half minute
  * beats one every three seconds, and an idle loop is not billed as CPU. */
@@ -250,6 +252,29 @@ async function saveRecording(sql, who, macro, health) {
       + (problems.length ? ` ${problems.length} lines could not be read and were skipped.` : '')
       + ' Nothing about what was typed is in it, by design.',
   };
+}
+
+/* РАБОТА, ПРИШЕДШАЯ ИЗ ЧАТА, ОТВЕЧАЕТ В ЧАТ (SPLIT-PLAN §7.2, шаг 14a).
+ *
+ * Человек, нажавший Approve с телефона, больше ничего не видит: страницы перед ним нет, экрана машины он
+ * не видит тем более. Исход, оставшийся только в журнале, для него не случился.
+ *
+ * ИЗ АРГУМЕНТОВ РАБОТЫ, а не из отдельной таблицы: очередь уже везёт `args`, и адрес чата замирает в ней в
+ * момент постановки - ровно по тому же доводу, по которому там замирает привязка к машине (db/022). Чат,
+ * отвязанный от аккаунта наутро, не должен менять адрес у работы, которая уже сделана.
+ *
+ * ЛУЧШЕЕ УСИЛИЕ И БЕЗ await НА КРИТИЧЕСКОМ ПУТИ: отчёт о прогоне уже записан, и потерянное сообщение - это
+ * потерянное сообщение, а не потерянный прогон. Слова исхода - одни и те же, из api/_telegram.mjs: вторая
+ * их редакция здесь разошлась бы с первой. */
+async function tellChat(args, ok, said) {
+  const at = args && typeof args === 'object' && args.telegram && typeof args.telegram === 'object'
+    ? args.telegram : null;
+  if (!at || !at.chatId) return;
+  try {
+    await sendChat(at.chatId, outcomeMessage({ ok, said }));
+  } catch (_) {
+    /* Сказано вслух выше: молчание здесь дешевле падения. */
+  }
 }
 
 export async function workerRoute(action, req, res, sql, who) {
@@ -584,6 +609,9 @@ export async function workerRoute(action, req, res, sql, who) {
         update run_queue set state = 'failed', ok = false, said = ${why}, finished_at = now(), loop = null
         where id = ${id} and user_id = ${who.id}
       `;
+      /* И в чат, если работа пришла оттуда. Отказ - тоже исход, и для того, кто нажал Approve с телефона,
+       * он важнее удачи: молчание он прочтёт как «наверное, ещё идёт». */
+      await tellChat(job && job.args, false, why);
       return res.status(200).json({ ok: true, done: true, outcome: { ok: false, said: why } });
     };
 
@@ -853,6 +881,7 @@ export async function workerRoute(action, req, res, sql, who) {
         update run_queue set state = 'done', ok = true, said = ${said}, finished_at = now(), loop = null
         where id = ${id} and user_id = ${who.id} and state = 'claimed'
       `;
+      await tellChat(job.args, true, said);
       return res.status(200).json({ ok: true, done: true, outcome: { ok: true, said } });
     }
 
@@ -872,6 +901,7 @@ export async function workerRoute(action, req, res, sql, who) {
                finished_at = now(), loop = null
         where id = ${id} and user_id = ${who.id} and state = 'claimed'
       `;
+      await tellChat(job.args, done.ok, said);
       return res.status(200).json({ ok: true, done: true, outcome: { ok: done.ok, said } });
     }
 
