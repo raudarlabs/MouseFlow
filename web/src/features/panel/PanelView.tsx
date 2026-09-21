@@ -214,12 +214,23 @@ export function PanelView() {
           </div>
           {/* Куда уходит голос - до микрофона, а не после, и теми же словами, что у маршрута. Панель
             * маленькая, и соблазн убрать эту строку велик; она здесь именно поэтому. */}
+          {/* ЯЗЫК ВЫБИРАЕТСЯ И ЗДЕСЬ. Первая редакция панели показывала его только надписью - то есть
+            * человек видел «Русский» и не мог это изменить, не уходя на большую страницу. Строка,
+            * называющая настройку без способа её тронуть, хуже её отсутствия. */}
           {dictation.supported && (
-            <Typography variant="p" className="text-[0.7rem] text-ink-inactive">
-              {dictation.via === 'openai'
-                ? `Dictation goes to OpenAI · ${langName(dictation.lang)}`
-                : `Dictation stays here · ${langName(dictation.lang)}`}
-            </Typography>
+            <span className="flex items-center gap-1.5 text-[0.7rem] text-ink-inactive">
+              {dictation.via === 'openai' ? 'Dictation goes to OpenAI ·' : 'Dictation stays here ·'}
+              <select
+                value={dictation.lang}
+                onChange={(ev) => dictation.setLang(ev.target.value)}
+                aria-label="Language to dictate in"
+                className="rounded border border-stroke bg-surface-card2 px-1 py-0.5 text-ink-body"
+              >
+                {dictation.choices.map((tag) => (
+                  <option key={tag} value={tag}>{langName(tag)}</option>
+                ))}
+              </select>
+            </span>
           )}
         </>
       )}

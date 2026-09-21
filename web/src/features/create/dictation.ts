@@ -101,6 +101,17 @@ export function rememberDictationVia(via: Via) {
  * менять язык на чужой из-за того, что кто-то один переключил. */
 const LANG_KEY = 'mf.dictation.lang';
 
+/* И «АВТО» - У СЕРВЕРНОГО РАСПОЗНАВАТЕЛЯ, КОТОРЫЙ ОПРЕДЕЛЯЕТ ЯЗЫК САМ.
+ *
+ * Язык там - ПОДСКАЗКА, а не требование, и подсказка неверная хуже её отсутствия: распознаватель,
+ * которому сказали «en» на русскую фразу, выдаёт уверенную чушь. У того, кто диктует то по-русски, то
+ * по-английски, выбор из списка - это переключатель, который он обязан не забыть, а «авто» - отсутствие
+ * такой обязанности.
+ *
+ * Браузерному распознавателю язык НУЖЕН: Web Speech без него не работает вовсе. Поэтому «авто» есть
+ * только у серверного пути, и при переключении на браузерный подставляется язык браузера - см. setVia. */
+export const AUTO = 'auto';
+
 export function dictationLang(): string {
   try {
     const kept = localStorage.getItem(LANG_KEY);
@@ -108,7 +119,9 @@ export function dictationLang(): string {
   } catch (_) {
     /* Приватный режим или отключённое хранилище - не повод не диктовать. */
   }
-  return navigator.language || 'en-US';
+  /* Умолчание - «авто»: оно верно чаще, чем любая догадка о том, на каком языке заговорят. Тот, кому
+   * нужен точный язык, выберет его один раз, и выбор запомнится. */
+  return AUTO;
 }
 
 export function rememberDictationLang(tag: string) {
@@ -121,12 +134,14 @@ export function rememberDictationLang(tag: string) {
  * несколько распространённых. Порядок не алфавитный: первым идёт то, что вероятнее всего верно. */
 const COMMON = ['en-US', 'ru-RU', 'uk-UA', 'de-DE', 'fr-FR', 'es-ES', 'pl-PL'];
 
-export function dictationChoices(current: string): string[] {
+export function dictationChoices(current: string, via: Via = 'openai'): string[] {
   const out: string[] = [];
-  for (const tag of [current, ...(navigator.languages ?? []), ...COMMON]) {
+  /* «Авто» первым и только у серверного пути - список начинается с того, что вероятнее всего верно. */
+  for (const tag of [...(via === 'openai' ? [AUTO] : []), current, ...(navigator.languages ?? []), ...COMMON]) {
     if (!tag) continue;
     /* По базовому языку, а не по полному тегу: "ru" из настроек и "ru-RU" из списка - один и тот же выбор,
      * и две строки «русский» подряд читаются как ошибка. */
+    if (tag === AUTO) { out.push(tag); continue; }
     const base = tag.split('-')[0];
     if (out.some((have) => have.split('-')[0] === base)) continue;
     out.push(tag);
@@ -136,6 +151,7 @@ export function dictationChoices(current: string): string[] {
 
 /* Название языка словами, для строки, которую читают. Intl уже умеет это на языке самого интерфейса. */
 export function langName(tag: string): string {
+  if (tag === AUTO) return 'Auto';
   try {
     return new Intl.DisplayNames([tag], { type: 'language' }).of(tag) ?? tag;
   } catch (_) {
@@ -208,7 +224,12 @@ function inWords(code: string): string {
  */
 export function useDictation(onText: (text: string) => void): Dictation {
   const Klass = Speech();
-  const [lang, setLangState] = useState(dictationLang);
+  /* «Авто» у браузерного распознавателя невозможно, и поправляется это ОДИН РАЗ при первом рендере, а не
+   * при переключении: переключиться можно было и в прошлой сессии, а прочитано это будет в этой. */
+  const [lang, setLangState] = useState(() => {
+    const kept = dictationLang();
+    return dictationVia() === 'browser' && kept === AUTO ? (navigator.language || 'en-US') : kept;
+  });
   const [via, setViaState] = useState<Via>(dictationVia);
   const [listening, setListening] = useState(false);
   const [recognising, setRecognising] = useState(false);
@@ -294,7 +315,9 @@ export function useDictation(onText: (text: string) => void): Dictation {
             body: JSON.stringify({
               audio: toBase64(new Uint8Array(await blob.arrayBuffer())),
               type,
-              language: lang.split('-')[0],
+              /* Пусто - значит «определи сам». Отправить 'auto' строкой значило бы отправить язык с
+               * таким кодом, которого нет. */
+              ...(lang === AUTO ? {} : { language: lang.split('-')[0] }),
             }),
           });
           const body = await res.json().catch(() => null);
@@ -387,6 +410,14 @@ export function useDictation(onText: (text: string) => void): Dictation {
   /* Переключатель ОСТАНАВЛИВАЕТ то, что идёт: распознаватель уже запущен, и оставить его работать значило
    * бы, что надпись показывает одно, а слушает другое, - ровно тот же довод, что у смены языка. */
   const setVia = useCallback((next: Via) => {
+    /* Браузерному распознавателю «авто» не годится - Web Speech без языка не работает. Подставляется
+     * язык браузера, а не молчаливый английский: молчаливый английский - это та самая ошибка, из-за
+     * которой язык вообще стал выбором (см. dictationLang). */
+    if (next === 'browser' && dictationLang() === AUTO) {
+      const fallback = navigator.language || 'en-US';
+      rememberDictationLang(fallback);
+      setLangState(fallback);
+    }
     live.current?.abort();
     live.current = null;
     if (tape.current) {
@@ -430,6 +461,6 @@ export function useDictation(onText: (text: string) => void): Dictation {
   return {
     supported: via === 'openai' ? where !== 'no' : (!!Klass && where !== 'no'),
     listening, recognising, via, setVia, where, lang, problem, interim, start, stop, install,
-    setLang, choices: dictationChoices(lang),
+    setLang, choices: dictationChoices(lang, via),
   };
 }
