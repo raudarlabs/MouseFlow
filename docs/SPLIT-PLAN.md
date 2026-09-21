@@ -722,6 +722,35 @@ packaged .NET application, or ships option 2 (a small browser window) in the mea
 **Sequence:** the compact composer page → the macOS panel and hotkey → dictation into it → Windows, with
 §6.3.
 
+**And the panel is where first-run permissions belong** (owner's question, 2026-09-21, pointing at
+ChatGPT's system dialog). The agent already asks the right way — at the moment of need, not at login,
+because launchd starts it hours before anybody presses Record and a dialog shown then is shown to an empty
+chair (`Permission.askForAccessibility` / `askForScreen`). What it cannot do is make both look the same:
+`CGRequestScreenCaptureAccess()` is a real Allow/Deny dialog, and **Accessibility has no Allow button for
+any application** — macOS only offers to open Settings. The screenshot that prompted the question is Apple
+Events, a third permission that does prompt. Three things are worth adding, and the panel is where they
+go: a deep link straight to the pane
+(`x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility`), a live re-check so the
+state flips without a reload once it is granted, and two lines of state with a button each on first run —
+because a prompt appears **once per binary** and a refusal is permanent, so the words of the fallback are
+the actual product.
+
+#### Stage 1 shipped 2026-09-21 — the page the panel will show
+
+`/panel`, a composer the size of a tooltip: type or dictate, read the plan, Approve. Rendered **bare**
+(`isPanelPath`) but **behind the sign-in**, which is a fourth kind of page — the existing pair was
+"public" and "auth", and this is neither: no furniture, but a real mouse behind it.
+
+The one difference from Create is not size, it is who drives. Create runs the loop **in the tab**, talking
+to the agent over the local network — right for a tab somebody keeps open. The panel **queues**
+(`api/queue.js`, its own door because the page comes with a cookie) and lets go: it is closed a second
+after the sentence is typed, and a run living in its window would die with it. Queued work outlives the
+window, claimed by the same `?worker=claim` that serves the messenger — so the panel's copy says out loud
+that it can be closed.
+
+Deliberately the same shape as the bot: plan first, Approve, the transcript shown verbatim. Somebody who
+learned one recognises the other; different words for the same act would be two products.
+
 2. **A tray/hotkey that opens a small dictation window.** The agent already serves loopback; the window is a
    browser window, so the recogniser stays in one place.
 3. **The agent records the audio itself and posts it up.** With OpenAI doing the recognition this stops

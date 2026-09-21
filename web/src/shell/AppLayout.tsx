@@ -15,7 +15,7 @@ import { watchForNewBuild } from '@/lib/build';
  * а заголовок для него остался. См. web/src/lib/product.ts. */
 import { titleAt } from '@/lib/product';
 import { askAgent, useAgent } from '@/lib/store';
-import { AccountProvider, isAuthPath, isPublicPath } from './AccountProvider';
+import { AccountProvider, isAuthPath, isPanelPath, isPublicPath } from './AccountProvider';
 import { AppSidebar } from './AppSidebar';
 import { SettingsDialog, type SettingsScreen } from './SettingsDialog';
 import { OnboardingTour } from './OnboardingTour';
@@ -35,6 +35,8 @@ const Shell = () => {
   const bare = useRouterState({
     select: (s) => isAuthPath(s.location.pathname)
       || isPublicPath(s.location.pathname)
+      /* Панель в нативном окне: своя рамка уже есть, и она чужая - её рисует агент. */
+      || isPanelPath(s.location.pathname)
       || s.location.pathname.startsWith('/admin'),
   });
   if (bare) return <Outlet />;

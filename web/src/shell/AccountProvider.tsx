@@ -87,6 +87,14 @@ export const PUBLIC_PATHS = ['/mcp'];
 
 export const isPublicPath = (path: string) => PUBLIC_PATHS.includes(path.replace(/\/+$/, '') || '/');
 
+/* БЕЗ ОБСТАНОВКИ, НО ЗА ВХОДОМ - третий род страницы, и он не совпадает ни с одним из двух выше.
+ *
+ * /panel живёт в нативном окне размером с подсказку (SPLIT-PLAN §7, шаг 16): боковая панель и шапка в нём
+ * заняли бы всё, ради чего это окно существует. Но публичной она при этом не становится - за ней стоит
+ * настоящая мышь, и войти надо так же, как везде. Отсюда отдельная проверка, а не запись в PUBLIC_PATHS:
+ * положить её туда значило бы снять дверь ради того, чтобы убрать мебель. */
+export const isPanelPath = (path: string) => (path.replace(/\/+$/, '') || '/') === '/panel';
+
 /* Where to go after signing in, when something sent us here mid-flow.
  *
  * Exactly ONE destination is allowed: the OAuth consent page. Not "any same-origin path", not "anything

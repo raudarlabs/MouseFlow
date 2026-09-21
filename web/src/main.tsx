@@ -8,6 +8,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './globals.css';
 import { AppLayout } from '@/shell/AppLayout';
+import { PanelView } from '@/features/panel/PanelView';
 import { bootTheme } from '@/shell/theme';
 import { RecordView } from '@/features/record/RecordView';
 import { CreateView } from '@/features/create/CreateView';
@@ -60,6 +61,10 @@ const routes = [
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/record', component: RecordView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/create', component: CreateView }),
+  /* Композер размером с подсказку - то, что показывает нативная панель агента (SPLIT-PLAN §7, шаг 16).
+   * Рисуется БЕЗ обстановки (см. isPanelPath): боковая панель и шапка заняли бы в таком окне всё, ради
+   * чего оно существует, - но за входом, потому что за ней стоит настоящая мышь. */
+  createRoute({ getParentRoute: () => rootRoute, path: '/panel', component: PanelView }),
   /* ЖУРНАЛ. Переехал с /activity на /logs вместе с переименованием экрана: в приложении, где кроме него
    * осталось три экрана, это журнал, а не «активность». */
   createRoute({ getParentRoute: () => rootRoute, path: '/logs', component: ActivityView }),

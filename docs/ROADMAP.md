@@ -91,6 +91,13 @@ Not in the sequence yet — these need shapes agreed before they are steps.
       SDK, Carbon hotkey consumes only its own chord); **Windows is not** — WebView2 needs assemblies a
       PowerShell-hosted C# agent has nowhere to put, so that half waits for the packaged app below.
       [§7](SPLIT-PLAN.md)
+  - [x] **The page it shows** — `/panel`, shipped 2026-09-21. Bare but behind the sign-in, and it
+        **queues** rather than driving the run itself, because the window is closed a second later.
+  - [ ] **The macOS panel and the hotkey** — `NSPanel` + pre-warmed `WKWebView`, Carbon
+        `RegisterEventHotKey`; off until switched on, chord shown in the menu, not caught while recording.
+  - [ ] **Dictation into it** — the page's own recorder, asking the host app's microphone once.
+  - [ ] **First-run permissions in the panel** — deep link to the pane, a live re-check, two lines of
+        state. Accessibility can never have an Allow button; the fallback words are the product.
 
 - [ ] **A packaged desktop app, Windows first** — the macOS half is already a compiled Swift binary with a
       menu-bar item; the Windows half is PowerShell hosting C# compiled at startup. Technical answer settled
