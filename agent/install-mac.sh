@@ -184,11 +184,11 @@ NEEDS_TOOLS
   rm -f "${install_dir}/mouseflow-agent"
 
   # ---------------------------------------------------------------- build
-  # A rebuild costs the permissions, so it only happens when there is something to rebuild.
-  local rebuilt="no"
+  # A rebuild costs the permissions, so it only happens when there is something to rebuild. Note what this
+  # decides and what it does NOT: the BINARY. The wrapping below is redone either way - see the note there.
   if [ -x "$binary" ] && [ -f "$source" ] && cmp -s "$incoming" "$source"; then
     rm -f "$incoming"
-    echo "Unchanged since the last install, so not rebuilt — the permissions you granted stay valid."
+    echo "The agent itself is unchanged since the last install, so it was not recompiled."
   else
     mv -f "$incoming" "$source"
     echo "Compiling (a few seconds)"
@@ -202,30 +202,45 @@ NEEDS_TOOLS
       return 1
     fi
     chmod +x "$binary"
-    write_plist_info "$app" "$source"
-    # A Developer ID when this machine has one, ad-hoc otherwise. The difference is not cosmetic: TCC keys a
-    # grant to the signature, and a certificate gives every build the SAME identity - so a rebuild stops
-    # costing the permissions, which is the single most painful thing about updating this agent. The
-    # hardened runtime rides along so a future notarised build is the same signature shape.
-    local identity entitlements
-    identity="$(security find-identity -v -p codesigning 2>/dev/null \
-      | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
-    entitlements="${install_dir}/entitlements.plist"
-    write_entitlements "$entitlements"
-    if [ -n "$identity" ] \
-      && codesign --force --deep --options runtime --entitlements "$entitlements" \
-           --sign "$identity" --identifier "$BUNDLE_ID" "$app" >/dev/null 2>&1; then
-      echo "Signed as: ${identity}"
-    else
-      # Ad-hoc, over the whole bundle. Not a Developer ID signature and does not pretend to be one.
-      codesign --force --deep --sign - --identifier "$BUNDLE_ID" "$app" >/dev/null 2>&1 || true
-    fi
-    rebuilt="yes"
     echo "Built: ${app}"
   fi
 
+  # ---------------------------------------------------------------- the wrapping, every time
+  #
+  # THE PLIST AND THE SIGNATURE ARE REDONE ON EVERY RUN, EVEN WHEN THE SOURCE IS UNCHANGED, and this is a
+  # repair. They used to live inside the "something to rebuild" branch, on the reasoning that a rebuild is
+  # what costs the permissions - true of the BINARY and false of everything around it. The packaging
+  # changes on its own: a plist key, an entitlement, the signing flags. All three shipped in an installer
+  # that then declined to apply them, because the .swift beside them had not moved - and the symptom was a
+  # microphone that stayed refused no matter how many times somebody reinstalled.
+  #
+  # This costs nothing when nothing changed: the same identity over the same bytes is the same subject to
+  # TCC, the marker below sees no change, and no grant is touched.
+  write_plist_info "$app" "$source"
+  # A Developer ID when this machine has one, ad-hoc otherwise. The difference is not cosmetic: TCC keys a
+  # grant to the signature, and a certificate gives every build the SAME identity - so a rebuild stops
+  # costing the permissions, which is the single most painful thing about updating this agent. The
+  # hardened runtime rides along so a future notarised build is the same signature shape.
+  local identity entitlements
+  identity="$(security find-identity -v -p codesigning 2>/dev/null \
+    | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
+  entitlements="${install_dir}/entitlements.plist"
+  write_entitlements "$entitlements"
+  if [ -n "$identity" ] \
+    && codesign --force --deep --options runtime --entitlements "$entitlements" \
+         --sign "$identity" --identifier "$BUNDLE_ID" "$app" >/dev/null 2>&1; then
+    echo "Signed as: ${identity}"
+  else
+    # Ad-hoc, over the whole bundle. Not a Developer ID signature and does not pretend to be one.
+    codesign --force --deep --sign - --identifier "$BUNDLE_ID" "$app" >/dev/null 2>&1 || true
+  fi
+
   # ---------------------------------------------------------------- the stale-grant problem
-  if [ "$rebuilt" = "yes" ]; then
+  #
+  # ПРОВЕРЯЕТСЯ КАЖДЫЙ РАЗ, а не только после пересборки: подпись теперь тоже накладывается каждый раз, и
+  # смениться она может без единой правки в исходнике - первая сборка после появления сертификата меняет
+  # субъекта, которому выданы права, при том же самом бинарнике.
+  {
     # Whether the grants survive depends on whether the IDENTITY survived, not on the rebuild itself: the
     # same Developer ID over a new binary is the same subject to TCC, and the grants stay valid. Ad-hoc has
     # no identity beyond the build's own hash ("TeamIdentifier=not set"), and switching identities - the
@@ -241,12 +256,12 @@ NEEDS_TOOLS
       # The binary changed subjects, so any existing grant was made to a different signature. Clearing it
       # means macOS asks again instead of showing a switch that is on and does nothing.
       forget_permissions
-      echo "The agent was rebuilt, so macOS will ask for permission again — the entry it had belonged to the"
-      echo "previous build. This is why a checked switch could stop working."
+      echo "The agent's signature changed, so macOS will ask for permission again — the entry it had"
+      echo "belonged to the previous one. This is why a checked switch could stop working."
     else
-      echo "Rebuilt under the same Developer ID — the permissions you granted stay valid."
+      echo "Same Developer ID as last time — the permissions you granted stay valid."
     fi
-  fi
+  }
 
   # ---------------------------------------------------------------- login item
   if [ "$at_login" = "yes" ]; then
