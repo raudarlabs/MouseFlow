@@ -828,6 +828,29 @@ there are three: Escape (a local key monitor in the agent), a click outside (the
 being key), and the chord again. All three are gestures somebody already has, rather than a button to find
 — and the hide guards against its own notification, since `orderOut` is what takes the key status away.
 
+#### Three gates on one microphone, and two of them are silent (2026-09-21)
+
+Dictation in the panel looked like one missing plist key. It was three, and the order they were found in
+is the whole lesson — each fix looked complete and changed nothing.
+
+1. **`NSMicrophoneUsageDescription` in the bundle.** macOS refuses the microphone to an app that has not
+   said why it wants it. Missing. Added, in the words somebody reads in the system dialog.
+2. **`WKUIDelegate.requestMediaCapturePermissionFor`.** `WKWebView` asks its host, and a host that has not
+   implemented the method answers **no, silently**. Granted — for our own origin only and the microphone
+   only, because the panel navigates to other screens and permission given to "the current page" is
+   permission given to whoever ends up on it.
+3. **The hardened runtime's entitlement.** A Developer ID signature is applied with `--options runtime`,
+   and under that runtime the microphone is refused unless the binary *carries*
+   `com.apple.security.device.audio-input` — refused by the runtime, before TCC, so no dialog appears and
+   nothing shows up in System Settings. `codesign -d --entitlements` on the installed app printed nothing
+   at all.
+
+**What made this expensive is that all three fail the same way.** From the page each one arrives as a
+plain `getUserMedia` rejection, which reads as "the person said no" — and sends everybody to look at a
+permission that was never asked for. The message said so out loud: *"Allow it for this site in the address
+bar"*, in a window that has no address bar. It now names System Settings when it is speaking from the
+panel, because there the permission belongs to the **application**, not to a site.
+
 2. **A tray/hotkey that opens a small dictation window.** The agent already serves loopback; the window is a
    browser window, so the recogniser stays in one place.
 3. **The agent records the audio itself and posts it up.** With OpenAI doing the recognition this stops

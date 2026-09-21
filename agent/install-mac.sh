@@ -207,11 +207,14 @@ NEEDS_TOOLS
     # grant to the signature, and a certificate gives every build the SAME identity - so a rebuild stops
     # costing the permissions, which is the single most painful thing about updating this agent. The
     # hardened runtime rides along so a future notarised build is the same signature shape.
-    local identity
+    local identity entitlements
     identity="$(security find-identity -v -p codesigning 2>/dev/null \
       | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
+    entitlements="${install_dir}/entitlements.plist"
+    write_entitlements "$entitlements"
     if [ -n "$identity" ] \
-      && codesign --force --deep --options runtime --sign "$identity" --identifier "$BUNDLE_ID" "$app" >/dev/null 2>&1; then
+      && codesign --force --deep --options runtime --entitlements "$entitlements" \
+           --sign "$identity" --identifier "$BUNDLE_ID" "$app" >/dev/null 2>&1; then
       echo "Signed as: ${identity}"
     else
       # Ad-hoc, over the whole bundle. Not a Developer ID signature and does not pretend to be one.
@@ -296,6 +299,33 @@ PERMS
 }
 
 # ---------------------------------------------------------------- pieces
+
+# The entitlements, which exist for exactly one reason: the hardened runtime.
+#
+# WHAT WENT WRONG AND WHY IT LOOKED LIKE TCC. A Developer ID signature is applied with --options runtime,
+# and under the hardened runtime a process is refused the microphone unless the binary CARRIES the
+# entitlement - refused by the runtime itself, before TCC is ever consulted, so no dialog appears and
+# nothing is written into System Settings. From the page it arrives as a plain getUserMedia failure, which
+# reads as "the user said no" and sends everybody to look at a permission that was never asked for.
+#
+# So the Info.plist sentence and the WKWebView delegate were both necessary and both insufficient: three
+# things gate one microphone, and two of them are silent.
+#
+# ONLY WITH THE CERTIFICATE. An ad-hoc signature is applied WITHOUT --options runtime, so the runtime does
+# not gate anything and there is nothing for an entitlement to unlock; handing entitlements to an ad-hoc
+# signature is a way to make codesign refuse the build instead.
+write_entitlements() {
+  local path="$1"
+  cat > "$path" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.device.audio-input</key><true/>
+</dict>
+</plist>
+PLIST
+}
 
 write_plist_info() {
   local app="$1" source="$2"

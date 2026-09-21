@@ -30,7 +30,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 /* Фразы и потолок - оттуда же, откуда их берёт маршрут. Одно обещание о том, куда уходит голос. */
 import { refusedAudio } from '../../../../api/_transcribe.mjs';
 /* И диктовка тоже: в панели куки нет, а речь узнаётся тем же маршрутом. */
-import { asPanel } from '@/lib/panel-auth';
+import { asPanel, inPanel } from '@/lib/panel-auth';
 
 interface RecognitionAlternative { transcript: string }
 interface RecognitionResult { isFinal: boolean; 0: RecognitionAlternative; length: number }
@@ -286,8 +286,15 @@ export function useDictation(onText: (text: string) => void): Dictation {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (_) {
-      /* Та же тупиковая ошибка, что у Web Speech, и тот же выход: повторное нажатие запроса не покажет. */
-      setProblem('The microphone was refused. Allow it for this site in the address bar, then try again.');
+      /* Та же тупиковая ошибка, что у Web Speech, и тот же выход: повторное нажатие запроса не покажет.
+       *
+       * НО ВЫХОД РАЗНЫЙ, И ЭТО НАШЛОСЬ ЖИВЫМ ЗАПУСКОМ. В панели агента нет адресной строки, и совет
+       * «разрешите для этого сайта в адресной строке» отправлял человека искать то, чего перед ним нет.
+       * Там разрешение живёт в System Settings и принадлежит приложению, а не сайту. */
+      setProblem(inPanel()
+        ? 'The microphone was refused. Open System Settings → Privacy & Security → Microphone and switch '
+          + 'on MouseFlow Agent, then try again.'
+        : 'The microphone was refused. Allow it for this site in the address bar, then try again.');
       return;
     }
 
