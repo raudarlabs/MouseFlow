@@ -42,8 +42,8 @@ concrete thing named for the owner to check.
 - [x] **14a · Telegram as a front door** — *code shipped 2026-09-20; not live until the owner does three
       things.* Type, attach, read the plan, press Approve, *then* a `run_queue` row. Unknown senders are
       paired, not served. Touches no driver and neither agent. [§7.2](SPLIT-PLAN.md) · design notes below
-  - [ ] **apply `db/024_chat_channel.sql`** — owner approval, as with 022 and 023. Until then the route
-        says so in words rather than pretending the sender is blocked.
+  - [x] **`db/024_chat_channel.sql` applied 2026-09-21** — owner approval in chat, as with 022 and 023;
+        `--list` shows all 24 applied and both tables were read back from `information_schema`.
   - [ ] **set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET`** on the deployment, then `setWebhook`
         with that secret. Without the secret the route refuses every call: a webhook "temporarily without
         the check" is an open door to a real mouse.
