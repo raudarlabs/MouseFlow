@@ -156,12 +156,34 @@ async function offer(sql, update, userId) {
     return say(update.chatId, `That is ${goal.length - GOAL_MAX} characters over what one goal can hold.`);
   }
 
+  /* КЛЮЧ ПРОВЕРЯЕТСЯ ЗДЕСЬ, А НЕ У МОДЕЛИ. Без него callModel уйдёт наверх с пустым заголовком и вернётся
+   * с 401 - то есть «вас не узнали» вместо «на этом деплое не настроен общий ключ». Отличить одно от
+   * другого по коду нельзя, а чинят это в разных местах. Те же слова, что у api/claude.js. */
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return say(update.chatId, 'This deployment has no shared key configured (ANTHROPIC_API_KEY), so I '
+      + 'cannot build a plan. Nothing was run.');
+  }
+
   const answer = await callModel(
     { model: PLAN_MODEL, ...planRequest({ goal, where: 'messenger' }) },
     process.env.ANTHROPIC_API_KEY,
   );
   if (answer.status < 200 || answer.status >= 300) {
-    return say(update.chatId, `I could not build a plan for that (HTTP ${answer.status}). Nothing was run.`);
+    /* СВОИМИ СЛОВАМИ ВЕРХА, ЕСЛИ ОН ИХ СКАЗАЛ. «HTTP 401» не говорит человеку ничего и не говорит ничего
+     * тому, кто это чинит: 401 бывает и у протухшего ключа, и у ключа без доступа к этой модели. Ответ
+     * модели содержит причину словами, и он уже лежит в answer.text - не показать его значило бы выбросить
+     * единственное, что здесь объясняет отказ. */
+    let why = '';
+    try {
+      const said = JSON.parse(answer.text);
+      why = said && said.error && said.error.message ? String(said.error.message).slice(0, 300) : '';
+    } catch (_) {
+      why = String(answer.text || '').slice(0, 300);
+    }
+    if (answer.unreachable) why = answer.unreachable;
+    if (answer.tooLarge) why = `the request was ${Math.round(answer.bytes / 1024)} kB, which is over the limit`;
+    return say(update.chatId, `I could not build a plan for that (HTTP ${answer.status})`
+      + `${why ? `: ${why}` : ''}. Nothing was run.`);
   }
   let body = null;
   try {
