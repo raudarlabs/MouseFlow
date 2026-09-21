@@ -84,6 +84,14 @@ already does the hard half.
 
 Not in the sequence yet — these need shapes agreed before they are steps.
 
+- [ ] **16 · An instant panel with the chat in it** — owner's decision 2026-09-21, and he chose the
+      expensive shape deliberately: a native always-on-top panel on a global hotkey, not a browser window.
+      It holds a **WebView** on our own compact composer, so it is not a second composer to keep in step.
+      Chat first, dictation into it second. macOS is cheap (AppKit already running, `WKWebView` in the
+      SDK, Carbon hotkey consumes only its own chord); **Windows is not** — WebView2 needs assemblies a
+      PowerShell-hosted C# agent has nowhere to put, so that half waits for the packaged app below.
+      [§7](SPLIT-PLAN.md)
+
 - [ ] **A packaged desktop app, Windows first** — the macOS half is already a compiled Swift binary with a
       menu-bar item; the Windows half is PowerShell hosting C# compiled at startup. Technical answer settled
       (.NET 10, Windows first, after the split). **Commercial answer is not**: nothing measured says the

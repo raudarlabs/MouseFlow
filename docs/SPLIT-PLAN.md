@@ -688,6 +688,40 @@ option is made *easier* by it:
 
 1. **The extension side panel.** It already renders app screens (`Surface: 'app' | 'panel'`) and `popup.js`
    already has a `create` view. No native work, no agent rebuild. *Recommended first step.*
+
+#### The owner chose 3, and chose the expensive shape of it (2026-09-21)
+
+Asked whether a hotkey should open a browser window (option 2) or a native panel, the owner answered:
+*«не хочу а — давай делать дорого — у нас пока нет юзеров и с перезаписом разрешений вопрос будет только у
+меня»*, and staged it: **the instant chat panel first, dictation into it second.** The concern this plan
+raised — a microphone permission and TCC grants invalidated by every rebuild — is answered rather than
+ignored: there are no users, and the only person re-granting is the one deciding.
+
+**The correction that came with the question.** The owner pointed at Claude's floating bar and read it as
+option 2. It is not: that bar is a native always-on-top panel, not a browser window. Option 2 cannot look
+like it, which is most of why option 3 won.
+
+**The panel holds a WebView, and that is the whole design.** A native panel with its own text field would
+be a **second composer** — one that has to learn the plan preview, attachments, Approve, and then be kept
+in step with the first one forever. Native chrome around `WKWebView` pointed at our own compact composer
+gets the look without the duplicate, and it is what makes stage 2 cheap: dictation inside it is the page's
+existing recorder, asking the host app's microphone permission once.
+
+**Instant means pre-warmed, not fast.** The WebView is built and loaded at launch and the panel only
+shows and hides. A panel that loads on first press is a panel that feels like a browser, which is the
+thing being paid to avoid.
+
+**The platforms are NOT symmetric here, and this is the part worth knowing before starting.** macOS is
+cheap: the agent is already an AppKit binary with a status item and a run loop, `WKWebView` is in the SDK,
+and Carbon's `RegisterEventHotKey` consumes exactly the chord registered and nothing else — no new
+permission, since Accessibility is already granted. Windows is not: WebView2 needs the Edge runtime and
+the `Microsoft.Web.WebView2` assemblies, and the Windows agent is **PowerShell hosting C# compiled at
+startup** — it has nowhere to put a NuGet dependency. So the Windows half of this waits for §6.3's
+packaged .NET application, or ships option 2 (a small browser window) in the meantime and says so.
+
+**Sequence:** the compact composer page → the macOS panel and hotkey → dictation into it → Windows, with
+§6.3.
+
 2. **A tray/hotkey that opens a small dictation window.** The agent already serves loopback; the window is a
    browser window, so the recogniser stays in one place.
 3. **The agent records the audio itself and posts it up.** With OpenAI doing the recognition this stops
