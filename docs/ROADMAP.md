@@ -93,8 +93,12 @@ Not in the sequence yet — these need shapes agreed before they are steps.
       [§7](SPLIT-PLAN.md)
   - [x] **The page it shows** — `/panel`, shipped 2026-09-21. Bare but behind the sign-in, and it
         **queues** rather than driving the run itself, because the window is closed a second later.
-  - [ ] **The macOS panel and the hotkey** — `NSPanel` + pre-warmed `WKWebView`, Carbon
-        `RegisterEventHotKey`; off until switched on, chord shown in the menu, not caught while recording.
+  - [x] **The macOS panel and the hotkey** — shipped 2026-09-21. `NSPanel` + pre-warmed `WKWebView`,
+        Carbon `RegisterEventHotKey`; off until switched on, `⌃⌥Space` printed in the menu, released
+        while a flow is recording, and reachable by mouse for anyone who never turns it on.
+        **The agent version is deliberately NOT bumped**: parity is pinned across both agents and
+        `AGENT_WANTS`, so bumping would tell every Windows user to reinstall for a macOS-only window.
+        It bumps when the Windows half lands.
   - [ ] **Dictation into it** — the page's own recorder, asking the host app's microphone once.
   - [ ] **First-run permissions in the panel** — deep link to the pane, a live re-check, two lines of
         state. Accessibility can never have an Allow button; the fallback words are the product.

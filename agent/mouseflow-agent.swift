@@ -35,12 +35,14 @@
 
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import CoreGraphics
 import Darwin
 import Foundation
 import ImageIO
 import ScreenCaptureKit
 import Security
+import WebKit
 
 let VERSION = "0.29.0"
 
@@ -6558,6 +6560,214 @@ final class ScreenFrame {
     }
 }
 
+
+// ---------------------------------------------------------------- the panel, and the chord that shows it
+
+/* ОКНО РАЗМЕРОМ С ПОДСКАЗКУ, ПОВЕРХ ВСЕГО, ПО АККОРДУ - и внутри у него НАША ЖЕ СТРАНИЦА.
+ *
+ * ПОЧЕМУ НЕ НАТИВНОЕ ПОЛЕ ВВОДА, хотя это и было бы меньше кода в первый день. Потому что за полем стоит
+ * не поле: план перед запуском, вложения, Approve, надиктованное дословно. Нативная панель с собственным
+ * вводом - это ВТОРОЙ КОМПОЗЕР, которому всё это придётся выучить отдельно, а потом держать в ногу с
+ * первым - и держать дважды, здесь и в агенте для Windows. Поэтому нативная у панели только рамка:
+ * положение поверх всего, аккорд и мгновенность принадлежат этому файлу, а всё внутри - WKWebView на
+ * /panel (см. web/src/features/panel/PanelView.tsx). Одна реализация, много читателей.
+ *
+ * «МГНОВЕННО» - ЭТО ПРОГРЕТО, А НЕ БЫСТРО. WKWebView создаётся и грузит страницу при запуске агента, а
+ * показ - это только `orderFront`. Панель, которая грузится по первому нажатию, ощущается как браузер, то
+ * есть ровно как то, ради ухода от чего всё это и делается.
+ *
+ * И ПЕРЕЗАГРУЖАЕТСЯ ПРИ ЗАКРЫТИИ, а не при открытии. Иначе выбор был бы между «мгновенно, но со вчерашним
+ * состоянием» и «свежо, но с задержкой». Перезагрузка после того, как окно спрятали, - это и то и другое:
+ * следующее нажатие открывает чистую страницу, которая уже загрузилась.
+ *
+ * ЗАЧЕМ АКТИВИРОВАТЬ ПРИЛОЖЕНИЕ. Агент - accessory (без иконки в Dock), и панель могла бы быть
+ * неактивирующей. Но человек нажал аккорд, чтобы ПЕЧАТАТЬ, а окно без фокуса клавиатуры - это окно, в
+ * которое сначала надо ткнуть мышью, то есть аккорд, не сэкономивший ничего.
+ */
+final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate {
+    static let shared = Panel()
+
+    private var window: NSPanel?
+    private var web: WKWebView?
+    /// Какому аккаунту принадлежит загруженная страница: сменили аккаунт - прогретое окно чужое.
+    private var loadedFor: String?
+
+    private var address: String? {
+        guard let link = Account.link, !link.base.isEmpty else { return nil }
+        return link.base + "/panel"
+    }
+
+    /// Собрать и загрузить заранее. Дёшево при запуске и бесполезно позже - см. «мгновенно это прогрето».
+    func warm() {
+        guard let where_ = address else { return }
+        if window == nil { build() }
+        guard let web = web, loadedFor != where_, let url = URL(string: where_) else { return }
+        loadedFor = where_
+        web.load(URLRequest(url: url))
+    }
+
+    private func build() {
+        let frame = NSRect(x: 0, y: 0, width: 620, height: 260)
+        let panel = NSPanel(contentRect: frame,
+                            styleMask: [.titled, .closable, .fullSizeContentView, .utilityWindow],
+                            backing: .buffered, defer: false)
+        panel.title = "MouseFlow"
+        panel.titlebarAppearsTransparent = true
+        panel.titleVisibility = .hidden
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        /* Во всех пространствах и поверх полноэкранных: аккорд, который не работает, пока открыт Zoom, -
+         * это аккорд, о котором перестают помнить. */
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
+        panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        panel.standardWindowButton(.zoomButton)?.isHidden = true
+
+        let config = WKWebViewConfiguration()
+        /* Сессия ПЕРЕЖИВАЕТ перезапуск агента: иначе входить пришлось бы каждое утро, и панель стала бы
+         * самым медленным способом сказать одну фразу. */
+        config.websiteDataStore = .default()
+        let view = WKWebView(frame: frame, configuration: config)
+        view.uiDelegate = self
+        view.navigationDelegate = self
+        view.autoresizingMask = [.width, .height]
+        panel.contentView = view
+
+        window = panel
+        web = view
+    }
+
+    /* Показать. Идемпотентно: второе нажатие аккорда при открытой панели её ПРЯЧЕТ - так ведёт себя всё,
+     * что вызывают одной клавишей, и обратное поведение читается как «не сработало». */
+    func toggle() {
+        if window?.isVisible == true { hide(); return }
+        show()
+    }
+
+    func show() {
+        guard address != nil else {
+            /* Не молча. Аккорд, который ничего не делает, потому что машина не привязана к аккаунту, -
+             * это сломанная клавиша с точки зрения того, кто её нажал. */
+            Panel.say("This Mac is not linked to a MouseFlow account yet, so there is nothing to ask. "
+                      + "Open MouseFlow, click your avatar, then Connections.")
+            return
+        }
+        if window == nil { build() }
+        warm()
+        guard let panel = window else { return }
+        place(panel)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        /* Фокус - внутрь страницы, а не в рамку: печатать человек собирается в поле, которое там. */
+        if let web = web { panel.makeFirstResponder(web) }
+    }
+
+    func hide() {
+        window?.orderOut(nil)
+        /* Свежесть - здесь, после закрытия. См. заголовок. */
+        if let where_ = address, let url = URL(string: where_) { web?.load(URLRequest(url: url)) }
+    }
+
+    /* Там, где смотрят: по центру экрана С КУРСОРОМ, на верхней трети. Не по центру главного монитора -
+     * на двух экранах это ровно тот случай, когда окно открывается не там, где человек. */
+    private func place(_ panel: NSPanel) {
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) })
+            ?? NSScreen.main
+        guard let area = screen?.visibleFrame else { return }
+        let size = panel.frame.size
+        panel.setFrameOrigin(NSPoint(x: area.midX - size.width / 2,
+                                     y: area.maxY - size.height - area.height * 0.22))
+    }
+
+    /// `window.close()` со страницы - Escape в панели закрывает её так же, как крестик.
+    func webViewDidClose(_ webView: WKWebView) { hide() }
+
+    /* Страница не загрузилась - сказать это в самой панели, а не показать белый прямоугольник. Белое окно
+     * без объяснения читается как «продукт сломался», а причина чаще всего в сети. */
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        Panel.show(error: error.localizedDescription, in: webView)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        Panel.show(error: error.localizedDescription, in: webView)
+    }
+
+    private static func show(error: String, in web: WKWebView) {
+        let safe = error.replacingOccurrences(of: "<", with: "&lt;")
+        web.loadHTMLString(
+            "<body style=\"font:13px -apple-system;padding:18px;color:#ddd;background:#1c1c1e\">"
+            + "MouseFlow could not load its panel: \(safe)<br><br>"
+            + "It will try again the next time you press the shortcut.</body>", baseURL: nil)
+    }
+
+    private static func say(_ text: String) {
+        let alert = NSAlert()
+        alert.messageText = "MouseFlow"
+        alert.informativeText = text
+        alert.alertStyle = .informational
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+}
+
+/* АККОРД - ЧЕРЕЗ CARBON, И ЭТО НЕ АРХАИКА, А ЕДИНСТВЕННОЕ, ЧТО ДЕЛАЕТ РОВНО НУЖНОЕ.
+ *
+ * `NSEvent.addGlobalMonitorForEvents` видит нажатия, но НЕ СЪЕДАЕТ их: ⌃⌥Space дошёл бы и до приложения
+ * впереди, то есть в чужой текст улетел бы пробел. Съесть нажатие может event tap - но он видит ВСЁ, что
+ * человек печатает, и заводить второй ради одной комбинации значило бы просить доверия там, где хватает
+ * меньшего. RegisterEventHotKey перехватывает ровно зарегистрированный аккорд и ничего больше, и не
+ * требует ни одного нового разрешения.
+ *
+ * ВЫКЛЮЧЕНО, ПОКА НЕ ВКЛЮЧАТ. Глобальный аккорд молча отбирает нажатие у чужого приложения - у человека,
+ * которому он не нужен, не должно отобраться ничего.
+ *
+ * И СНИМАЕТСЯ НА ВРЕМЯ ЗАПИСИ. Съеденное нажатие не попадёт в запись флоу, то есть запись выйдет с дырой
+ * ровно там, где человек что-то нажал. Регистрация возвращается, когда запись остановлена.
+ */
+enum Hotkey {
+    /// ⌃⌥Space. Пробел с двумя модификаторами: свободен в системе и ложится под левую руку целиком.
+    static let said = "⌃⌥Space"
+    private static let onKey = "panel.hotkey.on"
+
+    private static var ref: EventHotKeyRef?
+    private static var handler: EventHandlerRef?
+
+    static var isOn: Bool { UserDefaults.standard.bool(forKey: onKey) }
+
+    static func setOn(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: onKey)
+        if on { register() } else { unregister() }
+    }
+
+    /// Перед записью и после неё. Ничего не меняет в настройке - только снимает и возвращает перехват.
+    static func pause() { unregister() }
+    static func resume() { if isOn { register() } }
+
+    static func register() {
+        guard ref == nil else { return }
+        if handler == nil {
+            var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                     eventKind: UInt32(kEventHotKeyPressed))
+            /* Обработчик - C-функция, поэтому она ничего не захватывает и ходит к синглтону. */
+            InstallEventHandler(GetApplicationEventTarget(), { _, _, _ -> OSStatus in
+                DispatchQueue.main.async { Panel.shared.toggle() }
+                return noErr
+            }, 1, &spec, nil, &handler)
+        }
+        var id = EventHotKeyID(signature: OSType(0x4D464C57), id: 1) // 'MFLW'
+        RegisterEventHotKey(UInt32(kVK_Space), UInt32(controlKey | optionKey),
+                            id, GetApplicationEventTarget(), 0, &ref)
+        _ = id
+    }
+
+    static func unregister() {
+        if let have = ref { UnregisterEventHotKey(have) }
+        ref = nil
+    }
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
@@ -6580,6 +6790,10 @@ final class MenuActions: NSObject, NSMenuDelegate {
             heldNoteItem?.title = "Recording saved here — the app collects it (\(held.events) events)"
         }
         stopSaveSeparator?.isHidden = !recording && !held.held && (startItem?.isHidden ?? true)
+
+        /* Галочка читается из настройки, а не из памяти пункта: состояние переживает перезапуск агента,
+         * и пункт, помнящий своё, разошёлся бы с ним ровно один раз - после первой же перезагрузки. */
+        panelHotkeyItem?.state = Hotkey.isOn ? .on : .off
 
         /* Shown only once this Mac is attached to an account: an item that cannot do anything until
          * something else has happened elsewhere is a question, not a control. */
@@ -6639,12 +6853,28 @@ final class MenuActions: NSObject, NSMenuDelegate {
         exit(0)
     }
 
+    /* Аккорд включают и выключают ЗДЕСЬ, потому что это единственное место, где человек видит агента.
+     * Само нажатие показывает панель; этот пункт - про то, отбирать ли аккорд у остальных приложений. */
+    @objc func togglePanelHotkey() {
+        Hotkey.setOn(!Hotkey.isOn)
+        if Hotkey.isOn { Panel.shared.warm() }
+    }
+
+    /// Открыть панель мышью - для того, кто аккорд не включил или забыл его.
+    @objc func openPanel() {
+        Panel.shared.show()
+    }
+
     /// Stops the agent AND takes it out of login items - off until reinstalled or re-enabled in the app.
     @objc func quitForGood() {
         _ = Autostart.disable()
         exit(0)
     }
 }
+/* Галочка у пункта с аккордом - её ставит menuNeedsUpdate, потому что состояние можно сменить и не через
+ * меню (пункт читает UserDefaults, а не свою память). */
+var panelHotkeyItem: NSMenuItem?
+
 let menuActions = MenuActions()
 
 let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -6719,6 +6949,27 @@ takingSep.isHidden = true
 menu.addItem(takingSep)
 takingSeparator = takingSep
 
+/* ПАНЕЛЬ - ДВУМЯ ПУНКТАМИ, И ЭТО НЕ ИЗБЫТОК.
+ *
+ * Первый открывает её мышью: аккорд можно не включить, забыть или отдать другому приложению, и тогда
+ * панель обязана оставаться достижимой. Второй - про сам аккорд, и он ВЫКЛЮЧЕН по умолчанию: глобальная
+ * комбинация молча отбирает нажатие у чужого приложения, и у того, кому она не нужна, не должно
+ * отобраться ничего.
+ *
+ * И АККОРД НАПИСАН В ПУНКТЕ. Горячая клавиша, о которой нигде не сказано, - это клавиша, которой никто не
+ * пользуется; меню здесь единственное место, где о ней вообще можно узнать. */
+menu.addItem(.separator())
+let askItem = NSMenuItem(title: "Ask MouseFlow…",
+                         action: #selector(MenuActions.openPanel), keyEquivalent: "")
+askItem.target = menuActions
+menu.addItem(askItem)
+let hotkeyItem = NSMenuItem(title: "Shortcut \(Hotkey.said)",
+                            action: #selector(MenuActions.togglePanelHotkey), keyEquivalent: "")
+hotkeyItem.target = menuActions
+menu.addItem(hotkeyItem)
+panelHotkeyItem = hotkeyItem
+menu.addItem(.separator())
+
 let stopItem = NSMenuItem(title: "Stop Until Next Login",
                           action: #selector(MenuActions.stopUntilLogin), keyEquivalent: "")
 stopItem.target = menuActions
@@ -6743,6 +6994,11 @@ Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
     if recording != iconShowsLive {
         iconShowsLive = recording
         if let want = recording ? liveIcon : idleIcon { statusItem.button?.image = want }
+        /* АККОРД СНИМАЕТСЯ НА ВРЕМЯ ЗАПИСИ. Перехваченное нажатие не попадёт в запись флоу - то есть
+         * запись выйдет с дырой ровно там, где человек что-то нажал, и заметить это можно будет только
+         * при воспроизведении. Здесь, в уже существующем наблюдателе за записью, а не своим таймером:
+         * два наблюдателя за одним состоянием - это два. */
+        if recording { Hotkey.pause() } else { Hotkey.resume() }
     }
     /* Гашение по истечении аренды. Зажигается рамка сразу - Acting.touch() зовёт sync() сам, - а вот
      * истечение аренды это не событие, и заметить его может только тот, кто смотрит на часы. Секунды
@@ -6756,5 +7012,12 @@ Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
 NotificationCenter.default.addObserver(
     forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
 ) { _ in ScreenFrame.shared.screensChanged() }
+
+/* ПРОГРЕТЬ И ВКЛЮЧИТЬ - последним, когда аккаунт уже прочитан и меню собрано.
+ *
+ * Прогрев стоит одной загрузки страницы при старте и экономит её при каждом нажатии; без аккаунта он
+ * ничего не делает и молчит - привязка появляется позже, и панель прогреется, когда её позовут. */
+Hotkey.resume()
+Panel.shared.warm()
 
 app.run()
