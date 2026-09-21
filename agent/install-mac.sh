@@ -100,6 +100,7 @@ USAGE
     echo "MouseFlow agent removed. Its entries stay in System Settings; clear them with:"
     echo "  tccutil reset Accessibility ${BUNDLE_ID}"
     echo "  tccutil reset ScreenCapture ${BUNDLE_ID}"
+    echo "  tccutil reset Microphone ${BUNDLE_ID}"
     return 0
   fi
 
@@ -201,7 +202,7 @@ NEEDS_TOOLS
       return 1
     fi
     chmod +x "$binary"
-    write_plist_info "$app"
+    write_plist_info "$app" "$source"
     # A Developer ID when this machine has one, ad-hoc otherwise. The difference is not cosmetic: TCC keys a
     # grant to the signature, and a certificate gives every build the SAME identity - so a rebuild stops
     # costing the permissions, which is the single most painful thing about updating this agent. The
@@ -297,10 +298,28 @@ PERMS
 # ---------------------------------------------------------------- pieces
 
 write_plist_info() {
-  local app="$1"
+  local app="$1" source="$2"
   # The plist is what makes this a bundle rather than a folder, and the bundle is what gives the agent an
   # identity of its own in System Settings. LSUIElement keeps it out of the Dock and the app switcher: it has
   # no window and nothing to switch to.
+  #
+  # THE VERSION IS READ OUT OF THE SOURCE, not typed here. It said 0.8.2 for twenty-one releases while the
+  # agent reported 0.29.0 - two numbers that agreed by nothing, and the one people see in System Settings
+  # was the wrong one. Read, with a fallback: a plist without a version is a worse outcome than a stale one,
+  # and this runs on somebody's machine where grep can be the thing that fails.
+  local said
+  said="$(sed -n 's/^let VERSION = "\([0-9.]*\)"/\1/p' "$source" 2>/dev/null | head -1)"
+  [ -n "$said" ] || said="0"
+  #
+  # AND THE MICROPHONE IS DECLARED, which is what makes dictation in the panel possible at all.
+  #
+  # macOS refuses the microphone to a bundle that has not said why it wants it - and refuses it silently
+  # from the caller's point of view: the button is drawn, the request dies, and nothing on screen suggests
+  # the plist. The recorder lives in the page inside the panel's WKWebView, but TCC blames the app that
+  # hosts it, so the sentence has to be here.
+  #
+  # The sentence itself is the one the person reads in the system dialog, so it says where the audio goes
+  # rather than what the feature is called - that is the promise the product makes everywhere else.
   cat > "${app}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -311,9 +330,10 @@ write_plist_info() {
   <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
   <key>CFBundleExecutable</key><string>mouseflow-agent</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.8.2</string>
+  <key>CFBundleShortVersionString</key><string>${said}</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Dictating a task. The recording is sent to OpenAI to be recognised and the text comes back; nothing is kept on this Mac.</string>
 </dict>
 </plist>
 PLIST
@@ -438,6 +458,9 @@ doctor() {
 forget_permissions() {
   tccutil reset Accessibility "$BUNDLE_ID" >/dev/null 2>&1 || true
   tccutil reset ScreenCapture "$BUNDLE_ID" >/dev/null 2>&1 || true
+  # The microphone too, and for the same reason: a grant is tied to the signature, and a rebuilt binary is
+  # a different signature. A stale tick reads as "allowed" and behaves as "denied".
+  tccutil reset Microphone "$BUNDLE_ID" >/dev/null 2>&1 || true
 }
 
 # Said by asking it, not by assuming. The agent detaches, so there is no output to read - and "it started" is

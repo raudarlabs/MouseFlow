@@ -679,6 +679,19 @@ group('панель нативная только снаружи, и аккор�
     !!panel && /self\.hiding else \{ return \}/.test(panel) && /hiding = true/.test(panel));
   check('и страница больше не делает вид, что закрывает себя сама', !/window\.close\(\)/.test(pageCode));
 
+  /* МИКРОФОН: ДВЕ ПОЛОВИНЫ, И БЕЗ ЛЮБОЙ ИЗ НИХ ДИКТОВКА В ПАНЕЛИ МОЛЧА НЕ РАБОТАЕТ. Одна - фраза в
+   * Info.plist (см. agent/test-contract.mjs), вторая здесь: WKWebView спрашивает разрешение у хозяина,
+   * и хозяин, не реализовавший метод, отвечает «нет» без единого слова на экране. */
+  check('панель решает за страницу про микрофон, а не молчит',
+    !!panel && /requestMediaCapturePermissionFor origin/.test(panel)
+    && /decisionHandler\(\.grant\)/.test(panel));
+  /* И ТОЛЬКО СВОЕМУ АДРЕСУ И ТОЛЬКО МИКРОФОН: панель уводит на чужие экраны - вход это уже чужой
+   * поток, - а согласие «текущей странице» выдано тому, кто на ней окажется. */
+  check('и только своему развёртыванию, и только микрофон',
+    !!panel && /type == \.microphone/.test(panelCode)
+    && /origin\.host == ours\.host/.test(panelCode)
+    && /decisionHandler\(\.deny\)/.test(panelCode));
+
   const hotkey = slice('enum Hotkey {');
   check('аккорд найден', !!hotkey);
   /* CARBON, А НЕ ВТОРОЙ EVENT TAP. Tap видит ВСЁ, что человек печатает; просить такого доверия ради

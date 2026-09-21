@@ -103,12 +103,13 @@ Not in the sequence yet — these need shapes agreed before they are steps.
         presses found: the panel presents the Mac's own device token instead of asking for a password;
         the page measures itself and posts one height; `.nonactivatingPanel` was silently breaking ⌘V
         and key repeat; and the agent got a main menu, because on macOS paste is a menu item.
-  - [ ] **Dictation into it — BLOCKED on one line.** The recorder is already there and the button is
-        already in the panel, but `agent/install-mac.sh` writes an `Info.plist` with no
-        `NSMicrophoneUsageDescription`, and macOS refuses the microphone to a bundle that does not
-        declare why it wants it. One key, plus the rebuild that every macOS permission change costs.
-        (The same plist still says `CFBundleShortVersionString 0.8.2` against `VERSION 0.29.0` — two
-        numbers agreeing by nothing.)
+  - [x] **Dictation into it — shipped 2026-09-21, and it needed TWO halves, not one.** The plist now
+        declares `NSMicrophoneUsageDescription`, in the words the person reads in the system dialog. But
+        that alone changes nothing: `WKWebView` asks its host, and a host that has not implemented
+        `requestMediaCapturePermissionFor` answers **no, silently** — button drawn, request dead, nothing
+        on screen pointing at the cause. Granted only for our own origin and only the microphone. The
+        grant is also reset on rebuild alongside the other two, since a new signature is a new app.
+        Version in the plist now read from the source: it said 0.8.2 against `VERSION 0.29.0`.
   - [ ] **First-run permissions in the panel** — deep link to the pane, a live re-check, two lines of
         state. Accessibility can never have an Allow button; the fallback words are the product.
 

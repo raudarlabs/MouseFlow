@@ -6838,6 +6838,37 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessage
                                      y: area.maxY - size.height - area.height * 0.22))
     }
 
+    /* МИКРОФОН ДЛЯ СТРАНИЦЫ - РЕШАЕМ МЫ, И ПО УМОЛЧАНИЮ WEBKIT ОТКАЗЫВАЕТ.
+     *
+     * Объявить NSMicrophoneUsageDescription в пакете необходимо, но недостаточно: WKWebView спрашивает
+     * разрешение у своего хозяина, и хозяин, который этот метод не реализовал, отвечает «нет» молча.
+     * То есть без этих строк кнопка диктовки в панели нарисована, нажатие ничего не делает, и в
+     * интерфейсе нет ни намёка, где искать причину.
+     *
+     * ТОЛЬКО СВОЕМУ ЖЕ РАЗВЁРТЫВАНИЮ И ТОЛЬКО МИКРОФОН. Тот же довод, по которому туда же отдаётся
+     * токен: панель может увести на чужой адрес - экран входа это уже чужой поток, - и разрешение,
+     * выданное «текущей странице», выдано тому, кто на ней окажется. Камеру не спрашивает никто, и
+     * согласие на неё было бы согласием впрок.
+     *
+     * СИСТЕМНЫЙ ДИАЛОГ ПРИ ЭТОМ НИКУДА НЕ ДЕВАЕТСЯ: `.grant` - это наше согласие как приложения, а
+     * согласие человека macOS спросит сама, один раз, и покажет в нём ту фразу из Info.plist. */
+    @available(macOS 12.0, *)
+    func webView(_ webView: WKWebView,
+                 requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+                 initiatedByFrame frame: WKFrameInfo,
+                 type: WKMediaCaptureType,
+                 decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        guard type == .microphone,
+              let base = Account.link?.base,
+              let ours = URL(string: base),
+              origin.protocol == ours.scheme,
+              origin.host == ours.host else {
+            decisionHandler(.deny)
+            return
+        }
+        decisionHandler(.grant)
+    }
+
     /// `window.close()` со страницы - Escape в панели закрывает её так же, как крестик.
     func webViewDidClose(_ webView: WKWebView) { hide() }
 
