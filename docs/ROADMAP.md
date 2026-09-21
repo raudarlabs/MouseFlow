@@ -99,7 +99,16 @@ Not in the sequence yet — these need shapes agreed before they are steps.
         **The agent version is deliberately NOT bumped**: parity is pinned across both agents and
         `AGENT_WANTS`, so bumping would tell every Windows user to reinstall for a macOS-only window.
         It bumps when the Windows half lands.
-  - [ ] **Dictation into it** — the page's own recorder, asking the host app's microphone once.
+  - [x] **Sign-in removed, the window sized by the page, three ways out** — everything the first real
+        presses found: the panel presents the Mac's own device token instead of asking for a password;
+        the page measures itself and posts one height; `.nonactivatingPanel` was silently breaking ⌘V
+        and key repeat; and the agent got a main menu, because on macOS paste is a menu item.
+  - [ ] **Dictation into it — BLOCKED on one line.** The recorder is already there and the button is
+        already in the panel, but `agent/install-mac.sh` writes an `Info.plist` with no
+        `NSMicrophoneUsageDescription`, and macOS refuses the microphone to a bundle that does not
+        declare why it wants it. One key, plus the rebuild that every macOS permission change costs.
+        (The same plist still says `CFBundleShortVersionString 0.8.2` against `VERSION 0.29.0` — two
+        numbers agreeing by nothing.)
   - [ ] **First-run permissions in the panel** — deep link to the pane, a live re-check, two lines of
         state. Accessibility can never have an Allow button; the fallback words are the product.
 
