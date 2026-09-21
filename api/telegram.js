@@ -30,6 +30,7 @@ import { overSpend } from './_spend.mjs';
 import { DESKTOP_GOAL, queueOne, workerSeen } from './_queue.mjs';
 import { GOAL_MAX, goalWith, looksLikeText } from './_attach.mjs';
 import { planFrom, planRequest } from './_plan.mjs';
+import { recognise, refusedAudio } from './_transcribe.mjs';
 import { callModel } from './_vision.mjs';
 import { callTelegram, fileUrl, sendChat } from './_telegram-out.mjs';
 import {
@@ -49,18 +50,30 @@ const say = sendChat;
 /* Скачать приложенный документ. Двумя вызовами, потому что телеграм так устроен: getFile отдаёт путь,
  * файл лежит по другому адресу. Текстом, а не байтами: в цель едет текст, и если это не текст - откажем
  * той же проверкой, что и страница (api/_attach.mjs). */
-async function fetchDocument(doc) {
-  const got = await callTelegram('getFile', { file_id: doc.fileId });
+/* Скачать что угодно, присланное в чат, - путь один на документ и на голосовое. Телеграм устроен так:
+ * getFile отдаёт путь, файл лежит по другому адресу. */
+async function fetchFile(fileId, name) {
+  const got = await callTelegram('getFile', { file_id: fileId });
   if (!got.ok || !got.result || !got.result.file_path) {
-    return { error: `${doc.name} could not be fetched: ${got.why || 'no path came back'}` };
+    return { error: `${name} could not be fetched: ${got.why || 'no path came back'}` };
   }
-  let raw;
   try {
     const r = await fetch(fileUrl(got.result.file_path));
-    if (!r.ok) return { error: `${doc.name} could not be downloaded (HTTP ${r.status})` };
-    raw = await r.text();
+    if (!r.ok) return { error: `${name} could not be downloaded (HTTP ${r.status})` };
+    return { res: r };
   } catch (err) {
-    return { error: `${doc.name} could not be downloaded: ${err && err.message}` };
+    return { error: `${name} could not be downloaded: ${err && err.message}` };
+  }
+}
+
+async function fetchDocument(doc) {
+  const got = await fetchFile(doc.fileId, doc.name);
+  if (got.error) return { error: got.error };
+  let raw;
+  try {
+    raw = await got.res.text();
+  } catch (err) {
+    return { error: `${doc.name} could not be read: ${err && err.message}` };
   }
   if (!looksLikeText(raw)) {
     return {
@@ -141,6 +154,28 @@ async function offer(sql, update, userId) {
   const budget = await overSpend(sql, userId, 'telegram');
   if (!budget.ok) return say(update.chatId, SAY.tooBusy);
 
+  /* ГОЛОС - ЭТО ПРОСТО ТЕКСТ, ПОЛУЧЕННЫЙ ДОРОЖЕ (SPLIT-PLAN §7, шаг 13). Узнанное становится тем же, чем
+   * было бы напечатанное, и дальше по маршруту ничего не знает о том, как оно сюда попало. Единственное
+   * отличие живёт в сообщении с планом: услышанное показывается ДОСЛОВНО, потому что у продиктованной
+   * задачи есть способ пойти не туда, которого у напечатанной нет. */
+  let heard = null;
+  if (update.voice) {
+    const refusedSound = refusedAudio({ bytes: update.voice.bytes, type: update.voice.mime });
+    if (refusedSound) return say(update.chatId, refusedSound);
+    const got = await fetchFile(update.voice.fileId, 'that recording');
+    if (got.error) return say(update.chatId, got.error);
+    let bytes;
+    try {
+      bytes = Buffer.from(await got.res.arrayBuffer());
+    } catch (err) {
+      return say(update.chatId, `that recording could not be read: ${err && err.message}`);
+    }
+    const said = await recognise(bytes, update.voice.mime);
+    if (said.why) return say(update.chatId, `${said.why} Nothing was run.`);
+    if (!said.text) return say(update.chatId, SAY.heardNothing);
+    heard = said.text;
+  }
+
   const files = [];
   if (update.document) {
     const refused = refusedDocument(update.document);
@@ -150,7 +185,9 @@ async function offer(sql, update, userId) {
     files.push(got.one);
   }
 
-  const goal = goalWith(update.text, files);
+  /* Подпись под голосовым телеграм не присылает, так что одно из двух всегда пусто; склейка на случай
+   * дня, когда присылать начнёт, - и потому что «сказал и дописал» это одна просьба, а не две. */
+  const goal = goalWith([update.text, heard].filter(Boolean).join(' '), files);
   if (!goal) return say(update.chatId, SAY.empty);
   if (goal.length > GOAL_MAX) {
     return say(update.chatId, `That is ${goal.length - GOAL_MAX} characters over what one goal can hold.`);
@@ -201,7 +238,7 @@ async function offer(sql, update, userId) {
     insert into chat_draft (id, channel, sender_id, user_id, chat_id, goal, plan)
     values (${id}, ${CHANNEL}, ${update.senderId}, ${userId}, ${update.chatId}, ${goal}, ${JSON.stringify(plan)})
   `;
-  return say(update.chatId, planMessage({ plan, files }), { reply_markup: keyboardFor(id) });
+  return say(update.chatId, planMessage({ plan, files, heard }), { reply_markup: keyboardFor(id) });
 }
 
 /* НАЖАТИЕ. Половина этой функции - про то, чтобы одно нажатие не стало двумя прогонами. */

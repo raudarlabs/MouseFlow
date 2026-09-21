@@ -45,8 +45,8 @@ export const SAY = {
     + 'A device token is made in MouseFlow: click your avatar at the bottom of the sidebar, then '
     + 'Connections. I delete the message with the token in it as soon as I have read it.',
   paired: 'Paired. This chat can now start work on your machines.\n\n'
-    + 'Send me what you want done, in a sentence. Attach a text file if the task needs one. '
-    + 'You will see the plan first, and nothing runs until you press Approve.',
+    + 'Send me what you want done, in a sentence - typed, or held down as a voice message. Attach a text '
+    + 'file if the task needs one. You will see the plan first, and nothing runs until you press Approve.',
   notAToken: 'That does not look like a device token. It begins with mf_ and is made in MouseFlow: '
     + 'avatar at the bottom of the sidebar, then Connections.',
   badToken: 'That token is not valid on this deployment - it may have been revoked. '
@@ -54,6 +54,8 @@ export const SAY = {
   groups: 'I only work in a direct chat. A group has more than one person in it, and what runs here moves '
     + 'a real mouse on somebody\'s computer.',
   help: 'Send a sentence saying what you want done, and attach a text file if it is needed.\n\n'
+    + 'A voice message works too - it is sent to OpenAI to be recognised, and you will see exactly what '
+    + 'was heard above the plan, before anything runs.\n\n'
     + 'You will get a plan with Approve and Cancel. Nothing runs until Approve.\n\n'
     + '/status - is a computer of yours awake and taking work\n'
     + '/stop - stop whatever is running\n'
@@ -64,6 +66,9 @@ export const SAY = {
     + 'get a fresh plan.',
   gone: 'I do not have that plan any more.',
   tooBusy: 'You are sending faster than this can safely be answered. Wait a moment.',
+  /* Голосовое, из которого ничего не вышло. Тишина в ответ на голосовое читалась бы как «не расслышал и
+   * стесняюсь сказать», а человек в этот момент решает, повторить или напечатать. */
+  heardNothing: 'I could not make out anything in that recording. Say it again, or type it.',
 };
 
 /**
@@ -97,6 +102,12 @@ export function updateOf(body) {
   if (!m) return { kind: 'ignored', why: 'no message and no button in this update' };
   const chat = m.chat && typeof m.chat === 'object' ? m.chat : {};
   const doc = m.document && typeof m.document === 'object' ? m.document : null;
+  /* ГОЛОСОВОЕ - ЭТО ТА ЖЕ ДИКТОВКА, ТОЛЬКО ПРИЕХАВШАЯ ФАЙЛОМ (SPLIT-PLAN §7, шаг 13). Телеграм зовёт её
+   * `voice` (ogg/opus, записана кнопкой микрофона) и `audio` (присланный музыкальный файл); для нас это
+   * одно и то же - звук, который надо узнать. Разбирается здесь, а не в маршруте, потому что «что
+   * приехало» - это вопрос с правильным ответом. */
+  const heard = (m.voice && typeof m.voice === 'object' && m.voice)
+    || (m.audio && typeof m.audio === 'object' && m.audio) || null;
   return {
     kind: 'message',
     senderId: m.from && m.from.id != null ? String(m.from.id) : '',
@@ -111,6 +122,17 @@ export function updateOf(body) {
         name: String(doc.file_name || 'attachment').slice(0, 120),
         bytes: Number(doc.file_size) || 0,
         mime: String(doc.mime_type || ''),
+      }
+      : null,
+    voice: heard
+      ? {
+        fileId: String(heard.file_id || ''),
+        bytes: Number(heard.file_size) || 0,
+        /* Умолчание названо: телеграм почти всегда присылает ogg/opus у голосовых, но «почти» - это не
+         * «всегда», и пустой тип у нас означал бы отказ «не сказано, какой это звук» на совершенно
+         * обычном сообщении. */
+        mime: String(heard.mime_type || 'audio/ogg'),
+        seconds: Number(heard.duration) || 0,
       }
       : null,
   };
@@ -176,7 +198,7 @@ export function routeOf({ row, update }) {
     /* `/start` у телеграма - первое, что нажимают; для спаренного это просто «напомни, что ты умеешь». */
     return { act: 'help' };
   }
-  if (!update.text && !update.document) return { act: 'refuse', say: SAY.empty };
+  if (!update.text && !update.document && !update.voice) return { act: 'refuse', say: SAY.empty };
   return { act: 'goal' };
 }
 
@@ -195,8 +217,15 @@ export function refusedDocument(doc) {
  * Цикл реактивный: плана он не получает и о нём не узнаёт (см. api/_plan.mjs). Чекпоинты с номерами,
  * притворяющиеся программой, - худший вид полировки, потому что выглядят как гарантия. В чате это опаснее,
  * чем на странице: человек не видит экрана и у него нет ничего, кроме этих строк. */
-export function planMessage({ plan, files = [] }) {
-  const lines = [plan && plan.title ? String(plan.title) : 'What I intend to do', ''];
+export function planMessage({ plan, files = [], heard = null }) {
+  const lines = [];
+  /* ЧТО УСЛЫШАНО - ПЕРВОЙ СТРОКОЙ, ВЫШЕ ПЛАНА. У продиктованной задачи появился новый способ пойти не
+   * туда, которого у напечатанной нет: распознавание. План, построенный по неверно услышанной фразе,
+   * выглядит совершенно связным - он и есть связный, просто не про то, - и единственный момент, когда
+   * это можно поймать, наступает до нажатия Approve. Поэтому сказанное показывается ДОСЛОВНО, а не
+   * пересказывается заголовком плана. */
+  if (heard) lines.push(`Heard: "${heard}"`, '');
+  lines.push(plan && plan.title ? String(plan.title) : 'What I intend to do', '');
   (plan && Array.isArray(plan.checkpoints) ? plan.checkpoints : []).forEach((one, i) => {
     lines.push(`${i + 1}. ${one.title}${one.detail ? ` - ${one.detail}` : ''}`);
   });
