@@ -6814,6 +6814,42 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessage
         if let web = web { panel.makeFirstResponder(web) }
     }
 
+    /* ЯЗЫК КЛАВИАТУРЫ - ЛУЧШАЯ ДОГАДКА, КОТОРАЯ ЗДЕСЬ ЕСТЬ, И ОНА НЕ ОБЕЩАНИЕ.
+     *
+     * Раскладка говорит, на чём человек ПИШЕТ прямо сейчас, - это заметно точнее, чем navigator.language
+     * (список предпочитаемых языков браузера, из-за которого русская речь однажды распозналась как
+     * английская). Но и это догадка: с русской раскладкой можно заговорить по-английски. Поэтому язык
+     * приезжает как ВЫБРАННЫЙ В СПИСКЕ, а не как невидимая настройка: он виден в панели и меняется одним
+     * щелчком, а «Auto» остаётся соседней строкой.
+     *
+     * Только базовый код - "ru", а не "ru-RU": распознавателю нужен язык, а не страна. */
+    static func keyboardLanguage() -> String? {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages) else { return nil }
+        let languages = Unmanaged<CFArray>.fromOpaque(raw).takeUnretainedValue() as? [String]
+        guard let first = languages?.first, !first.isEmpty else { return nil }
+        return String(first.split(separator: "-").first ?? "")
+    }
+
+    /* ПОКАЗАТЬ И СРАЗУ СЛУШАТЬ - второй аккорд, и он НЕ вторая панель.
+     *
+     * Соблазн был загрузить другой адрес (`/panel?say=1`) - и он стоил бы ровно того, ради чего панель
+     * прогревают: загрузки при каждом нажатии. Страница уже открыта и уже та самая; ей достаточно
+     * сказать. Поэтому агент зовёт функцию, которую она объявила, а не открывает вторую страницу.
+     *
+     * Если страница ещё не готова (первое нажатие на холодном агенте), вызов просто ничего не найдёт -
+     * и это честный исход: панель откроется, микрофон не включится, и человек нажмёт кнопку сам. Лучше,
+     * чем ждать загрузки с уже включённым микрофоном. */
+    func speak() {
+        show()
+        guard let web = web else { return }
+        let lang = Panel.keyboardLanguage() ?? ""
+        let encoded = (try? JSONSerialization.data(withJSONObject: [lang]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[\"\"]"
+        web.evaluateJavaScript(
+            "window.__mouseflowSay && window.__mouseflowSay(\(encoded)[0])", completionHandler: nil)
+    }
+
     func hide() {
         /* Флаг на время ухода: orderOut отнимает у окна ключевой статус, а на это подписан тот самый
          * наблюдатель, который зовёт hide(). Без флага получилось бы «спрятать спрятанное». */
@@ -6917,9 +6953,18 @@ final class Panel: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessage
 enum Hotkey {
     /// ⌃⌥Space. Пробел с двумя модификаторами: свободен в системе и ложится под левую руку целиком.
     static let said = "⌃⌥Space"
+    /* ВТОРОЙ АККОРД - «нажал и говори». Не режим первого и не двойное нажатие: то и другое надо помнить,
+     * а отдельная клавиша просто есть. Та же связка плюс Shift - рука остаётся на месте, и родство двух
+     * команд видно по самому сочетанию. */
+    static let saidSpeak = "⌃⌥⇧Space"
     private static let onKey = "panel.hotkey.on"
 
+    /// Какой из двух нажали. Обработчик у Carbon один на приложение, и различать их можно только по id.
+    private static let askId: UInt32 = 1
+    private static let speakId: UInt32 = 2
+
     private static var ref: EventHotKeyRef?
+    private static var speakRef: EventHotKeyRef?
     private static var handler: EventHandlerRef?
 
     static var isOn: Bool { UserDefaults.standard.bool(forKey: onKey) }
@@ -6938,21 +6983,36 @@ enum Hotkey {
         if handler == nil {
             var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
                                      eventKind: UInt32(kEventHotKeyPressed))
-            /* Обработчик - C-функция, поэтому она ничего не захватывает и ходит к синглтону. */
-            InstallEventHandler(GetApplicationEventTarget(), { _, _, _ -> OSStatus in
-                DispatchQueue.main.async { Panel.shared.toggle() }
+            /* Обработчик - C-функция, поэтому она ничего не захватывает и ходит к синглтону. Оба аккорда
+             * приходят В НЕГО ЖЕ, и различить их можно только по id из события - отсюда GetEventParameter
+             * вместо двух обработчиков: второй обработчик получал бы и чужие нажатия тоже. */
+            InstallEventHandler(GetApplicationEventTarget(), { _, event, _ -> OSStatus in
+                var id = EventHotKeyID()
+                let got = GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                                            EventParamType(typeEventHotKeyID), nil,
+                                            MemoryLayout<EventHotKeyID>.size, nil, &id)
+                let speaking = got == noErr && id.id == Hotkey.speakId
+                DispatchQueue.main.async {
+                    if speaking { Panel.shared.speak() } else { Panel.shared.toggle() }
+                }
                 return noErr
             }, 1, &spec, nil, &handler)
         }
-        var id = EventHotKeyID(signature: OSType(0x4D464C57), id: 1) // 'MFLW'
+        var ask = EventHotKeyID(signature: OSType(0x4D464C57), id: askId) // 'MFLW'
         RegisterEventHotKey(UInt32(kVK_Space), UInt32(controlKey | optionKey),
-                            id, GetApplicationEventTarget(), 0, &ref)
-        _ = id
+                            ask, GetApplicationEventTarget(), 0, &ref)
+        var speak = EventHotKeyID(signature: OSType(0x4D464C57), id: speakId)
+        RegisterEventHotKey(UInt32(kVK_Space), UInt32(controlKey | optionKey | shiftKey),
+                            speak, GetApplicationEventTarget(), 0, &speakRef)
+        _ = ask
+        _ = speak
     }
 
     static func unregister() {
         if let have = ref { UnregisterEventHotKey(have) }
         ref = nil
+        if let have = speakRef { UnregisterEventHotKey(have) }
+        speakRef = nil
     }
 }
 
@@ -7051,6 +7111,11 @@ final class MenuActions: NSObject, NSMenuDelegate {
     /// Открыть панель мышью - для того, кто аккорд не включил или забыл его.
     @objc func openPanel() {
         Panel.shared.show()
+    }
+
+    /// И сразу говорить. Тем же пунктом меню доступно то же, что вторым аккордом. */
+    @objc func speakToPanel() {
+        Panel.shared.speak()
     }
 
     /// Stops the agent AND takes it out of login items - off until reinstalled or re-enabled in the app.
@@ -7188,7 +7253,11 @@ let askItem = NSMenuItem(title: "Ask MouseFlow…",
                          action: #selector(MenuActions.openPanel), keyEquivalent: "")
 askItem.target = menuActions
 menu.addItem(askItem)
-let hotkeyItem = NSMenuItem(title: "Shortcut \(Hotkey.said)",
+let speakItem = NSMenuItem(title: "Say a Task…",
+                           action: #selector(MenuActions.speakToPanel), keyEquivalent: "")
+speakItem.target = menuActions
+menu.addItem(speakItem)
+let hotkeyItem = NSMenuItem(title: "Shortcuts \(Hotkey.said) · \(Hotkey.saidSpeak) to speak",
                             action: #selector(MenuActions.togglePanelHotkey), keyEquivalent: "")
 hotkeyItem.target = menuActions
 menu.addItem(hotkeyItem)

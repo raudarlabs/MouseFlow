@@ -110,6 +110,12 @@ Not in the sequence yet — these need shapes agreed before they are steps.
         on screen pointing at the cause. Granted only for our own origin and only the microphone. The
         grant is also reset on rebuild alongside the other two, since a new signature is a new app.
         Version in the plist now read from the source: it said 0.8.2 against `VERSION 0.29.0`.
+  - [x] **A second chord: press and speak** — `⌃⌥⇧Space` opens the panel already recording, with the
+        language taken from the **current keyboard layout** (it says what somebody is typing in now,
+        which beats the browser's preferred-languages list — the thing that once had Russian speech
+        recognised as English). Set as the visible selection rather than a hidden setting, because a
+        Russian layout can still speak English. It calls the page that is already open rather than
+        loading a second address: reloading would cost exactly what pre-warming buys.
   - [ ] **First-run permissions in the panel** — deep link to the pane, a live re-check, two lines of
         state. Accessibility can never have an Allow button; the fallback words are the product.
 

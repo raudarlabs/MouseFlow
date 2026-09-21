@@ -25,6 +25,9 @@ declare global {
     __mouseflow?: { token?: string };
     /** Мост WKWebView. Есть только внутри панели; в браузере его нет, и это способ отличить одно от другого. */
     webkit?: { messageHandlers?: { mouseflow?: { postMessage: (body: unknown) => void } } };
+    /* Обратное направление, и единственное: агент зовёт это по второму аккорду - «открылось и уже
+     * слушает». Объявляет страница (PanelView), зовёт агент; см. Panel.speak в mouseflow-agent.swift. */
+    __mouseflowSay?: (lang?: string) => void;
   }
 }
 
