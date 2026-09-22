@@ -284,5 +284,27 @@ group('имена продуктов стоят ровно в одном мес�
   }
 }
 
+group('дашборд спрашивает свою половину, и на нём нет чужой');
+{
+  const page = read('src/features/insights/InsightsView.tsx');
+  /* УСЛОВИЕ ГОТОВНОСТИ ШАГА 8 (SPLIT-PLAN §5.2), и обе его половины проверяются отдельно, потому что
+   * первая без второй - это ровно то состояние, из-за которого шаг однажды откатили: запрос сузился, а
+   * страница продолжила печатать «0 прогонов, —% успеха, нет отказов». */
+  check('страница спрашивает половину did', /const HALF = 'did';/.test(page));
+  /* Не спрятано и не отфильтровано - УДАЛЕНО. Секции, плитки, колонки и весь счёт, который их кормил. */
+  const gone = ['data.repeated', 'data.failures', 'data.slowestSteps', 'data.skills',
+    'data?.byOutcome', 'data?.byDay', 'const rate =', 'const pace =', 'const counts ='];
+  const left = gone.filter((what) => page.includes(what));
+  check('и содержимого половины ran на ней не осталось', left.length === 0, show(left));
+  /* Тип тоже говорит правду: поле, объявленное обязательным и не приезжающее, - это typecheck, который
+   * проходит, пока страница печатает нули. */
+  check('а тип называет поля половины ran необязательными',
+    /  runs\?: number;/.test(page) && /  agentHours\?: number;/.test(page)
+      && !/^  runs: number;$/m.test(page.slice(page.indexOf('interface Totals'))), 'Totals');
+  /* И первая строка страницы не обещает того, чего ниже нет: «надёжность» и «прогоны» ушли вместе с ними. */
+  check('и заголовок не обещает прогонов',
+    !/recordings and runs/.test(page) && !/reliability/.test(page));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

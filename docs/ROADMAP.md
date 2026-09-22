@@ -24,15 +24,21 @@ concrete thing named for the owner to check.
 
 ## Next up
 
+*The split is finished. What follows is the rest of the sequence.*
+
 - [x] **7 · Skills is P2's, schedules are in Tests — done 2026-09-22.** The cut was a subtraction: all of
       that screen is P2's workshop and P1 owned only the schedules. They moved into Tests as a third card
       (strip + a skill picker, since the clock left the library row with them) rather than onto a fifth
       screen — a case is already *a skill plus what must hold, run nightly*, and a skill on a clock is the
       same question with nothing asserted. Name kept. **No screen is marked `both` any more.**
       [§5.1](SPLIT-PLAN.md)
-- [ ] **8 · P2 dashboard asks `?half=did`** — the route half is one line, the page is not: without the run
-      blocks removed it renders *0 runs, —% success, no failures*, which is absence shown as a negative
-      fact. Needs eyes on the result. [§5.2](SPLIT-PLAN.md)
+- [x] **8 · The dashboard reads recordings only — done 2026-09-22.** Not a filter: six sections, four
+      tiles, five columns and all the arithmetic behind them were **removed**, 728 lines of it, and the
+      type now declares the `ran` fields optional so a future omission fails the typecheck instead of
+      printing a nought. Four false statements surfaced only by looking at the page — the headline still
+      promised *reliability*, the applications note said *recordings and runs together*, that table kept a
+      Runs column, and the endpoint's own "why" for unplaced time listed agent steps that half never
+      counted. [§5.2](SPLIT-PLAN.md)
 
 ## The split, remaining
 

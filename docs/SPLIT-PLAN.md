@@ -454,9 +454,28 @@ the question now answers it with a nought.
 
 So the work is what it always was — take the run blocks off the page — only smaller, because they need
 deleting rather than moving. They are not one section: *success rate* and *worth automating* are tiles in
-the same grid as *recordings* and *skills made*. That is a change somebody has to **look at**, not one the
-typechecker can confirm, and it is left for a session that can. The route already does its half; step 3 is
-not wasted.
+the same grid as *recordings* and *skills made*.
+
+**Done 2026-09-22.** 728 lines left the file: six sections (the outcome bar, *Activity by day*, *Worth
+automating*, *What went wrong*, *The slowest steps*, *How each skill is doing*), four tiles, four columns of
+the team table and one of the applications table, and every computed value that fed them — `counts`,
+`pace`, `rate`, `affected`, `repeatCost`, plus `DayBars`, `Sparkline`, `fmtMs`, `fmtWhen`, `whose`,
+`dayWindow` and six row interfaces.
+
+**The type is the part that stops this recurring.** `Totals.runs` and its neighbours are now optional, so a
+field the page reads and the half does not send fails the typecheck rather than rendering a nought.
+
+**Four things only the screen could show**, and each was a sentence claiming something the page no longer
+counts: the headline promised *reliability* and *runs*; *Where the time went* said "across recordings and
+runs together" and kept a **Runs** column that would have been nought on every row; and the endpoint's own
+`unattributed.why` listed *agent steps with no timing* and *the model thinking between steps* among the
+causes of time it could not place — under `did` neither is in that number. The last one is fixed in
+`api/insights.js`, per half, and pinned by executing both.
+
+**What replaced the four tiles** is the same question asked of recordings: *time recorded*, *doing*, and a
+*worth automating* that counts **patterns** — sequences of applications seen in more than one recording —
+instead of goals an agent was given twice. The old tile answered "what is already automated"; this half's
+question is what is still done by hand, and it is what this screen's own tour copy has always promised.
 
 ### 5.3 Gallery
 

@@ -7,13 +7,24 @@ Files: `web/src/features/insights/InsightsView.tsx`, `web/src/features/chat/Chat
 Two things on one page, deliberately: the numbers, and something you can ask about them. They were two
 screens once, and a separate address made somebody retype the window they were already looking at.
 
-**Two questions also live here, and the route can now answer them apart.** *What did I spend my week on* is
-counted from recordings and their digests; *what did the machine do, and did it work* is counted from runs.
-`/api/insights?half=did|ran|both` picks one, `both` is the default and is what this page asks for, because
-this page still shows both. The blocks each half brings are listed in `api/_half.mjs` and named back in the
-response as `half.did` / `half.ran`, so a page can never mistake a block it did not request for a block that
-came back empty. See [14 — HTTP API](14-http-api.md#apiinsights) and `docs/SPLIT-PLAN.md` §4.3 for why the
-split exists before the screen is split.
+**This page reads recordings, and only recordings — since 2026-09-22.** It asks
+`/api/insights?half=did`. *What did the machine do, and did it work* is the other product's question, and
+[Logs](26-activity.md) answers it with the evidence attached: kept frames and check verdicts, which a
+summary of runs does not have.
+
+That was not a filter. Six sections, four tiles, five table columns and all the arithmetic behind them were
+**deleted** — 728 lines. The reason is worth keeping: narrowing the *request* alone typechecks, does not
+crash, and prints **0 runs, —% success rate, no failures**, because every list on this page is read through
+a helper that turns a missing field into an empty array. A page that was never asked the question would
+have answered it with a nought. The type now declares the run-half fields optional, so the next omission
+fails the typecheck instead.
+
+**What took the four tiles' place** is the same question asked of recordings: *time recorded*, *doing*, and
+a *worth automating* counting **patterns** — sequences of applications seen in more than one recording —
+rather than goals an agent was given twice. The old one answered "what is already automated"; this half's
+question is what is still being done by hand.
+
+See [14 — HTTP API](14-http-api.md#apiinsights) and `docs/SPLIT-PLAN.md` §4.3 and §5.2.
 
 ## The rule the whole page rests on
 

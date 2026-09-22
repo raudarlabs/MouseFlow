@@ -808,5 +808,27 @@ group('имя приложения не зависит от регистра');
     /application names are case-folded/.test(digest) && /the shape/.test(digest));
 }
 
+
+/* ------------------------------------------------------ объяснения не называют того, чего не считали */
+
+group('оговорка про неразмещённое время называет только свои половины');
+{
+  /* Текст был один на все половины и перечислял шаги прогонов и раздумья модели. Под `?half=did` прогонов
+   * в числе нет вовсе - и объяснение называло бы источники, которых не считали. Это то же, что число,
+   * взятое с потолка, только словами, и на странице второго продукта оно стояло бы под каждой цифрой. */
+  const both = await gather(fakeNeon(), IDS, FROM.toISOString(), TO.toISOString(), false, IDS, 'both');
+  const did = await gather(fakeNeon(), IDS, FROM.toISOString(), TO.toISOString(), false, IDS, 'did');
+
+  check('целое называет шаги агента среди причин',
+    /agent steps with no page or no timing/.test(both.unattributed.why), both.unattributed.why);
+  check('а половина «что делал человек» - не называет',
+    !/agent steps/.test(did.unattributed.why) && !/model thinking/.test(did.unattributed.why),
+    did.unattributed.why);
+  /* Общая причина - запись до того, как что-либо назвало место - остаётся в обеих: она про записи. */
+  check('и общая причина остаётся в обеих',
+    /before anything named where it was/.test(both.unattributed.why)
+      && /before anything named where it was/.test(did.unattributed.why));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

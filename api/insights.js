@@ -1279,8 +1279,14 @@ export async function gather(sql, ids, fromIso, toIso, wantPeople, peopleIds, ha
     unattributed: {
       seconds: round(bucketSeconds, 1),
       share: share(bucketSeconds, allSeconds),
-      why: 'Time that happened but cannot be placed: agent steps with no page or no timing, the model '
-        + 'thinking between steps, the part of a recording before anything named where it was, and '
+      /* ПРИЧИНЫ - ТОЛЬКО ТЕ, ЧТО В ЭТОМ ЧИСЛЕ ЕСТЬ. Текст был один на все половины и перечислял шаги
+       * прогонов и раздумья модели; под `?half=did` прогонов в числе нет вовсе, и объяснение называло бы
+       * источники, которых не считали. Это то же самое, что число, взятое с потолка, только словами. */
+      why: (wantRan
+        ? 'Time that happened but cannot be placed: agent steps with no page or no timing, the model '
+          + 'thinking between steps, the part of a recording before anything named where it was, and '
+        : 'Time that happened but cannot be placed: the part of a recording before anything named where '
+          + 'it was, and ')
         + 'desktop recordings made by an agent older than 0.6.0 that touched more than one application '
         + '- those have only a once-a-second sample of the front window, for the recording as a whole, '
         + 'and splitting that across it would be a guess dressed as a measurement.',

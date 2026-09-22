@@ -35,9 +35,7 @@ import {
   MessageSquareText,
   MousePointerClick,
   RefreshCw,
-  Repeat2,
   Route,
-  ShieldCheck,
   Sparkles,
   Timer,
   TriangleAlert,
@@ -60,96 +58,40 @@ import { openingQuestion, takeAsk } from '@/features/chat/ask-about';
  * second one appears it should move there, next to Flow and Run, so the two cannot drift apart.
  */
 
-type Outcome = 'ok' | 'failed' | 'stopped' | 'running';
-
+/* ЧТО ЭТА СТРАНИЦА ПОЛУЧАЕТ, а не что маршрут умеет прислать.
+ *
+ * Она спрашивает `?half=did` (см. HALF ниже), и половина `did` полей про прогоны НЕ ПРИСЫЛАЕТ. Поэтому они
+ * необязательные, а не просто неиспользуемые: тип, объявляющий обязательным то, чего в ответе нет, - это
+ * typecheck, который проходит, пока страница печатает нули. Ровно так этот шаг и был отложен один раз. */
 interface Totals {
-  runs: number;
-  ok: number;
-  failed: number;
-  stopped: number;
-  running: number;
   recordings: number;
   createdSkills: number;
+  /* Ниже - половина `ran`. Приезжает только при `?half=both`, то есть сегодня не приезжает никогда: эта
+   * страница принадлежит второму продукту, а на «как отработал агент» отвечает журнал первого. */
+  runs?: number;
+  ok?: number;
+  failed?: number;
+  stopped?: number;
+  running?: number;
   /** Wall clock across every run in the window, as hours - the same measure the Hours screen shows. */
-  agentHours: number;
-}
-
-interface DayRow {
-  day: string;
-  runs: number;
-  ok: number;
-  failed: number;
-  agentSeconds: number;
+  agentHours?: number;
 }
 
 interface AppRow {
   name: string;
   kind: string;
   recordings: number;
-  runs: number;
+  /* Прогоны в этом приложении. Приезжает только при `?half=both`: под `did` вторая половина `appsQ` не
+   * строится, и колонка показывала бы ноль у каждой строки. */
+  runs?: number;
   seconds: number;
   /** See asFraction below: the unit is not stated, so both readings are handled. */
   share: number;
 }
 
-interface RepeatedRow {
-  signature: string;
-  label: string;
-  times: number;
-  /** Agent time these runs took. Not a saving: nothing stored says what the task costs by hand. */
-  seconds: number;
-  /** How many of them had a usable clock, so a partial total can say so. */
-  timed: number;
-  lastAt: string | null;
-  flowIds: string[];
-}
-
-interface StepRow {
-  tool: string;
-  calls: number;
-  medianMs: number;
-  p90Ms: number;
-}
-
-interface FailureRow {
-  reason: string;
-  times: number;
-  lastAt: string | null;
-  /* `example` is always an object, but its runId is nullable: the endpoint takes the most recent run of
-   * the group and a row can carry no client id. Typed nullable rather than asserted, since the whole
-   * point of the example is to be openable and a missing id has to read as "not this one". */
-  example: { runId: string | null; error: string } | null;
-}
-
-interface SkillRow {
-  flowId: string;
-  /** Whose it is. Only ever needed in the team scope, where two people can have a skill of one name. */
-  ownerId?: string | null;
-  name: string;
-  kind: string;
-  source: string;
-  runs: number;
-  ok: number;
-  failed: number;
-  /* Null when no run of this skill had a usable start-and-finish pair. Nought would read as instant,
-   * which is why the endpoint sends null and this keeps it null all the way to fmtSeconds. */
-  medianSeconds: number | null;
-  lastRunAt: string | null;
-}
-
 interface GapRow {
   question: string;
   why: string;
-}
-
-/* One row per outcome, sent as an ARRAY rather than a map. The endpoint shapes it from the same counts
- * `totals` carries, so the chart and the header cannot disagree - but it is a list of
- * { outcome, runs, share }, and reading it as a lookup by key (which the first version of this file did)
- * silently found nothing on every row and fell through to `totals` for the whole legend. */
-interface OutcomeRow {
-  outcome: string;
-  runs: number;
-  share: number;
 }
 
 /** A capped list: what was shown, what it was cut from, and the cap that cut it. */
@@ -224,8 +166,6 @@ interface Insights {
   /** timeZone is the zone the day boundaries were cut on - UTC, since that is Neon's. */
   window: { days: number; from: string; to: string; timeZone?: string };
   totals: Totals;
-  byOutcome: OutcomeRow[];
-  byDay: DayRow[];
   applications: AppRow[];
   /* The three behaviour blocks, optional because a deploy where the page is newer than the endpoint is
    * ordinary and a dashboard that renders an error over a missing section is not. */
@@ -238,8 +178,6 @@ interface Insights {
   /* Real measured time that cannot be attributed to any application. Its share completes the
    * applications table, which is the only reason the shares there can be read as shares of anything. */
   unattributed?: { seconds: number; share: number; why: string };
-  repeated: RepeatedRow[];
-  slowestSteps: StepRow[];
   /** The window immediately before this one, same length. `had` is stated rather than inferred, because "no
    * runs then" and "no previous window" both come back as nought and only one of them supports a delta. */
   previous?: {
@@ -252,8 +190,6 @@ interface Insights {
     stopped?: unknown;
     agentHours?: unknown;
   };
-  failures: FailureRow[];
-  skills: SkillRow[];
   gaps: GapRow[];
   scope?: ScopeSaid;
   /* The endpoint's own count of what each cap cut, because this page only ever sees the rows that
@@ -264,10 +200,6 @@ interface Insights {
     patterns?: Cap & { steps: number };
     actions?: { shown: number; limit: number };
     applications: Cap;
-    repeated: Cap;
-    slowestSteps: Cap & { minCalls: number };
-    failures: Cap;
-    skills: Cap;
   };
 }
 
@@ -281,12 +213,9 @@ interface PersonRow {
   you: boolean;
   recordings: number;
   createdSkills: number;
-  runs: number;
-  ok: number;
-  failed: number;
-  stopped: number;
-  agentHours: number;
-  lastRun: string | null;
+  /* Колонки про прогоны ушли из таблицы вместе с половиной `ran`: под `?half=did` маршрут их не считает, и
+   * оставить их значило бы показать у каждого человека ноль прогонов и прочерк вместо времени - то есть
+   * отсутствие, поданное как факт о человеке. */
   lastMade: string | null;
 }
 
@@ -301,15 +230,6 @@ interface ScopeSaid {
   person?: { id: string; name: string | null; email: string | null; you: boolean };
   people: PersonRow[];
 }
-
-/** A skill's owner, named from the people the same response already listed. */
-const whose = (ownerId: string | null | undefined, people: PersonRow[]): string => {
-  if (!ownerId) return '—';
-  const found = people.find((p) => p.id === ownerId);
-  if (!found) return '—';
-  if (found.you) return 'you';
-  return found.name || found.email || 'somebody';
-};
 
 /* Arrays are read through this rather than trusted, because a section that renders as nothing is a far
  * better failure than a whole page replaced by a React crash when one key is absent. */
@@ -337,24 +257,6 @@ const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(
 export const todayWindow = (): Window => {
   const now = new Date();
   return { kind: 'range', from: startOfDay(now), to: now, label: 'Today' };
-};
-
-/* ONE DAY OF THE CHART, and its boundaries are UTC on purpose.
- *
- * Every other window on this page is cut on the reader's own clock, because "today" belongs to them. This
- * one is not: it comes from a column of the day chart, and that axis is UTC - the endpoint says so in
- * `window.timeZone`, because date_trunc uses the database's zone and Neon's is UTC. Cutting the drill-down
- * on local midnight would hand back a different set of runs from the ones the column counted, and the two
- * numbers would disagree by a few hours' worth with nothing on the screen to explain it.
- *
- * The end is clamped to now for the same reason the picker refuses future dates: asking for the rest of
- * today returns the same rows and labels the window with an hour that has not happened. */
-const dayWindow = (day: string): Window | null => {
-  const start = new Date(`${day}T00:00:00.000Z`);
-  if (!Number.isFinite(+start)) return null;
-  const end = new Date(start.getTime() + 86_400_000 - 1);
-  const now = new Date();
-  return { kind: 'range', from: start, to: end > now ? now : end, label: fmtDay(day) };
 };
 
 const asQuery = (w: Window) => (w.kind === 'days'
@@ -419,23 +321,25 @@ const asScope = (scope: Scope) => (scope.kind === 'team'
   ? `&team=${encodeURIComponent(scope.id)}${scope.person ? `&person=${encodeURIComponent(scope.person)}` : ''}`
   : '');
 
-/* КАКУЮ ПОЛОВИНУ СПРАШИВАЕТ ЭТА СТРАНИЦА, сказано вслух, а не оставлено умолчанию.
+/* КАКУЮ ПОЛОВИНУ СПРАШИВАЕТ ЭТА СТРАНИЦА - `did`, с 2026-09-22 (SPLIT-PLAN §5.2, шаг 8).
  *
- * ПОКА `both`, И ЭТО НЕ ЗАБЫТАЯ СТРОКА. Дашборд с 2026-09-18 принадлежит второму продукту целиком, то
- * есть должен спрашивать `did` - и §5.2 плана называл это «одной строкой». Проверено попыткой: одной
- * строки не хватает, и вот почему.
+ * «Что делал человек»: записи, время по приложениям, внимание, действия, узоры. Половина «как отработал
+ * агент» с этой страницы УБРАНА - не спрятана и не отфильтрована, а удалена вместе со своими секциями,
+ * плитками и колонками. На тот же вопрос отвечает журнал первого продукта, и отвечает с доказательствами:
+ * кадрами и вердиктами проверок, которых у сводки по прогонам нет.
  *
- * Половина `did` не присылает `byOutcome`, `byDay`, `repeated`, `slowestSteps`, `failures`, `skills` и
- * половину полей `totals`. Страница от этого НЕ ПАДАЕТ - каждый список читается через `list()`, который
- * отдаёт пустой массив, - и в этом всё дело: она нарисует «0 прогонов», «—% успеха», «нет отказов». Это
- * отсутствие, поданное как отрицательный факт, то есть ровно то, чего этот файл не делает нигде больше
- * (см. заголовок про `gaps`).
+ * ПОЧЕМУ ОДНОЙ СТРОКИ БЫЛО МАЛО, и почему этот шаг однажды откатили. Поменять `HALF` на `'did'` проходит
+ * typecheck и не роняет страницу: каждый список читается через `list()`, который превращает отсутствующее
+ * поле в пустой массив. Страница при этом печатает «0 прогонов», «—% успеха», «нет отказов» - отсутствие,
+ * поданное как отрицательный факт, то есть ровно то, чего этот файл не делает больше нигде. Защитный код,
+ * написанный для деплоя, где страница новее маршрута, делал свою работу и прятал проблему.
  *
- * Значит настоящая работа - убрать с этой страницы блоки про прогоны, а не сузить запрос. А они не
- * отдельной секцией: «success rate» и «worth automating» стоят плитками в одной сетке с «записями» и
- * «созданными навыками». Это правка, которую надо ВИДЕТЬ, а не проверять типами, - и она ждёт того, кто
- * сможет посмотреть на результат. Маршрут своё уже умеет, и это не пропадёт: шаг 3 сделан. */
-const HALF = 'both';
+ * Поэтому убрано СОДЕРЖИМОЕ: шесть секций, четыре плитки, четыре колонки в таблице команды и весь счёт,
+ * который их кормил. Тип теперь тоже говорит правду - поля половины `ran` объявлены необязательными, а не
+ * просто перестали читаться.
+ *
+ * ЧТО ЭТО ЭКОНОМИТ, измерено в шаге 3: восемь запросов к `user_run` из четырнадцати не строятся вовсе. */
+const HALF = 'did';
 
 async function fetchInsights(window: Window, scope: Scope, signal: AbortSignal): Promise<Insights> {
   const res = await fetch(`/api/insights?${asQuery(window)}&half=${HALF}${asScope(scope)}`,
@@ -466,26 +370,6 @@ const fmtSeconds = (total: number | null): string => {
   const hours = Math.floor(mins / 60);
   const rest = mins % 60;
   return rest ? `${hours}h ${rest}m` : `${hours}h`;
-};
-
-/* Step timings arrive in milliseconds and are often under a second, where rounding to whole seconds throws
- * away the entire difference between a fast tool and a slow one. */
-const fmtMs = (ms: number): string => {
-  if (!Number.isFinite(ms) || ms <= 0) return '—';
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  if (ms < 10000) return `${(ms / 1000).toFixed(1)}s`;
-  return fmtSeconds(ms / 1000);
-};
-
-const fmtWhen = (iso: string | null): string => {
-  if (!iso) return 'never';
-  const then = +new Date(iso);
-  if (!Number.isFinite(then)) return 'unknown';
-  const days = Math.floor((Date.now() - then) / 86400000);
-  if (days <= 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 14) return `${days} days ago`;
-  return new Date(then).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
 const fmtDay = (day: string): string => {
@@ -524,17 +408,6 @@ const points = (now: number, then: number | null): string | null => {
 };
 
 /* --------------------------------------------------------------------------- the marks */
-
-const OUTCOMES: { key: Outcome; label: string; fill: string; text: string }[] = [
-  { key: 'ok', label: 'finished', fill: 'bg-fb-green', text: 'text-fb-green' },
-  { key: 'failed', label: 'failed', fill: 'bg-fb-red', text: 'text-fb-red-text' },
-  /* text-fb-attention, not the fb-attention-text pair the red row uses: the vendored stylesheet defines
-   * --fb-attention-text only inside .dark, and points it at --orange-attention-text-dark, which this copy
-   * never defines at all. So that class resolves to nothing in either theme and the count would silently
-   * fall back to inherited ink while its dot stayed orange. --fb-attention is defined in both. */
-  { key: 'stopped', label: 'stopped', fill: 'bg-fb-attention', text: 'text-fb-attention' },
-  { key: 'running', label: 'still running', fill: 'bg-brand-primary', text: 'text-brand-primary' },
-];
 
 /* A number, and what it is worth comparing with.
  *
@@ -706,95 +579,6 @@ const CapNote = ({ cap, what }: { cap?: Cap; what: string }) =>
       Showing the top {cap.shown} of {cap.total} {what}.
     </Typography>
   ) : null;
-
-/* One column per day, stacked so the column's height is the run count and its colours are the outcomes.
- * The grey segment is runs minus finished minus failed - stopped, or still going. It is drawn rather than
- * dropped, because a column shorter than its own label would be a lie about how much ran that day.
- *
- * EVERY COLUMN IS A BUTTON, and that is a drill-down and an accessibility fix in the same change. The
- * container used to be one `role="img"` with a single label, which made every column's own `title` -
- * the day, the counts, the agent time - unreachable to a screen reader, since role="img" makes its
- * children presentational. A button carries that same sentence as its accessible name and can also be
- * pressed, which is what narrows the whole page to that day.
- *
- * `onPick` optional and the fallback a plain div: a column that looks pressable and does nothing is worse
- * than a column that does not look pressable. */
-const DayBars = ({ days, onPick }: { days: DayRow[]; onPick?: (day: string) => void }) => {
-  const tallest = Math.max(1, ...days.map((d) => d.runs));
-  return (
-    <div className="flex h-24 items-end gap-px">
-      {days.map((day) => {
-        const other = Math.max(0, day.runs - day.ok - day.failed);
-        const height = (day.runs / tallest) * 100;
-        const said = `${fmtDay(day.day)} — ${day.runs} run${day.runs === 1 ? '' : 's'}, ${day.ok} finished, ${day.failed} failed, ${fmtSeconds(day.agentSeconds)} of agent time`;
-        const Column = onPick ? 'button' : 'div';
-        return (
-          <Column
-            key={day.day}
-            {...(onPick
-              ? {
-                type: 'button' as const,
-                onClick: () => onPick(day.day),
-                'aria-label': `${said}. Show this day only.`,
-              }
-              : {})}
-            className={cn(
-              'flex min-w-[2px] flex-1 flex-col justify-end',
-              onPick && 'rounded-sm transition-opacity duration-fast hover:opacity-70'
-                + ' focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1'
-                + ' focus-visible:outline-brand-primary',
-            )}
-            style={{ height: '100%' }}
-            title={said}
-          >
-            <div className="flex flex-col justify-end rounded-sm overflow-hidden" style={{ height: `${height}%` }}>
-              {day.failed > 0 && (
-                <div className="bg-fb-red" style={{ flexGrow: day.failed, minHeight: '2px' }} />
-              )}
-              {other > 0 && (
-                <div className="bg-ink-inactive/45" style={{ flexGrow: other, minHeight: '2px' }} />
-              )}
-              {day.ok > 0 && <div className="bg-fb-green" style={{ flexGrow: day.ok, minHeight: '2px' }} />}
-            </div>
-            {/* Outside the stack, not inside it: a day with no runs scales that box to height 0 and it
-              * clips its own children, so a hairline in there was invisible and a quiet day looked the
-              * same as a day the window does not cover. */}
-            {day.runs === 0 && <div className="h-px bg-stroke" />}
-          </Column>
-        );
-      })}
-    </div>
-  );
-};
-
-/* Agent time under the run counts: the same x-axis, so a tall day of cheap runs and a quiet day of one
- * long one are told apart without reading either number. Non-scaling stroke because the viewBox is
- * stretched to the container's width and an ordinary stroke would be stretched with it. */
-const Sparkline = ({ values }: { values: number[] }) => {
-  if (values.length < 2) return null;
-  const top = Math.max(1, ...values);
-  const points = values
-    .map((value, i) => `${(i / (values.length - 1)) * 100},${28 - (Math.max(0, value) / top) * 26}`)
-    .join(' ');
-  return (
-    <svg
-      viewBox="0 0 100 30"
-      preserveAspectRatio="none"
-      className="h-8 w-full text-brand-primary"
-      role="img"
-      aria-label="agent time per day"
-    >
-      <polyline
-        points={points}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-};
 
 /** A plain proportion bar. Width is the whole encoding, so the number beside it is a check, not the message. */
 const Meter = ({ fraction, fill }: { fraction: number; fill: string }) => (
@@ -1060,92 +844,9 @@ export const InsightsView = () => {
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
   const totals = data?.totals;
-  const counts = useMemo(() => {
-    if (!totals) return null;
-    /* byOutcome is a list, so it is turned into a lookup here rather than indexed as though it were one.
-     * `totals` still stands in for an outcome the endpoint did not send a row for: it has a documented
-     * field per outcome, and the two are shaped from the same counts, so they cannot contradict. */
-    const sent = new Map(list(data?.byOutcome).map((row) => [row.outcome, row.runs]));
-    return OUTCOMES.map((outcome) => ({
-      ...outcome,
-      count: sent.get(outcome.key) ?? totals[outcome.key],
-    })).filter((row) => Number.isFinite(row.count));
-  }, [data, totals]);
 
   const runs = totals?.runs ?? 0;
-  const byDay = list(data?.byDay);
   const nothingYet = !!totals && runs === 0 && totals.recordings === 0 && totals.createdSkills === 0;
-
-  /* ------------------------------------------------------------------ comparing with the window before
-   *
-   * Three different arithmetics, kept apart on purpose. Runs compare as a percentage, a rate compares in
-   * POINTS - printing "+8%" for eight points is the classic way a dashboard lies quietly - and a duration
-   * compares as a duration. Every one of them returns null rather than a zero when there is nothing to
-   * compare against, so an empty previous window shows no delta instead of a confident "0%".
-   */
-  const prev = data?.previous;
-  const hadPrev = prev?.had === true;
-
-  const pace = useMemo(() => {
-    const nowRuns = num(data?.totals?.runs) ?? 0;
-    const thenRuns = num(prev?.runs) ?? 0;
-    const nowTime = (num(data?.totals?.agentHours) ?? 0) * 3600;
-    const thenTime = (num(prev?.agentHours) ?? 0) * 3600;
-    const since = hadPrev && prev?.from
-      ? `Compared with ${new Date(String(prev.from)).toLocaleDateString()} to ${new Date(String(prev.to)).toLocaleDateString()}`
-      : 'Nothing ran in the window before this one, so there is nothing to compare with.';
-
-    if (!hadPrev || thenRuns === 0) return { runs: null, runsTone: 'flat' as const, time: null, since };
-
-    const change = Math.round(((nowRuns - thenRuns) / thenRuns) * 100);
-    const timeChange = Math.round(nowTime - thenTime);
-    return {
-      runs: `${change > 0 ? '+' : ''}${change}% vs previous`,
-      /* More runs is not automatically better - it can mean more retries - so this stays neutral. The rate
-       * tile is the one that knows which direction is good. */
-      runsTone: 'flat' as const,
-      time: Math.abs(timeChange) < 30 ? null
-        : `${timeChange > 0 ? '+' : '−'}${fmtSeconds(Math.abs(timeChange))} vs previous`,
-      since,
-    };
-  }, [data?.totals?.runs, data?.totals?.agentHours, prev?.runs, prev?.agentHours, prev?.from, prev?.to, hadPrev]);
-
-  const rate = useMemo(() => {
-    const decided = (t?: { ok?: unknown; failed?: unknown }) => {
-      const ok = num(t?.ok) ?? 0;
-      const failed = num(t?.failed) ?? 0;
-      return ok + failed > 0 ? Math.round((ok / (ok + failed)) * 100) : null;
-    };
-    const now = decided(data?.totals);
-    const then = hadPrev ? decided(prev) : null;
-    const stopped = num(data?.totals?.stopped) ?? 0;
-    const running = num(data?.totals?.running) ?? 0;
-    const aside = [
-      stopped ? `${stopped} stopped` : null,
-      running ? `${running} still going` : null,
-    ].filter(Boolean).join(', ');
-
-    return {
-      now,
-      delta: now != null && then != null
-        ? `${now - then > 0 ? '+' : ''}${now - then} points`
-        : null,
-      /* Up is good here, and it is the only tile where that is true without qualification. */
-      tone: (now != null && then != null
-        ? (now > then ? 'up' : now < then ? 'down' : 'flat')
-        : 'flat') as 'up' | 'down' | 'flat',
-      note: now == null
-        ? 'no run has finished or failed yet'
-        : `of ${(num(data?.totals?.ok) ?? 0) + (num(data?.totals?.failed) ?? 0)} decided${aside ? ` · ${aside}` : ''}`,
-    };
-  }, [data?.totals, prev, hadPrev]);
-
-  /* Runs, not reasons. Four reasons over four runs and four reasons over forty are the same list and very
-   * different weeks, so the badge counts what was affected rather than what was grouped. */
-  const affected = useMemo(
-    () => list(data?.failures).reduce((sum, row) => sum + (num(row.times) ?? 0), 0),
-    [data?.failures],
-  );
 
   /* What the endpoint says it counted, which is the only thing worth putting on screen. `scope` above is
    * what was asked for; these two agree except in the moment between switching and the answer arriving,
@@ -1237,12 +938,6 @@ export const InsightsView = () => {
     };
   }, [data?.actions]);
 
-  /* The agent time already spent on goals that ran more than once. Not a saving - see the tile. */
-  const repeatCost = useMemo(
-    () => list(data?.repeated).reduce((sum, row) => sum + (num(row.seconds) ?? 0), 0),
-    [data?.repeated],
-  );
-
   return (
     /* Two columns, because the questions somebody wants to ask are about the numbers next to them. The
      * dashboard scrolls; the assistant does not move. Below 1280px there is not room for both, so the panel
@@ -1269,16 +964,18 @@ export const InsightsView = () => {
               ? `${teamShown.team?.name ?? 'Team'} · ${personName ?? 'everybody'}`
               : 'Work pulse'}
           </Typography>
+          {/* «Надёжность» и «прогоны» ушли из заголовка вместе с секциями про них (шаг 8): страница читает
+            * только записи. Оставить слова значило бы обещать в первой же строке то, чего ниже нет. */}
           <Typography variant="h2" weight="semibold" className="mt-0.5 text-[1.5rem] leading-tight tracking-tight">
-            What happened, and where the leverage is
+            Where your time actually goes
           </Typography>
           <Typography variant="p" className="mt-1 max-w-[76ch] text-ink-inactive text-[0.85rem]">
-            Activity, reliability and repeated work, read from{' '}
+            Attention, what was pressed and what keeps repeating, read from{' '}
             {teamShown
               ? (personName
-                ? `${personName}’s recordings and runs — one member of ${teamShown.team?.name ?? 'the team'}.`
-                : `every member’s recordings and runs — ${people.length} ${people.length === 1 ? 'person' : 'people'}.`)
-              : 'your own recordings and runs.'}{' '}
+                ? `${personName}’s recordings — one member of ${teamShown.team?.name ?? 'the team'}.`
+                : `every member’s recordings — ${people.length} ${people.length === 1 ? 'person' : 'people'}.`)
+              : 'your own recordings.'}{' '}
             {data
               ? `${new Date(data.window.from).toLocaleDateString()} to ${new Date(data.window.to).toLocaleDateString()}.`
               : 'Nothing here leaves your account.'}
@@ -1523,70 +1220,47 @@ export const InsightsView = () => {
                     note="written from a goal, not recorded"
                     title="Flows of kind 'created' — the ones written from a described goal in Create. Recordings are the tile beside this one; nothing is counted in both."
                   />
-                  <Tile
-                    icon={<Timer className="size-3.5" />}
-                    label="agent runs"
-                    value={String(runs)}
-                    delta={pace.runs}
-                    tone={pace.runsTone}
-                    note={`${totals?.ok ?? 0} finished, ${totals?.failed ?? 0} failed`}
-                    title={pace.since}
-                  />
+                  {/* ЧЕТЫРЕ ПЛИТКИ ПРО ПРОГОНЫ УШЛИ ОТСЮДА (шаг 8): «agent runs», «agent time», «success
+                    * rate» и «worth automating», считавшаяся из повторившихся ЦЕЛЕЙ. Все четыре - половина
+                    * `ran`, а эта страница с 2026-09-18 принадлежит второму продукту целиком. На тот же
+                    * вопрос отвечает журнал первого, и отвечает с доказательствами.
+                    *
+                    * Их место заняли измерения ЗАПИСЕЙ - то, ради чего сюда и приходят. */}
                   <Tile
                     icon={<Clock className="size-3.5" />}
-                    label="agent time"
-                    value={fmtSeconds((totals?.agentHours ?? 0) * 3600)}
-                    delta={pace.time}
-                    tone="flat"
-                    note="wall clock, start of a run to its finish"
-                    title={pace.since}
+                    label="time recorded"
+                    value={fmtSeconds(data.attention?.measuredSeconds ?? 0)}
+                    note="inside recordings, not a working day"
+                    title="Every millisecond inside a recording falls into exactly one of doing, waiting or away — this is their sum. The hours between recordings are stored nowhere, so this is not a working day and does not pretend to be."
                   />
-                  {/* The denominator is the honest part, and it is on screen rather than in a comment: a
-                    * stopped run is a decision and a running one has not happened yet, so counting either
-                    * would let somebody move this number by stopping runs. */}
                   <Tile
-                    icon={<ShieldCheck className="size-3.5" />}
-                    label="success rate"
-                    value={rate.now == null ? '—' : `${rate.now}%`}
-                    delta={rate.delta}
-                    tone={rate.tone}
-                    note={rate.note}
-                    title="Finished divided by finished plus failed. Stopped and still-running are left out of both halves."
+                    icon={<Timer className="size-3.5" />}
+                    label="doing"
+                    value={data.attention
+                      ? `${Math.round(data.attention.active.share * 100)}%`
+                      : '—'}
+                    note={data.attention
+                      ? `${fmtSeconds(data.attention.active.seconds)} of ${fmtSeconds(data.attention.measuredSeconds)}`
+                      : 'no recording has been summarised yet'}
+                    title="The share of measured time spent acting rather than waiting or away. The two boundaries that decide it are named in the section below, because a share of 'waiting' means nothing until you know how long a pause has to be."
                   />
-                  {/* Where the reference says "Could save 18m/week". This endpoint has never reported a
-                    * saving, because nothing stored says how long the same task takes by hand - it says so in
-                    * its own gaps list. The measured number is the agent time already spent on the repeats. */}
+                  {/* «WORTH AUTOMATING» ОСТАЛАСЬ, НО СЧИТАЕТСЯ ИЗ ЗАПИСЕЙ, а не из прогонов - и это не
+                    * подмена, а исправление. Прежняя считала цели, которые агент получал дважды; это ответ
+                    * про то, что УЖЕ автоматизировано. Вопрос второго продукта другой: что человек делает
+                    * руками не в первый раз, до того как для этого написан навык. На него отвечает `patterns`
+                    * - последовательности приложений, встреченные больше чем в одной записи, - и ровно это
+                    * обещает текст тура про этот экран. */}
                   <Tile
                     icon={<Sparkles className="size-3.5" />}
                     label="worth automating"
-                    value={String(list(data.repeated).length)}
-                    note={repeatCost
-                      ? `${fmtSeconds(repeatCost)} of agent time on repeats`
-                      : 'no goal ran more than once'}
-                    title="Goals that ran more than once in this window. The time is what those runs took — not a saving, which nothing here can measure."
+                    value={String(data.patterns?.repeatedTotal ?? data.patterns?.repeated.length ?? 0)}
+                    note={data.patterns && data.patterns.total > 0
+                      ? `of ${data.patterns.total} distinct sequence${data.patterns.total === 1 ? '' : 's'}`
+                      : 'no recording has been summarised yet'}
+                    title="Sequences of applications seen in more than one recording — work done by hand more than once, before anybody has written a skill for it. Two recordings with the same sequence are not necessarily the same task, which is why this is a candidate to look at rather than a saving to count."
                   />
                 </div>
 
-                {counts && runs > 0 && (
-                  <div className="mt-4">
-                    <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-state-hover">
-                      {counts.map((row) =>
-                        row.count > 0 ? (
-                          <div key={row.key} className={row.fill} style={{ flexGrow: row.count }} />
-                        ) : null,
-                      )}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                      {counts.map((row) => (
-                        <span key={row.key} className="flex items-center gap-1.5 text-[0.8rem]">
-                          <span className={cn('size-2 rounded-full', row.fill)} />
-                          <strong className={cn('font-semibold tabular-nums', row.text)}>{row.count}</strong>
-                          <span className="text-ink-secondary">{row.label}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </section>
 
               {/* --------------------------------------------------------------- who did what
@@ -1606,7 +1280,7 @@ export const InsightsView = () => {
                   title="Who did what"
                   icon={<Users className="size-4 text-ink-secondary" />}
                   badge={`${people.length} ${people.length === 1 ? 'person' : 'people'}`}
-                  note="Counts for this window only, so a quiet fortnight shows as noughts rather than as an absence. Nothing here opens a recording: a skill becomes visible to the team only when its owner shares that one skill."
+                  note="What each member MADE in this window — the runs their machines did are the other product's question, and this page no longer asks it. Counts for this window only, so a quiet fortnight shows as noughts rather than as an absence. Nothing here opens a recording: a skill becomes visible to the team only when its owner shares that one skill."
                 >
                   {people.length === 0 ? (
                     <Quiet>This team has nobody in it yet.</Quiet>
@@ -1617,17 +1291,11 @@ export const InsightsView = () => {
                           <tr className="bg-table-header-bg text-ink-secondary">
                             <th className="rounded-l-md px-2.5 py-2 text-left font-medium">Person</th>
                             <th className="px-2.5 py-2 text-right font-medium">Recordings</th>
-                            <th className="px-2.5 py-2 text-right font-medium">Skills</th>
-                            <th className="px-2.5 py-2 text-right font-medium">Runs</th>
-                            <th className="px-2.5 py-2 text-left font-medium">Finished</th>
-                            <th className="px-2.5 py-2 text-right font-medium">Agent time</th>
-                            <th className="rounded-r-md px-2.5 py-2 text-right font-medium">Last run</th>
+                            <th className="rounded-r-md px-2.5 py-2 text-right font-medium">Skills</th>
                           </tr>
                         </thead>
                         <tbody>
                           {people.map((row) => {
-                            const settled = row.ok + row.failed;
-                            const rate = settled > 0 ? row.ok / settled : 0;
                             return (
                               <tr key={row.id} className="border-stroke border-b last:border-0">
                                 <td className="px-2.5 py-2">
@@ -1641,31 +1309,8 @@ export const InsightsView = () => {
                                     {row.role}
                                   </span>
                                 </td>
-                                <td data-label="Recordings" className="px-2.5 py-2 text-right text-ink-secondary tabular-nums">{row.recordings}</td>
+                                <td data-label="Recordings" className="px-2.5 py-2 text-right text-ink-primary tabular-nums">{row.recordings}</td>
                                 <td data-label="Skills" className="px-2.5 py-2 text-right text-ink-secondary tabular-nums">{row.createdSkills}</td>
-                                <td data-label="Runs" className="px-2.5 py-2 text-right text-ink-primary tabular-nums">{row.runs}</td>
-                                <td data-label="Finished" className="px-2.5 py-2 md:w-[20%]">
-                                  <div className="flex items-center gap-2 max-md:min-w-0 max-md:flex-1">
-                                    <Meter
-                                      fraction={rate}
-                                      fill={row.failed > 0 && rate < 0.8 ? 'bg-fb-attention' : 'bg-fb-green'}
-                                    />
-                                    <span
-                                      className={cn(
-                                        'shrink-0 text-[0.78rem] tabular-nums',
-                                        row.failed > 0 ? 'text-fb-red-text' : 'text-ink-inactive',
-                                      )}
-                                    >
-                                      {settled > 0 ? `${row.ok}/${settled}` : '—'}
-                                    </span>
-                                  </div>
-                                </td>
-                                <td data-label="Agent time" className="px-2.5 py-2 text-right text-ink-primary tabular-nums">
-                                  {row.agentHours > 0 ? `${row.agentHours.toFixed(row.agentHours >= 10 ? 0 : 1)} h` : '—'}
-                                </td>
-                                <td data-label="Last run" className="px-2.5 py-2 text-right text-ink-secondary">
-                                  {fmtWhen(row.lastRun)}
-                                </td>
                               </tr>
                             );
                           })}
@@ -1676,48 +1321,6 @@ export const InsightsView = () => {
                 </Section>
               )}
 
-              {/* --------------------------------------------------------------- by day */}
-              <Section
-                title="Activity by day"
-                /* Three colours with nothing naming them is a puzzle every reader solves again. The same
-                 * COUNTS the header's bar uses, so the two can never disagree about what failed. */
-                aside={counts ? (
-                  <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                    {counts.filter((row) => row.key !== 'running').map((row) => (
-                      <span key={row.key} className="flex items-center gap-1 text-[0.72rem] text-ink-inactive">
-                        <span className={cn('size-2 rounded-full', row.fill)} />
-                        {row.label}
-                      </span>
-                    ))}
-                  </span>
-                ) : undefined}
-                /* The zone is named because the endpoint cuts its day boundaries in UTC, so a run at one
-                 * in the morning in Kyiv lands on the previous column. Labelling the axis "days" without
-                 * saying whose days is how someone comes to distrust the whole chart over one run. */
-                note={`Column height is how many runs that day; green finished, red failed, grey stopped or still going. The line below is the agent time those runs took.${data.window.timeZone ? ` Days are ${data.window.timeZone} days.` : ''}`}
-              >
-                {byDay.length === 0 ? (
-                  <Quiet>No runs fell inside this window.</Quiet>
-                ) : (
-                  <>
-                    {/* A column narrows the whole page to that day - and to the column own UTC day
-                      * rather than to local midnight, so the window holds exactly the runs the column
-                      * counted. See dayWindow for why that asymmetry is the honest one. */}
-                    <DayBars
-                      days={byDay}
-                      onPick={(day) => {
-                        const only = dayWindow(day);
-                        if (only) setWindow(only);
-                      }}
-                    />
-                    <Sparkline values={byDay.map((day) => day.agentSeconds)} />
-                    <div className="mt-1 flex justify-between text-[0.76rem] text-ink-inactive">
-                      <span>{fmtDay(byDay[0]?.day ?? '')}</span>
-                      <span>{fmtDay(byDay[byDay.length - 1]?.day ?? '')}</span>
-                    </div>
-                  </>
-                )}
-              </Section>
 
               {/* ----------------------------------------- how the time went, and what was done
                 *
@@ -1855,112 +1458,6 @@ export const InsightsView = () => {
                 </div>
               )}
 
-              {/* ------------------------------------------- what wants a decision, next */}
-              <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
-                <Section
-                  title="Worth automating"
-                  icon={<Repeat2 className="size-4 text-brand-primary" />}
-                  /* Measured, and labelled as measured. The macro this follows puts "18m/week" here, which
-                   * would be a saving - and nothing stored says what these tasks cost by hand, which is why
-                   * the gaps list has said so from the beginning. This is what the repeats already took. */
-                  badge={repeatCost ? fmtSeconds(repeatCost) : null}
-                  badgeTitle="Agent time these repeated runs already took. Not a saving — nothing here holds what the same task costs by hand."
-                  note="The same task, done more than once in this window. Each of these is time you would get back by running it instead of doing it."
-                >
-                  {list(data.repeated).length === 0 ? (
-                    <Quiet>Nothing repeated itself here. Come back after a busier week.</Quiet>
-                  ) : (
-                    <ul className="space-y-2.5">
-                      {list(data.repeated).map((row) => (
-                        <li
-                          key={row.signature}
-                          className="rounded-lg border-stroke border bg-surface-chips px-3 py-2.5"
-                        >
-                          <div className="flex items-start gap-2">
-                            <Typography
-                              variant="span"
-                              weight="semibold"
-                              className="min-w-0 flex-1 break-words text-[0.88rem]"
-                            >
-                              {row.label || row.signature}
-                            </Typography>
-                            <span className="shrink-0 rounded-full bg-brand-primary/15 px-2 py-0.5 text-[0.72rem] font-semibold text-brand-primary tabular-nums">
-                              {row.times}×
-                            </span>
-                          </div>
-                          {/* The next step in words, because a count on its own is a fact and not a
-                            * suggestion - and the suggestion differs depending on whether a skill for it
-                            * already exists. */}
-                          <Typography variant="p" className="mt-1 text-ink-secondary text-[0.82rem]">
-                            {row.flowIds.length > 0
-                              ? 'This is a candidate for automation — a skill for it already exists, so run that instead of repeating it.'
-                              : 'This is a candidate for automation — save it once as a skill and every repeat after that is one click.'}
-                          </Typography>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                            <span className="text-[0.76rem] text-ink-inactive">last {fmtWhen(row.lastAt)}</span>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              rightSlot={<ArrowRight className="size-3" />}
-                              onClick={() =>
-                                void navigate({ to: row.flowIds.length > 0 ? '/skills' : '/create' })
-                              }
-                            >
-                              {row.flowIds.length > 0 ? 'Open in Skills' : 'Make it a skill'}
-                            </Button>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <CapNote cap={data.caps?.repeated} what="repeated tasks" />
-                </Section>
-
-                <Section
-                  title="What went wrong"
-                  icon={<TriangleAlert className="size-4 text-fb-red-text" />}
-                  tone={list(data.failures).length > 0 ? 'attention' : 'plain'}
-                  /* Runs affected, not reasons listed. Four reasons over four runs and four reasons over
-                   * forty are the same list and very different weeks. */
-                  badge={affected ? `${affected} affected` : null}
-                  badgeTone="attention"
-                  badgeTitle="How many runs these reasons account for, across every reason listed."
-                  note="Grouped by reason, most frequent first. A reason that keeps coming back is usually one fix, not many."
-                >
-                  {list(data.failures).length === 0 ? (
-                    <Quiet>Nothing failed in this window.</Quiet>
-                  ) : (
-                    <ul className="space-y-2.5">
-                      {list(data.failures).map((row) => (
-                        <li key={row.reason} className="rounded-lg border-stroke border bg-surface-chips px-3 py-2.5">
-                          <div className="flex items-start gap-2">
-                            <Typography
-                              variant="span"
-                              weight="semibold"
-                              className="min-w-0 flex-1 break-words text-[0.88rem] text-fb-red-text"
-                            >
-                              {row.reason}
-                            </Typography>
-                            <span className="shrink-0 rounded-full bg-fb-red/15 px-2 py-0.5 text-[0.72rem] font-semibold text-fb-red-text tabular-nums">
-                              {row.times}×
-                            </span>
-                          </div>
-                          {row.example?.error && (
-                            <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap break-words font-mono text-[0.74rem] text-ink-secondary">
-                              {row.example.error}
-                            </pre>
-                          )}
-                          <div className="mt-1.5 flex flex-wrap gap-x-3 text-[0.76rem] text-ink-inactive">
-                            <span>last {fmtWhen(row.lastAt)}</span>
-                            {row.example?.runId && <span>run {row.example.runId}</span>}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <CapNote cap={data.caps?.failures} what="reasons" />
-                </Section>
-              </div>
 
               {/* --------------------------------------------- one process, done more than once
                 *
@@ -2034,20 +1531,20 @@ export const InsightsView = () => {
                 </Section>
               )}
 
-              {/* Two halves of one question, side by side: where the time went, and what was slow while
-                * it went. One under the other puts a screen and a half between them, and comparing them is
-                * the whole point. Each keeps its own horizontal scroller, so a table in half the width
-                * scrolls itself rather than the page. */}
-              {/* The single column is stated, and that is not decoration: a grid with no `grid-cols` has
-                * one IMPLICIT `auto` track, and `auto` cannot go below its content's min-content width. The
-                * card below holds a 560px table, so the track became 560px and took the page with it.
-                * `minmax(0,1fr)` is what lets that table scroll inside its own card instead. */}
-              <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-2">
+              {/* ОДНА ПОЛОВИНА ВОПРОСА, а не две. Рядом с «куда ушло время» стояли «самые медленные шаги»:
+                * где время шло и что было медленным, пока оно шло. Второе - про прогоны, и ушло вместе с
+                * ними (шаг 8).
+                *
+                * Один столбец остался ЗАЯВЛЕННЫМ, и это не украшение: у сетки без `grid-cols` одна
+                * НЕЯВНАЯ дорожка `auto`, а `auto` не умеет быть уже min-content своего содержимого. Внутри
+                * лежит таблица на 560px, дорожка становилась 560px и утаскивала за собой страницу.
+                * `minmax(0,1fr)` - то, что даёт таблице прокручиваться внутри своей карточки. */}
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
                 {/* ------------------------------------------------------------ where the time went */}
                 <Section
                   title="Where the time went"
                   icon={<AppWindow className="size-4 text-ink-secondary" />}
-                  note="By application or site, across recordings and runs together. The bar is the share of the window's time."
+                  note="By application or site, across your recordings. The bar is the share of the window's time. Time the agent spent in an application is the other product's question and is not added in here."
                 >
                   {list(data.applications).length === 0 && !(data.unattributed && data.unattributed.seconds > 0) ? (
                     <Quiet>Nothing in this window said which application it was in.</Quiet>
@@ -2059,7 +1556,6 @@ export const InsightsView = () => {
                           <tr className="bg-table-header-bg text-ink-secondary">
                             <th className="rounded-l-md px-2.5 py-2 text-left font-medium">Where</th>
                             <th className="px-2.5 py-2 text-right font-medium">Recordings</th>
-                            <th className="px-2.5 py-2 text-right font-medium">Runs</th>
                             <th className="px-2.5 py-2 text-right font-medium">Time</th>
                             <th className="rounded-r-md px-2.5 py-2 text-left font-medium">Share</th>
                           </tr>
@@ -2076,7 +1572,6 @@ export const InsightsView = () => {
                               <td data-label="Recordings" className="px-2.5 py-2 text-right text-ink-secondary tabular-nums">
                                 {row.recordings}
                               </td>
-                              <td data-label="Runs" className="px-2.5 py-2 text-right text-ink-secondary tabular-nums">{row.runs}</td>
                               <td data-label="Time" className="px-2.5 py-2 text-right text-ink-primary tabular-nums">
                                 {fmtSeconds(row.seconds)}
                               </td>
@@ -2127,139 +1622,7 @@ export const InsightsView = () => {
                     </>
                   )}
                 </Section>
-
-                {/* ------------------------------------------------------------- slowest steps */}
-                <Section
-                  title="The slowest steps"
-                  icon={<Clock className="size-4 text-ink-secondary" />}
-                  note="Per tool: the typical call and the slow tail. Only runs that recorded per-step timing can appear here — a desktop run's steps carry no clock, so its tools are absent rather than counted as instant."
-                >
-                  {list(data.slowestSteps).length === 0 ? (
-                    <Quiet>No run in this window recorded per-step timing.</Quiet>
-                  ) : (
-                    (() => {
-                      const worst = Math.max(1, ...list(data.slowestSteps).map((step) => step.p90Ms));
-                      return (
-                        <ul className="space-y-2.5">
-                          {list(data.slowestSteps).map((step) => (
-                            <li key={step.tool}>
-                              <div className="flex items-baseline gap-2">
-                                <span className="min-w-0 flex-1 truncate font-mono text-[0.82rem] text-ink-primary">
-                                  {step.tool}
-                                </span>
-                                <span className="text-[0.78rem] text-ink-secondary tabular-nums">
-                                  {fmtMs(step.medianMs)} typical
-                                </span>
-                                <span className="text-[0.78rem] text-ink-inactive tabular-nums">
-                                  {fmtMs(step.p90Ms)} at worst
-                                </span>
-                                <span className="text-[0.76rem] text-ink-inactive tabular-nums">
-                                  {step.calls} call{step.calls === 1 ? '' : 's'}
-                                </span>
-                              </div>
-                              {/* Two marks on one track: the solid part is the typical call, the faint part
-                                * how much further the slow tail reaches. A tool whose tail dwarfs its median
-                                * is unreliable rather than slow, and that reads off the shape. */}
-                              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-state-hover">
-                                <div
-                                  className="h-full rounded-full bg-fb-attention/35"
-                                  style={{ width: pct(Math.min(1, step.p90Ms / worst)) }}
-                                >
-                                  <div
-                                    className="h-full rounded-full bg-brand-primary"
-                                    style={{
-                                      width: step.p90Ms > 0 ? pct(Math.min(1, step.medianMs / step.p90Ms)) : '0%',
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            </li>
-                          ))}
-                        </ul>
-                      );
-                    })()
-                  )}
-                  <CapNote cap={data.caps?.slowestSteps} what="tools" />
-                </Section>
               </div>
-
-              {/* -------------------------------------------------------------- per skill */}
-              <Section
-                title="How each skill is doing"
-                icon={<Sparkles className="size-4 text-ink-secondary" />}
-                note="Only runs that recorded which flow they ran can appear here. That link was not written for older runs, so this list reaches back less far than the rest of the page."
-              >
-                {list(data.skills).length === 0 ? (
-                  <Quiet>
-                    No run in this window said which skill it was running. Newer runs record it, so this fills
-                    in from here on.
-                  </Quiet>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className={cn('w-full border-collapse text-[0.85rem] md:min-w-[560px]', CARD_ROWS_BELOW_MD)}>
-                      <thead>
-                        <tr className="bg-table-header-bg text-ink-secondary">
-                          <th className="rounded-l-md px-2.5 py-2 text-left font-medium">Skill</th>
-                          {teamShown && !personShown && (
-                            <th className="px-2.5 py-2 text-left font-medium">Whose</th>
-                          )}
-                          <th className="px-2.5 py-2 text-right font-medium">Runs</th>
-                          <th className="px-2.5 py-2 text-left font-medium">Finished</th>
-                          <th className="px-2.5 py-2 text-right font-medium">Typical</th>
-                          <th className="rounded-r-md px-2.5 py-2 text-right font-medium">Last run</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {list(data.skills).map((row) => {
-                          const settled = row.ok + row.failed;
-                          const rate = settled > 0 ? row.ok / settled : 0;
-                          return (
-                            /* Keyed by owner AND id on the team view: two people can each have a skill
-                             * with the same client id, and React would render one of them. */
-                            <tr key={`${row.ownerId ?? ''}:${row.flowId}`} className="border-stroke border-b last:border-0">
-                              <td className="px-2.5 py-2">
-                                <span className="text-ink-primary">{row.name || 'Untitled'}</span>
-                                <span className="ms-2 rounded-full bg-state-hover px-1.5 py-0.5 text-[0.7rem] text-ink-secondary">
-                                  {row.kind}
-                                </span>
-                              </td>
-                              {teamShown && !personShown && (
-                                <td data-label="Whose" className="px-2.5 py-2 text-ink-secondary">
-                                  {whose(row.ownerId, people)}
-                                </td>
-                              )}
-                              <td data-label="Runs" className="px-2.5 py-2 text-right text-ink-secondary tabular-nums">{row.runs}</td>
-                              <td data-label="Finished" className="px-2.5 py-2 md:w-[24%]">
-                                <div className="flex items-center gap-2 max-md:min-w-0 max-md:flex-1">
-                                  <Meter
-                                    fraction={rate}
-                                    fill={row.failed > 0 && rate < 0.8 ? 'bg-fb-attention' : 'bg-fb-green'}
-                                  />
-                                  <span
-                                    className={cn(
-                                      'shrink-0 text-[0.78rem] tabular-nums',
-                                      row.failed > 0 ? 'text-fb-red-text' : 'text-ink-inactive',
-                                    )}
-                                  >
-                                    {settled > 0 ? `${row.ok}/${settled}` : '—'}
-                                  </span>
-                                </div>
-                              </td>
-                              <td data-label="Typical" className="px-2.5 py-2 text-right text-ink-primary tabular-nums">
-                                {fmtSeconds(row.medianSeconds)}
-                              </td>
-                              <td data-label="Last run" className="px-2.5 py-2 text-right text-ink-secondary">
-                                {fmtWhen(row.lastRunAt)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                <CapNote cap={data.caps?.skills} what="skills" />
-              </Section>
 
               {/* The gaps used to be printed here, at the bottom of every dashboard, unasked for - and they
                 * read as a disclaimer rather than as what they are, which is answers. They are still in the
