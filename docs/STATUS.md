@@ -1,17 +1,23 @@
-# Where MouseFlow stands — 2026-09-17
+# Where MouseFlow stands — 2026-09-22
 
 A handover, written to be read on a machine that has never seen this project. It says what is true now,
 what to do next, and what only the owner can supply.
 
-**Live right now:** app `https://mouseflowapp.vercel.app` (commit `a7210f1`), docs site
+**Live right now:** app `https://mouseflowapp.vercel.app` (commit `505d6e7`), docs site
 `https://mouse-flow.vercel.app`, agents at **0.29.0**. Whole suite green (`npm test`, zero FAIL),
 `tsc --noEmit` clean, `web/` builds, `npm run build:extension` builds, and `npm run build:halves`
 builds each product on its own (see step 4 below).
 
+**The agent version is deliberately behind the macOS work.** The instant panel and its two chords shipped on
+2026-09-21 without bumping 0.29.0: parity is pinned across both agents and `AGENT_WANTS`, so a bump would
+tell every Windows user to reinstall for a window they do not have. It bumps when the Windows half lands.
+
 **Where the work is now.** The QA roadmap is closed (§3). The **memory of applications** is built and live
 behind a flag that is now on (§2a). The current work is the **split into two products**, and it has its own
-document — read it before doing anything to the product's shape. **Steps 0, 1–6 and 9–11 are closed as of
-2026-09-18; what is left of the split is 7 and 8, and both want eyes on the result.**
+document — read it before doing anything to the product's shape. **Steps 0–6 and 9–11 are closed, and so
+are 13 (transcription) and 14a (Telegram as a front door), both live since 2026-09-21. What is left of the
+split is 7 and 8, and both want eyes on the result.** The open list with checkboxes is
+[`ROADMAP.md`](ROADMAP.md); this file stopped keeping a second copy of it on 2026-09-22.
 
 **The five planning documents, and which to read when:**
 
@@ -218,57 +224,28 @@ Two small things remain *of that plan*, and neither blocks anything:
 
 - **Item 6, lever 4** — `claude-haiku-4-5-20251001` for the wave hand-off and the plan preview. Small, and
   last on purpose: a cheaper model must not be anywhere near a decision that aims a click.
-- **The October measurement.** Item 6's done-condition is the median `model` ms under 4,000, and it cannot
-  be read yet — the thirty-day window still holds mostly runs decided before prompt caching and before
-  `click_named`. Re-run the query in [`QA-ROADMAP.md`](QA-ROADMAP.md) §6 in October, and read **two**
-  numbers: the median (where caching shows) and **steps per successful run** (where `click_named` shows).
+- **The October measurement — half of it has arrived, and it is small.** Item 6's done-condition is the
+  median `model` ms under 4,000, and on 2026-09-21 it read **2 959 ms** (range 1 848–5 297) against a
+  measured 5 035 before. **Twenty timed steps across two runs**, against 807 across 64 in the baseline, so
+  read it as a direction and not as a replacement — until 2026-09-21 there was no "after" at all, because
+  every stored run predated both prompt caching and `click_named`. The other number, **steps per successful
+  run**, still needs a week of ordinary use: 15 and 7 here against a median of 13 before, and two runs
+  cannot move a median. Query in [`QA-ROADMAP.md`](QA-ROADMAP.md) §6.
 
-### The real queue, in order — all of it now lives in [`SPLIT-PLAN.md`](SPLIT-PLAN.md) §9
+### What is left — one page, and it is not this one
 
-**Pick it up at step 7 or 8 — both need somebody looking at the screen.** §9 was rewritten on 2026-09-18
-and is now three tables: what is done, what is next in order with a reason on every row, and proposals
-nobody has asked for yet. What follows is only the shape, so a fresh session knows where it is standing.
+[`ROADMAP.md`](ROADMAP.md) holds the status: every open item with a checkbox and a link to the document that
+says why it exists. **This file deliberately no longer carries a copy of that list.**
 
-1. **Steps 1–4 are closed** (2026-09-17 and 18): the `verification` bridge, the `api/mcp.js` split, the
-   `insights` halves, and the product axis — plus, on the 18th, two separate builds (`npm run dev:halves`),
-   the P1 trim, Logs, and Create's new shape with text files attachable to a goal.
-2. **Done overnight 2026-09-18, unsupervised:** step 5 (a door to Connections), step 6 (past tasks as a
-   list on the left, reopening one brings its files back), step 9 (`/docs` and `/chat` are screens again),
-   step 10 (each ceiling names its product, and a dead one came out), step 11 (MCP profiles), and step 0
-   (which turned out to be already done — the row was stale).
-3. **Left for a session with eyes on the screen, deliberately:**
-   - **Step 7, cutting Skills** — 1 879 lines, and the split runs through the middle of it.
-   - **Step 8, the dashboard's half** — tried, reverted, and the finding written down: `?half=did`
-     typechecks and produces a page saying *0 runs, —% success, no failures*, because every list is read
-     through `list()`. The run blocks have to come off the page, and they are tiles in the same grid as the
-     recording ones.
-4. **Then 12–15:** `--record-only`, the transcription route, one messenger channel, the docs split.
-   12 needs the C# compiled on a Windows machine; 13 and 14 need credentials and post to the outside world.
-5. **Proposals at the foot of §9:** conversation threads, the PWA, packaging the Windows agent on .NET 10,
-   attachments with a field of their own, replacing the vendored design system.
+It did until 2026-09-22, and the copy had already drifted: it said steps 13 and 14 were "planned and neither
+started" four days after both shipped. That is the failure ROADMAP.md was written to end, and its own
+preamble names the two earlier times this repository paid for it. One list, one place; the plans hold the
+reasoning, `ROADMAP.md` holds the state.
 
-**Two decisions of 2026-09-18 made the plan smaller, not larger.** The Dashboard, the Gallery and Teams
-moved to the second product **whole**, so §5.2 stopped being a page split and became one query parameter —
-which step 3 is what made possible. And the first product runs on the local agent alone, so there is no
-executor choice left to design around.
-
-
-**Asked and answered on 2026-09-17, written into the plan rather than started:** whether moving the Windows
-agent to **.NET 10** is worth it. Yes, but it is not a separate task — it is §6.3's packaging job with a
-target named, and the timing is unchanged: after the split. What it buys is concrete (`Add-Type` compiles
-5 700 lines of C# at every start on a .NET Framework compiler stuck near C# 5; `dotnet build` makes the
-Windows half buildable in CI rather than only on a Windows desk; a signed `.exe` removes execution policy
-and AV heuristics). A better language version is not a reason to pay for the certificate sooner.
-
-**Two things the owner asked for on 2026-09-17, both planned and neither started:** dictation through
-OpenAI rather than the browser's own recogniser ([`SPLIT-PLAN.md`](SPLIT-PLAN.md) §7 — and note what it
-reverses), and speaking into a phone while the computer works (§7.1 — this needs no new architecture; a
-phone is one more thing that inserts a queue row).
-
-**Two things now parked, not forgotten:** `mouseflow.skill/2` **tier 2** (the recording as a pointer rather
-than a copy — [`MEMORY-PLAN.md`](MEMORY-PLAN.md) §3 holds the hazard: `mouseflow_run` answers `body: null,
-goal: false` the moment a `/2` skill stops carrying events, and must refuse **with words** instead), and
-**the site pass** ([`SITE-DEBT.md`](SITE-DEBT.md)), which the owner deferred until the split has landed.
+What has not moved since this file's §2a: **steps 7 and 8 of the split** are still the next two, and both
+want somebody looking at the screen rather than at a typecheck — 7 because the cut runs through the middle
+of a 1 879-line view, 8 because `?half=did` compiles cleanly and renders *0 runs, —% success, no failures*,
+which is absence shown as a negative fact.
 
 ### The extension is being narrowed, not grown
 
