@@ -604,6 +604,22 @@ P2's pitch is "it only watches". The code can make that true; **macOS cannot**, 
 both agents. One install, one binary, two modes. (Both agents: the Windows C# half must be compiled for real
 per MEMORY-PLAN §0; `swiftc` does not exist on Windows, so the Swift edit gets read twice.)
 
+**Done 2026-09-23, and two of the sentences above turned out to be wrong.**
+
+- It is **not** hung on `Input.refusal()`. That gate lets `activate` through on purpose — raising a window
+  needs no permission — and a record-only agent must refuse it, because raising somebody's window is how
+  the *next* action lands in it. So the mode is its own decision, asked **before** that gate, and it covers
+  `open` and `clipwrite` too. The gate could not have been reused without either widening it (and then
+  refusing `activate` for want of a permission it does not need) or leaving three holes.
+- It is **not** only the two doors of injection. The courier was a third: with the flag on, the agent still
+  reported `taking: true` and was about to claim queue jobs it would refuse at the first step. Found by
+  running the binary, not by reading it. It now claims none.
+- The list in the code is of what **reads** — `clipread capture read find refresh waitwindow` — not of what
+  acts, so tomorrow's forgotten action is refused rather than allowed.
+- The Windows half was **not** compiled: this machine has no `pwsh` and no `dotnet`, and `check-csharp.mjs`
+  says plainly that is not going to change. The proxy passed; both halves' lists, refusals and courier
+  guards are pinned against each other and against `17-privacy`. Its first real start is still owed.
+
 ### 6.2 The extension
 
 `extension/popup.js` already has two named views — `'record'` and `'create'` — which are exactly the two
@@ -1165,7 +1181,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 | ~~9~~ | **§5.3** restore `/docs` and `/chat` — **done 2026-09-18** | A document is P2's output and was reachable only through the Gallery's second shelf | Both components were already written for it (`useParams({strict:false})`, `embedded=false`). `/docs` is a route **and** a menu row; `/chat` is a route and **not** a row — see §5.3 | `web/check-web.mjs`, order pins |
 | ~~10~~ | **§8** partition `LIMITS` — **done 2026-09-18, and it was already true** | The premise was wrong: each route has its own ceiling, so no product could exhaust the other's before either. What was missing was the answer to *whose spend is this* | Each ceiling names its product. And a dead one was found: `plan` was spent by nobody — planning goes through `/api/claude` | `api/_test-quota.mjs`, 5 checks |
 | ~~11~~ | MCP profiles — **done 2026-09-18** | A model chooses from what it was shown, so offering a way to ACT where only reading was asked makes acting a possible outcome | `?profile=do\|make` in the URL (that is how a client is configured); unrecognised = the whole set. Asked again on `tools/call`, and the `initialize` instructions change with the set | `mcp/test-mcp.mjs`, 14 checks |
-| 12 | **§6.1** `--record-only` + `canAct:false`, both agents | P2's pitch is "it only watches", and today that is a claim rather than a flag | One flag hung on `Input.refusal()`; the C# compiled for real | A record-only agent refuses every injection action, and says so in words |
+| ~~12~~ | **§6.1** `--record-only` + `canAct:false` — **done 2026-09-23**. Its own decision rather than a reuse of `Input.refusal()`, because that gate lets `activate` through on purpose; a third door (the courier) was found by running the binary | | | Met: every acting action and `/replay` refused in words, six reading ones still answered, the queue no longer claimed |
 | 13 | **§7** transcription route (server-held key, capped, rate-limited) | Dictation quality was the owner's ask, and it reverses a promise the code makes — so the route and the sentence ship together | `api/claude.js` is the shape to copy; a new `LIMITS` key | A goal can be dictated, and the UI says where the audio goes **before** the microphone is armed |
 | 14 | **§7.2** one messenger channel (Telegram), with the pairing rule | Cheaper than the PWA and brings push for free; the queue already does the hard half | One ingress that turns a message into a `run_queue` row; unknown senders paired, not served | A goal sent from a phone runs on the desk, and an unapproved sender cannot queue anything |
 | 15 | **§12** docs set split into two indexes | Each product's documentation should read as one product's | Two indexes over the existing pages | `agent/check-promises.mjs` still green |

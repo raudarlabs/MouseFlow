@@ -149,7 +149,17 @@ param(
     # доступен ЛЮБОЙ сессии на этой машине - другому пользователю по RDP, через смену пользователя, - и
     # такой сессии SendInput в чужой рабочий стол недоступен, а HTTP-запрос доступен. Отсюда и флаг:
     # включается на QA-машине, где это единственная дверь.
-    [switch]$RequireKey
+    [switch]$RequireKey,
+    # ЗАПИСЫВАТЬ, НО НЕ ТРОГАТЬ - режим, а не вторая сборка (SPLIT-PLAN §6.1, шаг 12).
+    #
+    # Второй продукт продаёт фразу «оно только смотрит». До этого флага она была обещанием в тексте: тот
+    # же агент умеет и записывать, и нажимать, а разницу человек мог только пообещать. Флаг превращает
+    # обещание в отказ, который видно в /health и который выполняется в тесте.
+    #
+    # Оговорка та же, что у macOS-половины, и здесь она даже прямее: Windows не спрашивает разрешения на
+    # SendInput вовсе. Значит гарантия имеет форму КОДА - этого флага и списка ниже, - а не операционной
+    # системы, и говорить о ней надо именно так.
+    [switch]$RecordOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -2138,6 +2148,12 @@ namespace MouseFlow
         {
             lock (Gate) { if (_playing) return "already playing"; }
 
+            /* The second door into injection, and the only one that does not pass through DoAction. A
+               replay has no action name of its own, so it asks under its own - "replay" is not in
+               ReadsOnly, which is exactly what is wanted. */
+            string watching = RecordOnlyRefusal("replay");
+            if (watching != null) return watching;
+
             Flow flow = ParseFlow(body);
             if (flow.Steps.Count == 0) return "no steps in body";
 
@@ -2684,6 +2700,13 @@ namespace MouseFlow
             string action = Get(a, "action", "");
             ResetInjection();
             ResetOutput();
+
+            /* THE MODE IS ASKED FIRST, and not for tidiness. It is wider than any other guard here: it
+               refuses `activate`, `open` and `clipwrite` too - none of which injects input, all of which
+               change the machine - and it refuses an action nobody has heard of, which is the direction
+               an unknown name should fail in. */
+            string watching = RecordOnlyRefusal(action);
+            if (watching != null) return watching;
 
             string problem = Perform(action, a);
             if (problem != null) return problem;
@@ -5325,6 +5348,34 @@ namespace MouseFlow
         public static string LoopbackKey = "";
         public static bool KeyRequired = false;
 
+        /* ЗАПИСЫВАТЬ, НО НЕ ТРОГАТЬ - см. -RecordOnly в параметрах скрипта. Ставится один раз при старте,
+           до сокета, и запросом не меняется намеренно: режим, который можно выключить запросом, - это не
+           режим, а настройка, и её пришлось бы кому-то охранять. */
+        public static bool RecordOnly = false;
+
+        /* ЧТО СЧИТАЕТСЯ «ТОЛЬКО ПОСМОТРЕТЬ» - список ЧИТАЮЩИХ действий, а не действующих, и это выбор в
+           сторону отказа: действие, добавленное завтра и забытое здесь, в этом режиме будет ОТВЕРГНУТО, а
+           не пропущено. Обратный список ошибался бы в другую сторону и молча разрешал новое, а цена
+           ошибки тут несимметрична: лишний отказ видно и его чинят, лишнее нажатие происходит на чужой
+           машине. Тот же список, теми же шестью именами, что READS_ONLY в macOS-половине - и это
+           закреплено исполнением, потому что два списка, которые «совпадают», расходятся первыми. */
+        static readonly string[] ReadsOnly = new string[] {
+            "clipread", "capture", "read", "find", "refresh", "waitwindow",
+        };
+
+        /** Отказ режима «только запись» - или null, если режим выключен либо действие ничего не меняет. */
+        public static string RecordOnlyRefusal(string action)
+        {
+            if (!RecordOnly) return null;
+            for (int i = 0; i < ReadsOnly.Length; i++) if (ReadsOnly[i] == action) return null;
+            return "this agent was started with -RecordOnly, so it watches and reads but never clicks, "
+                + "types, moves or opens anything - and "
+                + (string.IsNullOrEmpty(action) ? "an action with no name" : action)
+                + " changes the machine. That is this build's own rule, not something Windows enforces: "
+                + "nothing here asks the operating system for permission to send input. Start it without "
+                + "-RecordOnly to allow acting.";
+        }
+
         /* Base64url: ключ переносят копированием - из трея в поле на странице, иногда через мессенджер, -
          * и `+`, `/` и `=` в таком пути ломаются молча. 32 байта, потому что это ключ, а не пароль. */
         public static void MakeKey()
@@ -5590,6 +5641,13 @@ namespace MouseFlow
                      * отличил бы агента, который ключа не понимает, от того, кто его не требует, - а
                      * решения это разные: первому не надо посылать заголовок вовсе, второму надо, если он
                      * у нас есть. То же разделение, что у linked/taking. */
+                    /* МОЖЕТ ЛИ ОН ДЕЙСТВОВАТЬ ПРЯМО СЕЙЧАС - и отдельно, ПОЧЕМУ НЕТ. Два факта, а
+                       не один, ровно как linked/taking и canAuth/keyRequired ниже. На этой платформе
+                       разрешения не спрашиваются, поэтому canAct здесь следует одному режиму; на macOS
+                       он следует ещё и Accessibility, и приложение обязано читать оба поля, чтобы
+                       не предложить включить переключатель тому, у кого дело не в нём. */
+                    + ",\"canAct\":" + (RecordOnly ? "false" : "true")
+                    + ",\"recordOnly\":" + (RecordOnly ? "true" : "false")
                     + ",\"canAuth\":true"
                     + ",\"keyRequired\":" + (KeyRequired ? "true" : "false")
                     /* Whether typing is recorded AS AN EVENT - that a key was pressed and when, never
@@ -6343,6 +6401,12 @@ namespace MouseFlow
         {
             while (true)
             {
+                /* RECORD-ONLY TAKES NO WORK AT ALL - rather than taking it and failing it.
+                   Everything that arrives in the queue is a goal, a replay or a window to raise, and this
+                   agent refuses all three at the first step. A claimed job would cost the person a run and
+                   an explanation, and the queue would fill with failures instead of waiting. Found by
+                   running the macOS half for real: with the flag on it still reported taking:true. */
+                if (Agent.RecordOnly) { Thread.Sleep(30000); continue; }
                 if (!Account.Taking) { Thread.Sleep(5000); continue; }
 
                 string token = Account.Token;
@@ -7412,6 +7476,9 @@ namespace MouseFlow
 # не сторожит, и человек, решивший включить флаг, уже знает, где ключ.
 [MouseFlow.Agent]::MakeKey()
 [MouseFlow.Agent]::KeyRequired = [bool]$RequireKey
+# Режим - до сокета по той же причине, что и ключ: агент, успевший принять один запрос без него, уже
+# мог нажать.
+[MouseFlow.Agent]::RecordOnly = [bool]$RecordOnly
 # Empty when the script was piped in rather than run from a file. Autostart needs a real path.
 if ($PSCommandPath) { [MouseFlow.Agent]::ScriptPath = $PSCommandPath }
 [MouseFlow.Agent]::StartHookPump()
@@ -7450,6 +7517,14 @@ if ($RequireKey) {
     Write-Host "  pairing key $([MouseFlow.Agent]::LoopbackKey)"
     Write-Host "              every request except /health needs it, as X-MouseFlow-Key."
     Write-Host "              Paste it on the app's Connections screen for this machine."
+    Write-Host ""
+}
+# Сказано вслух при старте: больше режим ниоткуда не виден, пока кто-нибудь не попробует нажать. Оговорка
+# в тех же словах, что в отказе - человек, читающий это, решает, чему доверять.
+if ($RecordOnly) {
+    Write-Host ""
+    Write-Host "  record-only this agent will watch and read, and refuse anything that changes the machine."
+    Write-Host "              That is this build's rule, not Windows's: nothing here asks permission to act."
     Write-Host ""
 }
 if ($AllowOrigin) {

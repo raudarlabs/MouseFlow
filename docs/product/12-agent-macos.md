@@ -29,8 +29,14 @@ reporting "started".
 | `--uninstall` | Stop it, remove the login item and the installed files |
 | `--help`, `-h` | The above |
 
-The agent binary itself takes `--port`, `--allow-origin`, `--move-throttle-ms`, `--move-min-px`, `--help`,
-and `--probe` (see the permission watcher below).
+The agent binary itself takes `--port`, `--allow-origin`, `--move-throttle-ms`, `--move-min-px`,
+`--require-key`, `--record-only`, `--help`, and `--probe` (see the permission watcher below).
+
+`--record-only` is also an installer flag, and it has to be: the agent is a **login item**, so launchd
+starts it with whatever stands in the plist. A mode the installer parsed and did not write there would
+last until the first reboot and then quietly come back able to act. See
+[17 — Privacy and security](17-privacy-security.md), "Record-only" — and note that macOS does **not**
+enforce it: the same Accessibility grant that installs the listen-only tap also authorises `CGEventPost`.
 
 ### `--doctor`
 

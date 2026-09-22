@@ -23,7 +23,7 @@ slow answer is worse than a refusal**.
 
 | Method | Path | Deadline | Returns |
 |---|---|---|---|
-| GET | `/health` | 4 s | `{ ok, version, platform, screen:{x,y,w,h}, cursor, hook, recording, playing, autostart, canAutostart, originPinned, canSee, canWindows, canName, canKeys, canDrain, permissions }` |
+| GET | `/health` | 4 s | `{ ok, version, platform, screen:{x,y,w,h}, cursor, hook, recording, playing, autostart, canAutostart, originPinned, canSee, canWindows, canName, canKeys, canAct, recordOnly, canDrain, permissions }` |
 | GET | `/shot` | 12 s | `{ ok, png, format, bytes, w, h, scale, originX, originY }` |
 | GET | `/shot?w=640` | 12 s | the same, smaller — asked for after a 413 upstream |
 | GET | `/pulse` | 5 s | `{ ok, grid }` — 64×36 greyscale samples as a short string, ~3 KB |
@@ -59,6 +59,8 @@ of coordinates against a list of named actions. So each capability is **stated**
 | `canAuth` | This agent understands a pairing key at all (0.29.0) |
 | `keyRequired` | …and is demanding one **right now**. Two flags, because "cannot" and "is not asking" need different behaviour from a client |
 | `canKeys` | Typing is recorded as an event (that a key was pressed, and when) |
+| `canAct` | It will click, type and move **right now**. False in record-only mode, and on macOS also false without Accessibility |
+| `recordOnly` | …and this is the reason: the agent was started with `-RecordOnly` / `--record-only`. Two flags, because a missing permission needs a switch shown and a chosen mode needs nothing offered |
 | `canDrain` | A recording can outlast one response (`/record/drain`) — i.e. long sessions are possible |
 | `platform` | `windows` or `macos`. Used for **exactly one thing**: which install command the Connections screen shows. Never to decide what an agent can do — that is what the `can*` flags are for. |
 | `permissions` | `{ accessibility, screenRecording }`, macOS only. On Windows both are unconditionally true and there is nothing to report. |
@@ -67,6 +69,12 @@ of coordinates against a list of named actions. So each capability is **stated**
 the model that tool **only** where the flag is present: a tool the agent cannot perform costs exactly what
 the action was added to save — the model calls it, the agent answers "unknown action", and a five-second
 turn is gone. On macOS it follows Accessibility, because without the tree there is no name to resolve.
+
+`canAct` is the flag a client must not read alone. An agent with no Accessibility grant and an agent
+started with `--record-only` both answer `canAct: false`, and the two want opposite things said: the first
+needs the switch to turn on, the second needs nothing offered at all. `recordOnly` is what tells them
+apart. Neither operating system enforces the mode — see
+[17 — Privacy and security](17-privacy-security.md), "Record-only".
 
 **A missing flag is an answer**: the agent predates it. `canKeys` is the one that can be `false` rather than
 absent — the keyboard hook may fail to install, and the agent runs without it rather than refusing to start.

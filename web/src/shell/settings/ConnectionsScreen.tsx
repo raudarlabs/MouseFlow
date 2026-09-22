@@ -179,6 +179,23 @@ export const ConnectionsScreen = ({ say, onClose }: { say: Say; onClose: () => v
         </div>
       )}
 
+      {/* «ТОЛЬКО ЗАПИСЬ» - НА ОБЕИХ ПЛАТФОРМАХ, и отдельно от разрешений macOS. Флаг ставится в командной
+        * строке, а читает эту страницу обычно не тот, кто его ставил, - и без этой строки машина выглядит
+        * исправной ровно до первого прогона, который откажется на первом же шаге. Оговорка здесь та же,
+        * что в отказе агента: гарантию даёт эта сборка, а не система. */}
+      {health?.recordOnly === true && (
+        <div className="mt-3 rounded-lg border-fb-attention/40 border bg-fb-attention/[0.08] p-3">
+          <Typography variant="p" className="max-w-[60ch] text-ink-inactive text-[0.82rem]">
+            <strong className="text-ink-primary">This agent only watches.</strong> It was started with{' '}
+            <code>{mac ? '--record-only' : '-RecordOnly'}</code>, so it records, reads and takes screenshots,
+            and refuses anything that would click, type, move or open. It also takes <strong>no work</strong>{' '}
+            from your account while it is in this mode, so a task queued for this machine waits rather than
+            failing. Start it without that switch to let it act. The guarantee is this build’s own rule, not
+            the operating system’s.
+          </Typography>
+        </div>
+      )}
+
       {mac && !restart && health && (
         <div className="mt-3">
           <Typography variant="p" className="mb-1.5 max-w-[58ch] text-ink-inactive text-[0.82rem]">

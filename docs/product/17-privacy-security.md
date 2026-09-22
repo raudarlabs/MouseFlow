@@ -240,6 +240,55 @@ about one's own history, and masking would make it unanswerable.
 - **Antivirus and EDR are untested.** A process that installs a global mouse hook and calls `SendInput` looks
   exactly like a RAT. Test that before a corporate machine.
 
+## Record-only: an agent that is not allowed to act
+
+The second product's pitch is *it only watches*. That is now a flag rather than a promise: start the
+agent with `-RecordOnly` (Windows) or `--record-only` (macOS) and it records, reads and screenshots
+exactly as before, and refuses everything that changes the machine — with words saying why, not a silent
+no-op.
+
+**No version was bumped for it**, deliberately. An agent that understands the mode reports `recordOnly`
+in `/health`; one too old to understand it omits the field, and absent is the answer — an agent that
+cannot be told to watch only is an agent that can act. Nothing in the app has to know a number, and
+raising `AGENT_WANTS` would have told every existing user to reinstall for a switch they have not asked
+for.
+
+One binary, two modes, deliberately. A second build would mean a second Accessibility grant, a second
+autostart entry, a second signature and two versions that drift apart in the first month.
+
+**These six actions still work, and they are the whole list:**
+
+```
+clipread capture read find refresh waitwindow
+```
+
+Everything else is refused: `click`, `move`, `scroll`, `drag`, `type`, `key`, `clickname`, `scrollto`,
+`activate`, `open`, `clipwrite`, and `/replay` as a whole. Three of those refusals are worth naming
+because they inject nothing: `activate` raises somebody else's window to the front, which is how the
+*next* action lands in it; `open` starts a program; `clipwrite` replaces what is on the clipboard. Each
+changes the machine, so each is refused.
+
+The list in the code is the list of things that **read**, not the list of things that act — so an action
+added later and forgotten here is refused rather than allowed. The direction matters: a refusal too many
+is visible and gets fixed, an action too many happens on somebody else's computer.
+
+**It also takes no work from the account** while the mode is on. Everything that arrives in the queue is a
+goal, a replay or a window to raise, and this agent refuses all three at the first step — so it does not
+claim them at all. A task queued for that machine waits instead of filling the queue with failures. The
+account switch itself is untouched, and `/health` still reports `taking` as the person left it: that field
+is about the switch, not about this mode.
+
+`/health` answers `canAct` and `recordOnly` as two separate facts. They are separate because an agent
+without macOS Accessibility also cannot act, and that person needs to be shown a switch to turn on, while
+this one needs to be offered nothing.
+
+**Neither operating system enforces this, and the product must never say it does.** On macOS the same
+Accessibility permission that installs the listen-only event tap and reads the accessibility tree also
+authorises `CGEventPost`. On Windows nothing is asked at all — `SendInput` needs no permission. So the
+guarantee is **code-shaped**: this flag, that list, and the tests that execute both. Screen Recording *is*
+separable on macOS, and a documentation-only install can decline it.
+
+
 ## What the model may and may not do
 
 The system prompts are the product's position, not decoration. In both executors:

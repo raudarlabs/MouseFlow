@@ -126,6 +126,92 @@ check('на macOS - той же развилкой',
 check('у символьной клавиши читается только флаг инъекции',
   /`?vkCode`? and `?scanCode`? are NOT read/.test(ps) || /vkCode. and .scanCode. are NOT read/.test(ps));
 
+/* --------------------------------------------- «оно только смотрит»: три списка, и все три обязаны совпасть
+ *
+ * ЭТО ВТОРОЕ ОБЕЩАНИЕ, КОТОРОЕ ПРОДАЁТСЯ СЛОВАМИ. Первое - про клавиши - разошлось с кодом в две стороны
+ * сразу и стоило этому файлу существования. Второе - «агент только записывает» - устроено точно так же:
+ * фраза на странице продукта, список в двух агентах и ни одного места, где их сравнивают. Разница в том,
+ * что здесь список говорит НЕ о том, что делается, а о том, что РАЗРЕШЕНО, - и потому лишнее имя в нём
+ * дороже, чем пропущенное: имя, дописанное в READS_ONLY по ошибке, открывает действие, а не закрывает.
+ *
+ * Поэтому сверяются все три: macOS-агент, Windows-агент и блок в 17-privacy, - и в обе стороны. */
+
+group('«только запись»: оба агента и дока называют один список читающих действий');
+
+const swiftReads = (() => {
+  const at = swift.indexOf('let READS_ONLY');
+  if (at < 0) return new Set();
+  const open = swift.indexOf('= [', at);
+  const end = open < 0 ? -1 : swift.indexOf(']', open + 3);
+  return end < 0 ? new Set() : new Set([...swift.slice(open, end).matchAll(/"([a-z]+)"/g)].map((m) => m[1]));
+})();
+
+const psReads = (() => {
+  const at = ps.indexOf('static readonly string[] ReadsOnly');
+  if (at < 0) return new Set();
+  const end = ps.indexOf('};', at);
+  return end < 0 ? new Set() : new Set([...ps.slice(at, end).matchAll(/"([a-z]+)"/g)].map((m) => m[1]));
+})();
+
+const docReads = (() => {
+  const at = privacy.indexOf('## Record-only');
+  if (at < 0) return new Set();
+  const part = privacy.slice(at, privacy.indexOf('\n## ', at + 5));
+  const fence = part.match(/```\n([^`]*)\n```/);
+  return new Set(fence ? fence[1].trim().split(/\s+/) : []);
+})();
+
+check('список читающих действий разобран из macOS-агента', swiftReads.size === 6,
+  [...swiftReads].join(', '));
+check('и из Windows-агента', psReads.size === 6, [...psReads].join(', '));
+check('и из 17-privacy', docReads.size === 6, [...docReads].join(', '));
+check('оба агента разрешают ровно одно и то же', same(swiftReads, psReads),
+  `только macOS: ${missing(swiftReads, psReads).join(', ') || '-'}; только Windows: ${missing(psReads, swiftReads).join(', ') || '-'}`);
+check('и дока обещает ровно то, что разрешает код', same(docReads, psReads),
+  `только в доке: ${missing(docReads, psReads).join(', ') || '-'}; только в коде: ${missing(psReads, docReads).join(', ') || '-'}`);
+
+/* ЧЕГО В СПИСКЕ БЫТЬ НЕ ДОЛЖНО - названо поимённо, а не «ничего лишнего»: три этих действия ничего не
+ * нажимают, и именно поэтому кто-нибудь однажды сочтёт их безобидными. Поднять чужое окно - это то, как
+ * СЛЕДУЮЩЕЕ действие попадает в него; запустить программу и подменить буфер обмена - изменить машину. */
+for (const act of ['activate', 'open', 'clipwrite', 'click', 'type', 'key', 'drag', 'clickname']) {
+  check(`${act} не считается чтением ни в одном из агентов`,
+    !swiftReads.has(act) && !psReads.has(act));
+}
+
+/* ОГОВОРКА - ЧАСТЬ ОБЕЩАНИЯ. Гарантия здесь кодовая, а не системная, и страница, забывшая это сказать,
+ * продаёт защиту операционной системы, которой нет: на macOS то же разрешение Accessibility разрешает и
+ * CGEventPost, на Windows SendInput не спрашивает вовсе. */
+{
+  const at = privacy.indexOf('## Record-only');
+  const part = at < 0 ? '' : privacy.slice(at, privacy.indexOf('\n## ', at + 5));
+  check('дока говорит, что систему это не обеспечивает', /Neither operating system enforces this/.test(part));
+  check('и называет обе причины - CGEventPost и SendInput',
+    /CGEventPost/.test(part) && /SendInput/.test(part));
+  /* И в отказе, который читает человек, - теми же словами. Оговорка, живущая только в доке, до того, кто
+   * упёрся в отказ, не доезжает. */
+  check('macOS-агент говорит это же в тексте отказа',
+    /not something macOS enforces/.test(swift));
+  check('и Windows-агент - в своём',
+    /not something Windows enforces/.test(ps));
+}
+
+/* НЕ БЕРЁТ РАБОТУ ВОВСЕ - а не берёт и проваливает. Найдено живым запуском 2026-09-23: агент с флагом
+ * рапортовал taking:true и собирался опрашивать очередь. Всё, что оттуда приезжает, требует действия, так
+ * что взятая задача стоила бы человеку прогона, а очередь копила бы провалы вместо ожидания. Закреплено на
+ * ОБОИХ, потому что дыра была одинаковой формы в обоих курьерах. */
+{
+  const swCourier = swift.slice(swift.indexOf('private static func loop() {'),
+    swift.indexOf('private static func loop() {') + 1200);
+  const psCourier = ps.slice(ps.indexOf('static void Loop()'), ps.indexOf('static void Loop()') + 1600);
+  check('macOS-курьер не опрашивает очередь в режиме записи',
+    /guard !recordOnly else \{ sleep\(\d+\); continue \}/.test(swCourier), swCourier.slice(0, 80));
+  check('и Windows-курьер тоже',
+    /if \(Agent\.RecordOnly\) \{ Thread\.Sleep\(\d+\); continue; \}/.test(psCourier));
+  /* И СКАЗАНО ПРИ СТАРТЕ: строка «берёт работу» была бы правдой про переключатель и ложью про машину. */
+  check('и баннер macOS не обещает, что работа берётся',
+    /NOT taking work from it - this agent only watches/.test(swift));
+}
+
 /* ------------------------------------------------------------------ аккорд, и почему исключение узкое */
 
 group('исключение названо вместе с его причиной, иначе оно читается как лазейка');

@@ -80,6 +80,44 @@ var allowOrigin = ""
 var loopbackKey = ""
 var keyRequired = false
 
+/* ЗАПИСЫВАТЬ, НО НЕ ТРОГАТЬ - режим, а не вторая сборка (SPLIT-PLAN §6.1, шаг 12).
+ *
+ * Второй продукт продаёт фразу «оно только смотрит». До этого флага она была обещанием в тексте: один и
+ * тот же двоичный файл умеет и записывать, и нажимать, а разницу человек мог только пообещать. Флаг
+ * превращает обещание в отказ, который видно в ответе и который можно выполнить в тесте.
+ *
+ * ОДНА СБОРКА, ДВА РЕЖИМА, А НЕ ДВА УСТАНОВЩИКА: второй двоичный файл - это второе разрешение
+ * Accessibility, второй элемент автозапуска, вторая подпись и две версии, которые разойдутся в первый же
+ * месяц. Режим стоит одного флага и ничего не раздваивает.
+ *
+ * И ГЛАВНОЕ, ЧЕГО ЗДЕСЬ НЕТ. macOS этого НЕ ОБЕСПЕЧИВАЕТ: то же самое разрешение Accessibility, которым
+ * поднимается слушающий tap и читается дерево для `#ctx`, разрешает и CGEventPost. Значит гарантия имеет
+ * форму КОДА, а не операционной системы, и говорить о ней надо именно так - см. текст отказа ниже.
+ * Утверждение «система не даст» было бы ложью, которую нечем подтвердить, и §6.1 запрещает её прямо. */
+var recordOnly = false
+
+/* ЧТО СЧИТАЕТСЯ «ТОЛЬКО ПОСМОТРЕТЬ» - список ЧИТАЮЩИХ действий, а не действующих, и это выбор в сторону
+ * отказа: действие, добавленное завтра и забытое здесь, в этом режиме будет ОТВЕРГНУТО, а не пропущено.
+ * Обратный список ошибался бы в другую сторону и молча разрешал новое - а цена ошибки тут несимметрична:
+ * лишний отказ виден и его чинят, лишнее нажатие происходит на чужой машине.
+ *
+ * Здесь же причина, по которой `activate` стоит среди отвергаемых, хотя разрешения он не требует: поднять
+ * чужое окно на передний план - это тронуть машину, и следующее действие, целящееся в переднее окно,
+ * попадёт уже туда. То же про `open` и `clipwrite`: запустить программу и подменить буфер обмена значит
+ * изменить машину, ничего не нажав. */
+let READS_ONLY: Set<String> = ["clipread", "capture", "read", "find", "refresh", "waitwindow"]
+
+/// Отказ режима «только запись» - или nil, если режим выключен либо действие ничего не меняет.
+func recordOnlyRefusal(_ action: String) -> String? {
+    if !recordOnly { return nil }
+    if READS_ONLY.contains(action) { return nil }
+    return "this agent was started with --record-only, so it watches and reads but never clicks, types, "
+        + "moves or opens anything - and \(action.isEmpty ? "an action with no name" : action) changes "
+        + "the machine. That is this build's own rule, not something macOS enforces: the same "
+        + "Accessibility permission that lets it watch would also let it act. Start it without "
+        + "--record-only to allow acting."
+}
+
 var moveThrottleMsDefault = 10
 var moveMinPx = 3
 
@@ -98,6 +136,10 @@ do {
          * тесты, включается - там это единственная дверь, которую Origin не закрывает. */
         case "--require-key":
             keyRequired = true
+        /* Ставится ДО сокета, как и ключ, и снять его на ходу нельзя нарочно: режим, который можно
+         * выключить запросом, - это не режим, а настройка, и её значение пришлось бы кому-то охранять. */
+        case "--record-only":
+            recordOnly = true
         case "--move-throttle-ms":
             if let v = args.first, let n = Int(v) { moveThrottleMsDefault = n; args.removeFirst() }
         case "--move-min-px":
@@ -118,6 +160,7 @@ do {
               --port N              listen on 127.0.0.1:N (default 8787)
               --allow-origin URL    echoed in Access-Control-Allow-Origin
               --require-key         demand X-MouseFlow-Key on everything but /health
+              --record-only         watch and read only; refuse every action that changes the machine
               --move-throttle-ms N  minimum gap between recorded moves (default 10)
               --move-min-px N       minimum cursor travel before a move is recorded (default 3)
             """)
@@ -139,6 +182,16 @@ if keyRequired {
     print("  pairing key \(loopbackKey)")
     print("              every request except /health needs it, as X-MouseFlow-Key.")
     print("              Paste it on the app's Connections screen for this machine.")
+    print("")
+}
+
+/* Сказано вслух при старте, потому что режим не виден ниоткуда больше, пока кто-нибудь не попробует
+ * нажать. Здесь же и оговорка - в тех же словах, что в отказе: человек, читающий это, решает, чему
+ * доверять, и «система не даст» он бы прочитал как обещание системы. */
+if recordOnly {
+    print("")
+    print("  record-only   this agent will watch and read, and refuse anything that changes the machine.")
+    print("                That is this build's rule, not macOS's: one permission allows both.")
     print("")
 }
 
@@ -3898,6 +3951,10 @@ func doAction(_ body: String) -> String? {
     let fields = parseAction(body)
     let action = (fields["action"] ?? "").lowercased()
     Output.reset()
+    /* РЕЖИМ СПРАШИВАЕТСЯ ПЕРВЫМ, и не ради порядка. Он ШИРЕ порога Accessibility: тот пропускает
+     * `activate`, потому что поднять окно можно и без разрешения, а режим обязан отвергнуть и это. И
+     * человеку полезнее услышать про режим, чем про разрешение, которое он давно дал. */
+    if let refusal = recordOnlyRefusal(action) { return refusal }
     if let refusal = Input.refusal(), action != "activate" { return refusal }
 
     /* ДЕЙСТВИЯ, ЦЕЛЯЩИЕСЯ В ФОКУС, ОХРАНЯЮТСЯ ПЕРВЫМИ, и по переднему окну, а не по точке: набор уходит
@@ -4212,6 +4269,10 @@ final class Replayer {
     func start(body: String) -> String? {
         gate.lock()
         if playing { gate.unlock(); return "already replaying" }
+        /* Вторая дверь инъекции, и единственная, которая не проходит через doAction. Отдельного имени у
+         * повтора среди действий нет, поэтому спрашивается под своим - «replay» нет в READS_ONLY, и это
+         * ровно то, что здесь нужно. */
+        if let refusal = recordOnlyRefusal("replay") { gate.unlock(); return refusal }
         if let refusal = Input.refusal() { gate.unlock(); return refusal }
         gate.unlock()
 
@@ -4967,6 +5028,17 @@ enum Courier {
 
     private static func loop() {
         while true {
+            /* РЕЖИМ «ТОЛЬКО ЗАПИСЬ» НЕ БЕРЁТ РАБОТУ ВОВСЕ - а не берёт и проваливает.
+             *
+             * Найдено живым запуском, и чтением бы не нашлось: агент с флагом рапортовал taking:true и
+             * честно собирался опрашивать очередь. Всё, что оттуда приезжает, - цель, повтор или поднятие
+             * окна, - этот агент отвергнет на первом же ходу, так что взятая задача стоила бы человеку
+             * прогона и объяснения, а очередь копила бы провалы вместо ожидания. Отказ, которого никто не
+             * просил, читается как поломка.
+             *
+             * Тридцать секунд, а не пять: ждать тут нечего, проверка нужна только чтобы флаг однажды
+             * научился сниматься на ходу и цикл это заметил. Ничего наружу при этом не уходит. */
+            guard !recordOnly else { sleep(30); continue }
             guard let link = Account.link, link.taking else {
                 sleep(5)
                 continue
@@ -5943,6 +6015,13 @@ func route(method: String, path: String, query: String, body: String) -> Respons
         /* The capability flags, and on this platform two of them are answers rather than constants. A
          * version number cannot say whether the user has granted Screen Recording, and an agent that claims
          * it can see returns a black picture instead of an explanation. */
+        /* МОЖЕТ ЛИ ОН ДЕЙСТВОВАТЬ ПРЯМО СЕЙЧАС - и отдельно, ПОЧЕМУ НЕТ. Два факта, а не один, ровно как
+         * linked/taking и canAuth/keyRequired: агент без Accessibility и агент, запущенный с
+         * --record-only, оба ничего не нажмут, но приложению это разные предложения - первому надо
+         * показать, какой переключатель включить, второму не предлагать ничего. Слитое в одно поле, это
+         * предложило бы человеку включить разрешение, которое он уже включил. */
+        json += ",\"canAct\":\(jsonBool(Permission.accessibility && !recordOnly))"
+        json += ",\"recordOnly\":\(jsonBool(recordOnly))"
         json += ",\"canSee\":\(jsonBool(Permission.screenRecording))"
         json += ",\"canWindows\":true"
         json += ",\"canName\":\(jsonBool(Permission.accessibility))"
@@ -6314,7 +6393,11 @@ PermissionWatch.start()
  * off - not a poll, not a heartbeat. */
 Account.load()
 if let link = Account.link {
-    print(link.taking
+    /* И РЕЖИМ НАЗВАН ЗДЕСЬ ЖЕ. Строка «берёт работу» при включённом --record-only была бы правдой про
+     * переключатель и ложью про машину: очередь этот агент не опрашивает вовсе. */
+    print(recordOnly
+        ? "attached to an account, and NOT taking work from it - this agent only watches (--record-only)"
+        : link.taking
         ? "attached to an account and taking work from it - switch it off in the menu bar"
         : "attached to an account, not taking work - switch it on in the menu bar")
 }

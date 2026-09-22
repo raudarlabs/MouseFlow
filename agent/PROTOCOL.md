@@ -29,7 +29,7 @@ the user as the agent being unreachable, so a slow answer is worse than a refusa
 
 | Method | Path | Deadline | Returns |
 |---|---|---|---|
-| GET | `/health` | 4s | `{ok, version, screen:{w,h}, recording, playing, canSee, canWindows, canName, canClickName, canAuth, keyRequired, canKeys}` |
+| GET | `/health` | 4s | `{ok, version, screen:{w,h}, recording, playing, canSee, canWindows, canName, canClickName, canAuth, keyRequired, canKeys, canAct, recordOnly}` |
 | GET | `/shot` | 12s | `{ok, png, format, bytes, w, h, scale, originX, originY}` |
 | GET | `/shot?w=640` | 12s | the same, smaller — asked for after a 413 upstream |
 | GET | `/pulse` | 5s | `{ok, grid}` — 64×36 greyscale samples as a short string |
@@ -235,6 +235,13 @@ capability is stated: `canSee` (screenshots), `canWindows` (`/windows`), `canNam
 event). An older agent omits a flag, and absent is the answer. `canKeys` is the one
 that can be **false** rather than absent: the keyboard hook may fail to install, and the agent runs without
 it rather than refusing to start.
+
+Two more say whether it will act at all. `canAct` is false when the agent was started in record-only mode,
+and on macOS also when Accessibility is missing; `recordOnly` says which of the two it is. They are
+separate for the same reason `canAuth` and `keyRequired` are: one wants a switch shown, the other wants
+nothing offered. In that mode the agent still records, reads, finds and screenshots, and refuses
+everything that changes the machine — including `activate`, `open` and `clipwrite`, none of which inject
+input. **Neither operating system enforces it**; the mode is this build's own rule.
 
 Since 0.8.0 there are three more, and two of them are macOS answering questions Windows cannot be asked:
 

@@ -34,6 +34,8 @@ equivalent of a "download and run" binary and no need for one.
 | `-AllowOrigin` | `'*'` | Origin echoed in `Access-Control-Allow-Origin`. `'*'` echoes whatever asks, which lets **any** site you visit drive your mouse while the agent runs. Pin it to your deployment for anything past a local demo. |
 | `-MoveThrottleMs` | `10` | Minimum gap between recorded move events |
 | `-MoveMinPx` | `3` | Minimum cursor travel before a move is recorded |
+| `-RequireKey` | off | Demand `X-MouseFlow-Key` on every request but `/health`. Off by default, because on a single-user machine it protects against nobody; on for a machine that is shared or that tests own (0.29.0) |
+| `-RecordOnly` | off | Watch and read only. Recording, `/shot`, `/windows`, `read`, `find` and the clipboard **read** still work; everything that changes the machine is refused in words — including `activate`, `open` and `clipwrite`, none of which inject input. Windows enforces nothing here: `SendInput` asks no permission, so the guarantee is this build's own rule |
 | `-NoTray` | off | Run without the notification-area icon. For a headless run, or while debugging the tray itself; the HTTP half is identical either way. |
 
 `?moveMs=` on `/record/start` overrides the throttle **for that recording only**.

@@ -43,6 +43,8 @@ happens. Push a commit; see [20 — Operations](20-operations.md).
 | `-AllowOrigin` | `'*'` — permissive; pin it to your deployment for anything past a local demo |
 | `-MoveThrottleMs` | `10` |
 | `-MoveMinPx` | `3` |
+| `-RequireKey` | off |
+| `-RecordOnly` | off — watch and read only; every action that changes the machine is refused ([17 — Privacy](17-privacy-security.md)) |
 | `-NoTray` | off |
 
 ### macOS installer (`install-mac.sh`)
@@ -54,6 +56,7 @@ happens. Push a commit; see [20 — Operations](20-operations.md).
 | `--no-login` | it **is** a login item by default |
 | `--no-run` | it runs by default |
 | `--foreground` | detached by default |
+| `--record-only` | off — installs it as an agent that only watches; the flag is written into the login item, so it survives a reboot |
 | `--fix-permissions` | — |
 | `--doctor` | — |
 | `--uninstall` | — |
@@ -61,7 +64,8 @@ happens. Push a commit; see [20 — Operations](20-operations.md).
 
 ### macOS agent binary (`mouseflow-agent.swift`)
 
-`--port N`, `--allow-origin URL`, `--move-throttle-ms N` (10), `--move-min-px N` (3), `--probe`
+`--port N`, `--allow-origin URL`, `--move-throttle-ms N` (10), `--move-min-px N` (3), `--require-key`,
+`--record-only` (watch and read only — see [17 — Privacy](17-privacy-security.md)), `--probe`
 (one line of JSON with the live permission verdict, used by the agent's own permission watcher), `--help`.
 
 ## Agent query parameters

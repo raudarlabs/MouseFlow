@@ -38,6 +38,14 @@ export interface AgentHealth {
    * требует, - не обязательно. Absent значит «слишком старый, чтобы сказать». */
   canAuth?: boolean;
   keyRequired?: boolean;
+  /* Может ли агент действовать прямо сейчас - и отдельно, запущен ли он в режиме «только запись»
+   * (SPLIT-PLAN §6.1). Два факта, а не один, по той же причине, что canAuth/keyRequired: агент без
+   * Accessibility и агент с --record-only оба ничего не нажмут, но первому надо показать переключатель, а
+   * второму не предлагать ничего - слитое в одно поле, это предложило бы включить разрешение, которое
+   * человек уже включил. Absent на любой сборке, которая не умеет режим вовсе, и absent - это ответ:
+   * агент, которому нельзя сказать «только смотри», - это агент, который действует. */
+  canAct?: boolean;
+  recordOnly?: boolean;
   /** Whether typing is recorded as an EVENT - that a key was pressed and when, never which key. False when
    * the keyboard hook failed to install, absent before 0.7.0; either way a transcript then cannot tell
    * "typed nothing" from "was not watching", which is why the flag exists rather than being inferred. */

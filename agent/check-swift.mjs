@@ -736,5 +736,150 @@ group('панель нативная только снаружи, и аккор�
   check('и панель открывается ещё и мышью', /"Ask MouseFlow…"/.test(src));
 }
 
+// ---------------------------------------------- «только запись»: решение исполняется, а не читается
+/* ПОЧЕМУ ЭТО ОБЯЗАНО ВЫПОЛНЯТЬСЯ. Регулярка над исходником подтвердила бы, что функция ПОХОЖА на верную, и
+ * пропустила бы ровно те три ошибки, которые здесь возможны: перевёрнутое условие (`if recordOnly { return
+ * nil }`), список, читаемый как «что действует» вместо «что читает», и молчаливое nil для имени, которого
+ * в списке нет. Каждая из них оставляет режим включённым на вид и выключенным на деле - то есть продаёт
+ * обещание «оно только смотрит» агентом, который нажимает.
+ *
+ * Вырезается ТОТ ЖЕ текст, что в агенте: копии нет, есть та же строка с диска. Отказ проверяется по слову
+ * «refuse»/nil, а не по точной фразе - иначе тест ломался бы от правки формулировки, которая и должна
+ * правиться свободно. А вот ОГОВОРКУ проверяем дословно: она - часть обещания, см. check-promises. */
+group('«только запись»: отказ исполняется для каждого действия');
+{
+  const list = src.match(/let READS_ONLY: Set<String> = \[[^\]]*\]/);
+  const rule = slice('func recordOnlyRefusal(');
+  check('список читающих действий найден в исходнике', !!list);
+  check('функция решения найдена в исходнике', !!rule);
+
+  if (list && rule) {
+    const dir = mkdtempSync(join(tmpdir(), 'mf-record-only-'));
+    const file = join(dir, 'mode.swift');
+    writeFileSync(file, [
+      'import Foundation',
+      list[0],
+      'var recordOnly = CommandLine.arguments.count > 1 && CommandLine.arguments[1] == "on"',
+      rule,
+      'let asked = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : ""',
+      'if let said = recordOnlyRefusal(asked) { print("refuse: " + said) } else { print("allow") }',
+    ].join('\n\n'));
+
+    const built = join(dir, 'mode');
+    const compile = spawnSync('swiftc', ['-O', '-o', built, file], { encoding: 'utf8' });
+    check('вырезанное решение компилируется само по себе', compile.status === 0,
+      (compile.stderr || '').split('\n').filter((l) => /error:/.test(l)).slice(0, 4).join(' | '));
+
+    if (compile.status === 0) {
+      const verdict = (mode, action) => execFileSync(built, [mode, action], { encoding: 'utf8' }).trim();
+
+      /* ВСЕ СЕМНАДЦАТЬ ДЕЙСТВИЙ, А НЕ ВЫБОРКА: список действий агента - это ровно то, что здесь делится
+       * надвое, и проверка по трём именам прошла бы мимо четырнадцатого, добавленного завтра. */
+      const ACTS = ['click', 'move', 'scroll', 'type', 'key', 'activate', 'clipwrite', 'open',
+                    'clickname', 'scrollto', 'drag', 'replay'];
+      const READS = ['clipread', 'capture', 'read', 'find', 'refresh', 'waitwindow'];
+
+      group('выключенный режим не отказывает никому - иначе он не режим, а поломка');
+      for (const one of [...ACTS, ...READS]) {
+        check(`без флага ${one} проходит`, verdict('off', one) === 'allow');
+      }
+
+      group('включённый режим отказывает всему, что меняет машину');
+      for (const one of ACTS) {
+        const said = verdict('on', one);
+        check(`${one} отвергнут`, said.startsWith('refuse:'), said.slice(0, 60));
+        /* И ОТКАЗ НАЗЫВАЕТ ДЕЙСТВИЕ: «нельзя» без имени того, что нельзя, модель прочитает как общую
+         * неисправность и попробует другое действие - то есть ещё раз. */
+        check(`и отказ называет само ${one}`, said.includes(one), said.slice(0, 80));
+      }
+      /* ДОСЛОВНО - ОГОВОРКА. Отказ, обещающий, что действие запрещает система, продаёт защиту, которой
+       * нет: то же разрешение Accessibility разрешает и CGEventPost. */
+      check('и оговорка про macOS стоит в самом отказе',
+        verdict('on', 'click').includes("not something macOS enforces"));
+      check('и отказ говорит, как разрешить действие обратно',
+        verdict('on', 'click').includes('--record-only'));
+
+      group('а читать и смотреть он по-прежнему даёт');
+      for (const one of READS) {
+        check(`${one} проходит и с флагом`, verdict('on', one) === 'allow');
+      }
+
+      /* ИМЯ, КОТОРОГО НЕТ В СПИСКЕ, ОТВЕРГАЕТСЯ - это и есть выбор в сторону отказа: действие, добавленное
+       * завтра и забытое в списке, будет отвергнуто, а не пропущено. */
+      group('неизвестное имя отвергается, а не пропускается');
+      check('действие, которого нет ни в одном списке, отвергнуто',
+        verdict('on', 'somethingnew').startsWith('refuse:'));
+      check('и пустое имя тоже', verdict('on', '').startsWith('refuse:'));
+      check('и пустое названо словами, а не пустотой',
+        verdict('on', '').includes('an action with no name'));
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/* ------------------------------------------------- и обе двери инъекции спрашивают режим, а не одна */
+group('режим спрашивается на обеих дверях инъекции');
+{
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  /* ПЕРВЫМ, до порога Accessibility: тот пропускает activate, а режим обязан отвергнуть и его. */
+  check('doAction спрашивает режим перед порогом разрешения',
+    /if let refusal = recordOnlyRefusal\(action\) \{ return refusal \}\s*\n\s*if let refusal = Input\.refusal\(\)/.test(code));
+  /* Повтор не проходит через doAction - это вторая дверь, и до 0.30.0 она была бы открыта. */
+  check('и повтор спрашивает его под собственным именем',
+    /if let refusal = recordOnlyRefusal\("replay"\) \{ gate\.unlock\(\); return refusal \}/.test(code));
+  check('/health отвечает двумя фактами, а не одним',
+    /canAct.*Permission\.accessibility && !recordOnly/.test(code) && /recordOnly.*jsonBool\(recordOnly\)/.test(code));
+  check('и флаг разбирается из аргументов', /case "--record-only":\s*\n\s*recordOnly = true/.test(code));
+  check('и назван в --help', /--record-only\s+watch and read only/.test(src));
+}
+
+// ------------------------------------- и установщик доносит режим до элемента входа, а не теряет его
+/* ПОЧЕМУ ЭТО ОТДЕЛЬНАЯ ПРОВЕРКА, И ИСПОЛНЕНИЕМ. Агент на этой платформе ставится ЭЛЕМЕНТОМ ВХОДА: launchd
+ * поднимает его при входе в систему с аргументами из plist. Флаг, который установщик разобрал и не записал
+ * туда, работает ровно до первой перезагрузки, после чего агент молча возвращается действующим - и никто
+ * об этом не узнает, потому что снаружи оба режима выглядят одинаково, пока не попробуешь нажать.
+ *
+ * Функция берётся из файла и запускается настоящим bash: пустая строка, подставленная в массив plist,
+ * дала бы пустой <string/> - то есть пустой argv[n], - и это ровно та ошибка, которую чтение пропускает. */
+group('установщик записывает режим в элемент входа, а не только разбирает флаг');
+{
+  const sh = readFileSync(join(ROOT, 'agent/install-mac.sh'), 'utf8').replace(/\r\n/g, '\n');
+  const fn = (() => {
+    const at = sh.indexOf('write_login_item() {');
+    if (at < 0) return null;
+    const end = sh.indexOf('\n}\n', at);
+    return end < 0 ? null : sh.slice(at, end + 3);
+  })();
+  check('функция записи элемента входа найдена', !!fn);
+  check('и флаг разбирается установщиком', /--record-only\) record_only="yes"/.test(sh));
+  /* И ДОХОДИТ ДО КАЖДОГО ЗАПУСКА, а не только до plist: установщик поднимает агента ещё тремя путями. */
+  check('и доносится до каждой строки запуска, а не только до plist',
+    (sh.match(/--allow-origin "\$origin" \$mode_arg/g) || []).length >= 4);
+
+  if (fn) {
+    const dir = mkdtempSync(join(tmpdir(), 'mf-plist-'));
+    const script = join(dir, 'run.sh');
+    const made = (mode) => {
+      const out = join(dir, 'x.plist');
+      writeFileSync(script, ['#!/bin/bash', 'BUNDLE_ID=com.mouseflow.agent', fn,
+        `write_login_item "${out}" /tmp/agent 8787 https://example.test "${mode}"`].join('\n'));
+      const ran = spawnSync('bash', [script], { encoding: 'utf8' });
+      return ran.status === 0 ? readFileSync(out, 'utf8') : 'FAILED: ' + ran.stderr;
+    };
+
+    const on = made('--record-only');
+    const off = made('');
+    check('с флагом он стоит в ProgramArguments', /<string>--record-only<\/string>/.test(on),
+      on.slice(0, 200));
+    check('без флага его там нет', !/--record-only/.test(off), off.slice(0, 200));
+    /* ПУСТОГО АРГУМЕНТА НЕТ НИ В ОДНОМ ИЗ ДВУХ: <string/> - это argv[n] длиной ноль, а не пропуск. */
+    check('и пустого <string/> не появилось', !/<string\s*\/>/.test(off) && !/<string><\/string>/.test(off));
+    /* И plist остаётся читаемым для самой системы, а не только для регулярки. */
+    check('и обе версии разбираются plutil',
+      spawnSync('plutil', ['-lint', join(dir, 'x.plist')], { encoding: 'utf8' }).status === 0);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

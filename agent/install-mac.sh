@@ -46,6 +46,10 @@ main() {
   local foreground="no"
   local at_login="yes"
   local action="install"
+  # ЗАПИСЫВАТЬ, НО НЕ ТРОГАТЬ - флаг агента, который обязан пережить установку. Без проброса его можно было
+  # бы задать только руками при запуске, а агент здесь ставится ЭЛЕМЕНТОМ ВХОДА: launchd поднимает его с
+  # аргументами из plist, и режим, которого там нет, исчезал бы при первом же входе в систему.
+  local record_only="no"
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -54,6 +58,7 @@ main() {
       --no-run) run="no"; shift ;;
       --no-login) at_login="no"; shift ;;
       --foreground) foreground="yes"; shift ;;
+      --record-only) record_only="yes"; shift ;;
       --fix-permissions) action="fix"; shift ;;
       --doctor) action="doctor"; shift ;;
       --uninstall) action="uninstall"; shift ;;
@@ -65,6 +70,9 @@ mouseflow install-mac.sh
   --port N            loopback port (default 8787)
   --no-login          do not start it at login (it is a login item by default, so
                       there is nothing to launch by hand, ever)
+  --record-only       install it as an agent that watches and reads but never clicks, types
+                      or moves. Refused actions say so in words. This is the build's own rule,
+                      not something macOS enforces - the same Accessibility permission allows both
   --no-run            install and stop, do not start it now
   --foreground        run it in this window so its output is visible. Note: launched
                       this way it inherits Terminal's permissions rather than having
@@ -105,6 +113,12 @@ USAGE
   fi
 
   # ---------------------------------------------------------------- fix permissions only
+  # Пусто или "--record-only" - одно слово, которое дописывается в КАЖДУЮ строку запуска ниже. Без кавычек
+  # при подстановке нарочно: пустая строка в кавычках стала бы пустым аргументом, а агент разбирает
+  # аргументы switch'ем и молча его проглотил бы - то есть ошибка была бы не видна ни здесь, ни там.
+  local mode_arg=""
+  [ "$record_only" = "yes" ] && mode_arg="--record-only"
+
   if [ "$action" = "fix" ]; then
     if [ ! -x "$binary" ]; then
       echo "Nothing installed at ${app} - run the installer first." >&2
@@ -113,7 +127,7 @@ USAGE
     forget_permissions
     pkill -f "mouseflow-agent" 2>/dev/null || true
     sleep 1
-    open "$app" --args --port "$port" --allow-origin "$origin"
+    open "$app" --args --port "$port" --allow-origin "$origin" $mode_arg
     cat <<FIXED
 
 Cleared. macOS has forgotten the old grants, so it will ASK again - which is the
@@ -265,14 +279,14 @@ NEEDS_TOOLS
 
   # ---------------------------------------------------------------- login item
   if [ "$at_login" = "yes" ]; then
-    write_login_item "$plist" "$binary" "$port" "$origin"
+    write_login_item "$plist" "$binary" "$port" "$origin" "$mode_arg"
     echo "Set to start when you log in, so there is nothing to launch by hand."
   fi
 
   if [ "$run" = "no" ]; then
     echo
     echo "Not started, as asked. Start it with:"
-    echo "  open \"${app}\" --args --port ${port} --allow-origin ${origin}"
+    echo "  open \"${app}\" --args --port ${port} --allow-origin ${origin} ${mode_arg}"
     return 0
   fi
 
@@ -281,16 +295,16 @@ NEEDS_TOOLS
     echo
     echo "Running in this window. Its permissions will be Terminal's, not its own — see --help."
     echo
-    exec "$binary" --port "$port" --allow-origin "$origin"
+    exec "$binary" --port "$port" --allow-origin "$origin" $mode_arg
   fi
 
   # launchd if it is a login item, `open` otherwise. Either way the agent is its own responsible process,
   # which is what gives it a permission of its own; a child of Terminal would inherit Terminal's.
   if [ "$at_login" = "yes" ]; then
     launchctl kickstart -k "gui/$(id -u)/${BUNDLE_ID}" 2>/dev/null \
-      || open "$app" --args --port "$port" --allow-origin "$origin"
+      || open "$app" --args --port "$port" --allow-origin "$origin" $mode_arg
   else
-    open "$app" --args --port "$port" --allow-origin "$origin"
+    open "$app" --args --port "$port" --allow-origin "$origin" $mode_arg
   fi
 
   cat <<PERMS
@@ -389,7 +403,11 @@ PLIST
 # KeepAlive so a crash or a stray pkill brings it back, RunAtLoad so signing in is all it takes. launchd
 # starts it as its own responsible process, which is what keeps its permission its own.
 write_login_item() {
-  local plist="$1" binary="$2" port="$3" origin="$4"
+  local plist="$1" binary="$2" port="$3" origin="$4" mode_arg="${5:-}"
+  # Одна строка в массиве, и только когда режим просили: пустой <string/> в ProgramArguments - это пустой
+  # argv[n], а не отсутствие аргумента.
+  local mode_line=""
+  [ -n "$mode_arg" ] && mode_line="    <string>${mode_arg}</string>"
   mkdir -p "$(dirname "$plist")"
   cat > "$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -402,6 +420,7 @@ write_login_item() {
     <string>${binary}</string>
     <string>--port</string><string>${port}</string>
     <string>--allow-origin</string><string>${origin}</string>
+${mode_line}
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>

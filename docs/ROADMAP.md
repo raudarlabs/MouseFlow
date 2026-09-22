@@ -8,7 +8,7 @@ stood in three places "by comment"; `db/022`'s header contradicted the database 
 So: **change a status here, change the reasoning there.** If an item's shape changes, the plan is edited and
 this line follows — never the other way round.
 
-Updated **2026-09-22**. Live: `https://mouseflowapp.vercel.app`. Every step ends the same way —
+Updated **2026-09-23**. Live: `https://mouseflowapp.vercel.app`. Every step ends the same way —
 `npm test` zero FAIL, `npx tsc --noEmit -p web/tsconfig.json`, `npm run build` in `web/`, push, then one
 concrete thing named for the owner to check.
 
@@ -42,10 +42,28 @@ concrete thing named for the owner to check.
 
 ## The split, remaining
 
-- [ ] **12 · `--record-only` + `canAct:false`, both agents** — P2's pitch is "it only watches"; today that
-      is a claim rather than a flag. One switch on `Input.refusal()`; the C# compiled for real. **Say out
-      loud that macOS cannot enforce it**: the same Accessibility grant authorises the event tap and
-      `CGEventPost`. [§6.1](SPLIT-PLAN.md)
+- [x] **12 · `--record-only` + `canAct:false`, both agents — done 2026-09-23.** The list in the code is
+      of the six actions that **read** (`clipread capture read find refresh waitwindow`), not of the ones
+      that act — so an action added later and forgotten there is refused rather than allowed. Three of the
+      refusals inject nothing and are refused anyway: `activate` raises somebody else's window, which is
+      how the *next* action lands in it; `open` starts a program; `clipwrite` replaces the clipboard.
+      `/health` answers `canAct` **and** `recordOnly` — two facts, because a missing Accessibility grant
+      needs a switch shown and a chosen mode needs nothing offered. **No version bump**: the flag answers
+      for itself and absent is the answer, and raising `AGENT_WANTS` would have told every user to
+      reinstall for a switch nobody asked for. Said out loud everywhere it is read — the refusal, the
+      banner, `/health`, Connections, `17-privacy` — that **neither OS enforces this**; on macOS the same
+      Accessibility grant authorises `CGEventPost`, on Windows `SendInput` asks nothing at all.
+      [§6.1](SPLIT-PLAN.md)
+  - Two things only a live run could find, both now fixed and pinned. **The agent still took work**: with
+    the flag on it reported `taking:true` and was about to poll the queue, where everything that arrives
+    is a goal, a replay or a window to raise — it would have claimed jobs to fail them. It now claims
+    none, and a queued task waits. And `HOME` does **not** isolate a test run on macOS: `NSHomeDirectory`
+    asks `getpwuid`, so the binary read the real account file anyway — which is precisely why the suite
+    cuts functions out of the source instead of starting an agent.
+  - **The Windows half was not compiled** — no `pwsh` and no `dotnet` on this machine, and per
+    `agent/check-csharp.mjs` that is not going to change. It was checked by the compiler proxy, and both
+    agents' lists, refusals and courier guards are pinned against each other and against the docs.
+    Its first real start is still owed.
 - [x] **13 · Transcription — LIVE 2026-09-21.** `api/_transcribe.mjs` holds the words, the caps and the
       call; `api/transcribe.js` is the page's door, capped under its own `transcribe` ceiling. The model
       id has **no default at all** — it is asked of `/api/models`, which now lists recognisers. Three
