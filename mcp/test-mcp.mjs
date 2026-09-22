@@ -4763,9 +4763,9 @@ group('расписания тикают опросом агента, а не к
     /coalesce\(paused_why, ''\) <> 'it was a one-off, and it has run'/.test(route)
       && /coalesce\(paused_why, ''\) <> 'it was a one-off, and it has run'/.test(read('../api/schedules.js'))
       && !/kind = 'once' and next_at is null/.test(route));
-  check('и полоса на Skills - шесть строк со скроллом, как соседние списки, а не во весь экран',
-    /const LIST_HEIGHT = 'calc\(6 \* 5\.5rem\)';/.test(read('../web/src/features/skills/Schedules.tsx'))
-      && /style=\{\{ maxHeight: LIST_HEIGHT \}\}/.test(read('../web/src/features/skills/Schedules.tsx')));
+  check('и полоса - шесть строк со скроллом, как соседние списки, а не во весь экран',
+    /const LIST_HEIGHT = 'calc\(6 \* 5\.5rem\)';/.test(read('../web/src/features/tests/Schedules.tsx'))
+      && /style=\{\{ maxHeight: LIST_HEIGHT \}\}/.test(read('../web/src/features/tests/Schedules.tsx')));
 }
 
 /* ------------------------------------------------------- РАСПИСАНИЯ: ВТОРАЯ ДВЕРЬ И ЕДИНСТВЕННАЯ ЗОНА
@@ -4780,8 +4780,11 @@ group('расписания тикают опросом агента, а не к
  * страница присылает СВОЮ и показывает, какую. */
 group('у расписания есть экран, и он говорит о пропусках и о зоне');
 {
-  const strip = read('../web/src/features/skills/Schedules.tsx');
-  const page = read('../web/src/features/skills/SkillsView.tsx');
+  const strip = read('../web/src/features/tests/Schedules.tsx');
+  /* ПЕРЕЕХАЛА НА TESTS, шаг 7 (2026-09-22). Полоса стояла над библиотекой скиллов, и довод был верен:
+   * расписание - единственное, что происходит без человека. Но происходит оно в ПЕРВОМ продукте, а
+   * Skills - мастерская второго. */
+  const page = read('../web/src/features/tests/TestsView.tsx');
   const client = read('../web/src/lib/api.ts');
   const appRoute = read('../api/schedules.js');
 
@@ -4811,14 +4814,24 @@ group('у расписания есть экран, и он говорит о п
   check('а пустой список не рисует рамку с обещанием',
     strip.includes('if (!rows || !rows.length) return null;'));
 
-  /* Полоса - НАД библиотекой: расписание единственное здесь происходит без человека. */
-  check('полоса стоит над библиотекой, а не под таблицей из сорока строк',
-    page.indexOf('<Schedules reloadKey') > 0
-      && page.indexOf('<Schedules reloadKey') < page.indexOf('Library · '));
+  /* Полоса - ПОД «New case», а не над списком кейсов: расписание это следствие того, что уже есть, а не
+   * первое, что делают на этой странице. Порядок чтения - какие кейсы есть, как написать новый, что из
+   * всего этого идёт без меня. */
+  check('полоса стоит под «New case», а не первой на странице',
+    page.indexOf('<RunsByItself') > 0
+      && page.indexOf('<RunsByItself') > page.indexOf('<NewCase'));
   check('поставленное сразу видно в полосе - ключ, а не надежда на перерисовку',
-    page.includes('setSchedKey((n) => n + 1)') && strip.includes('[load, reloadKey]'));
-  check('и кнопка расписания - в строке скилла, а не под «…»',
-    /aria-label=\{`Schedule \$\{flow\.name\}`\}/.test(page));
+    page.includes('setKey((n) => n + 1)') && strip.includes('[load, reloadKey]'));
+  /* И ПОСТАВИТЬ РАСПИСАНИЕ МОЖНО ТАМ ЖЕ, ГДЕ ОНО ВИДНО. Часы уехали из строки скилла вместе с полосой, и
+   * показывать, не давая завести, значило бы убрать способ совсем. Список скиллов здесь уже был - его
+   * берёт «New case» из тех же `flows`, - так что это тот же список, а не второй. */
+  check('и скилл ставится на расписание там же, где полоса',
+    /aria-label="Skill to schedule"/.test(page) && /<ScheduleFor/.test(page)
+      && /flows\.filter\(\(one\) => one\.kind === 'created'\)/.test(page));
+  /* А на Skills от расписаний не осталось ничего: ни полосы, ни часов в строке. */
+  check('на Skills расписаний не осталось',
+    !/<Schedules |ScheduleFor|schedFor/.test(read('../web/src/features/skills/SkillsView.tsx')
+      .replace(/\/\*[\s\S]*?\*\//g, '')));
 
   /* Cron-строку никто не ВВОДИТ - ни на экране, ни в теле запроса. Проверяется отсутствие поля и
    * отсутствие пятизвёздочной строки, а не отсутствие слова: в заголовке файла сказано, почему её нет, и
@@ -5538,13 +5551,18 @@ group('тест-кейс: утверждения заранее, вердикт 
 
   /* СТРАНИЦА. Две карточки в форме Skills, ряд точек, и слова - из общего словаря. */
   /* Сразу за Skills - в меню СВОЕГО продукта: кейс делается из скилла и читается рядом с ним. */
-  check('страница - маршрут и пункт меню сразу за Skills',
+  /* СТОЯЛА СРАЗУ ЗА SKILLS, пока Skills был в этом же меню: кейс делается из скилла и читается рядом с
+   * ним. С 2026-09-22 Skills принадлежит второму продукту (шаг 7), и «рядом» стало невозможным - Tests
+   * теперь последний экран первого. Довод не исчез, он переехал внутрь страницы: выбор скилла стоит и в
+   * «New case», и в полосе расписаний. */
+  check('страница - маршрут и последний пункт меню первого продукта',
     /path: '\/tests'/.test(read('../web/src/main.tsx'))
-      && screensFor('do').findIndex((s) => s.to === '/tests')
-        === screensFor('do').findIndex((s) => s.to === '/skills') + 1);
-  check('две карточки в том же ободке, что у библиотеки',
+      && screensFor('do').at(-1).to === '/tests'
+      && !screensFor('do').some((s) => s.to === '/skills'));
+  /* ТРИ карточки: кейсы, новый кейс, и то, что идёт само. Третья переехала со страницы Skills. */
+  check('три карточки в том же ободке, что у библиотеки',
     (page.match(/const CARD = 'rounded-xl border-stroke border bg-surface-card p-4'/g) || []).length === 1
-      && (page.match(/<section className=\{CARD\}>/g) || []).length === 2);
+      && (page.match(/<section className=\{CARD\}>/g) || []).length === 3);
   check('окно на семь строк той же меркой, что на Activity',
     /const LIST_ROW = 2\.75;/.test(page)
       && /const LIST_HEIGHT = `\$\{7 \* LIST_ROW \+ 6 \* LIST_GAP\}rem`;/.test(page));

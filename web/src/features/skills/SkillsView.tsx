@@ -6,7 +6,7 @@
  */
 import { useNavigate } from '@tanstack/react-router';
 import {
-  ArrowRight, Braces, CircleDot, Clock, Copy, Download, Ellipsis, FileText, Globe, Link2, Loader2,
+  ArrowRight, Braces, CircleDot, Copy, Download, Ellipsis, FileText, Globe, Link2, Loader2,
   Lock, Monitor, MousePointerClick, Pencil, Puzzle, RefreshCw, Share2, Sparkles, Upload, Wand2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -33,7 +33,6 @@ import { adoptRecording } from '@/features/record/adopt';
 /* Payload записи догружается: список его больше не везёт. Скилл отдаёт свой сразу. */
 import { payloadOf } from '@/lib/api';
 import { zip } from './zip';
-import { ScheduleFor, Schedules } from './Schedules';
 import { describeRecording, hasSkillFor } from '@/features/record/save-as-skill';
 import { SkillWizard } from '@/features/record/SkillWizard';
 import {
@@ -604,8 +603,6 @@ export const SkillsView = () => {
    * Две величины, а не одна: панель закрывается сразу, а список наверху обязан обновиться - иначе человек
    * поставил расписание, увидел подтверждение словами и не увидел его в списке, то есть получил ровно то
    * сомнение, из-за которого следующим действием ставит второе такое же. */
-  const [schedFor, setSchedFor] = useState<string | null>(null);
-  const [schedKey, setSchedKey] = useState(0);
 
   /* Arriving here from the Record page's Skill button, which sends `?make=<recording id>`.
    *
@@ -1155,11 +1152,15 @@ export const SkillsView = () => {
       {/* Чем кончилось последнее действие. Без этого «Save as skill» и «Publish» молчат. */}
       <Said note={said} onDismiss={() => setSaid(null)} className="mb-4 max-w-[86ch]" />
 
-      {/* Что работает само. НАД библиотекой, а не под ней: расписание - единственное здесь, что происходит
-        * без человека, и потому единственное, о чём он может не знать. Под таблицей из сорока строк это
-        * оказалось бы ниже сгиба у всех, у кого есть библиотека, - то есть у всех, у кого есть расписания.
-        * Само себя не рисует, когда расписаний нет (см. Schedules.tsx). */}
-      <Schedules reloadKey={schedKey} onNote={(text, kind) => setSaid({ text, kind })} />
+      {/* РАСПИСАНИЙ ЗДЕСЬ БОЛЬШЕ НЕТ - они на Tests (SPLIT-PLAN §5.1, шаг 7).
+        *
+        * Полоса «что работает само» стояла над библиотекой, и довод был верен: расписание - единственное,
+        * что происходит без человека. Но происходит оно в ПЕРВОМ продукте, а эта страница - мастерская
+        * второго: библиотека, процедура, схема инструмента, публикация. Один экран, отвечавший на «что у
+        * меня есть» и на «что из этого идёт само», отвечал на вопросы двух разных людей.
+        *
+        * Ушло вместе с полосой и часами в строке скилла. Поставить расписание можно там же, где оно теперь
+        * видно, - на Tests, выбрав скилл. */}
 
       {/* The library, in a card of its own.
         *
@@ -1458,23 +1459,6 @@ export const SkillsView = () => {
                         </span>
                       )}
 
-                      {/* Расписание - в строке, а не под «…».
-                        *
-                        * Одной иконкой, потому что седьмая колонка этой сетки шириной в 20rem и слово рядом
-                        * с «Publish» выдавило бы «Withdraw» на вторую строку у каждого объявленного скилла.
-                        * Но в строке, а не в «более»: см. заметку у «Use in AI» о том, чем это кончается. */}
-                      <Button
-                        variant={schedFor === flow.id ? 'secondary' : 'ghost'}
-                        size="sm"
-                        aria-label={`Schedule ${flow.name}`}
-                        aria-expanded={schedFor === flow.id}
-                        title="Run it at a time of day, or every so often"
-                        className="!size-8 !p-0"
-                        onClick={() => setSchedFor((open) => (open === flow.id ? null : flow.id))}
-                      >
-                        <Clock className="size-4" />
-                      </Button>
-
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1524,19 +1508,6 @@ export const SkillsView = () => {
                       </Button>
                     </span>
                   </div>
-
-                  {schedFor === flow.id && (
-                    <ScheduleFor
-                      flowId={flow.id}
-                      name={flow.name}
-                      onCancel={() => setSchedFor(null)}
-                      onDone={(text) => {
-                        setSchedFor(null);
-                        setSaid({ text, kind: 'good' });
-                        setSchedKey((n) => n + 1);
-                      }}
-                    />
-                  )}
 
                   {openRow === flow.id && (
                     <div className="mt-1 rounded-lg border-stroke/45 border bg-surface-card2 p-3">

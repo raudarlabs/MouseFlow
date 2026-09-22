@@ -160,9 +160,16 @@ export const SCREENS: Screen[] = [
         + '— and the frames it kept, so a failure comes with the evidence rather than with a claim.',
     },
   },
-  /* Разорван пополам шагом 5 плана: библиотека потоков - это 'make', «запусти это» и расписания - 'do'.
-   * Пока цел, стоит в обоих меню. */
-  { to: '/skills', label: 'Skills', title: 'Skills', owner: 'both', nav: true,
+  /* РАЗРЕЗАН 2026-09-22, шаг 7 плана (§5.1) - и разрез оказался вычитанием, а не делением.
+   *
+   * Всё, что на этом экране есть, - библиотека, процедура, схема инструмента, публикация, пары, «готово
+   * стать навыком» - принадлежит второму продукту. Первому принадлежала одна вещь: расписания. Они уехали
+   * на Tests (решение владельца: четыре экрана - это решение, пятый ради расписаний завёл бы «оно идёт
+   * само» как отдельную тему, а это не отдельная тема - кейс и есть скилл, идущий каждую ночь).
+   *
+   * Имя оставлено `Skills`, тоже по решению владельца: `Library` описывает полку, а не то, что на ней
+   * лежит, и переименование стоило бы всем, кто уже знает адрес. */
+  { to: '/skills', label: 'Skills', title: 'Skills', owner: 'make', nav: true,
     tour: {
       title: 'Keep the good ones as skills',
       body: 'A recording you keep becomes a skill: run it again whenever the same job comes back, or hand '

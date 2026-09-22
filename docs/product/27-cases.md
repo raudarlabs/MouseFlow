@@ -107,6 +107,18 @@ row (`user_schedule`) with the case's id in its arguments — there is no separa
 regression", because pausing, resuming, missed times, the local-zone arithmetic and *three failures in a row
 pause it* are all written once already ([24 — Schedules](24-schedules.md)).
 
+### Everything that runs by itself is on this page — 2026-09-22
+
+The third card, **What happens while nobody is watching**, holds two things that used to live on
+[Skills](06-skills.md): the strip listing every schedule on the account, and the way to put a **skill** on a
+clock. They came here when Skills became the second product's workshop, and they came here rather than onto
+a screen of their own because a case is already *a skill plus what must hold, run every night*. A skill on a
+clock is the same question with nothing asserted at the end.
+
+So the picker and the strip stand under *New case* rather than above the list: the reading order is what
+cases exist, how to write one, and then what out of all of it runs without you. The skill list is the one
+`New case` already reads, not a second copy of it.
+
 **The pointer, not a copy.** The queue row and the schedule row carry `args.__case = { id }` and nothing
 else: the checks and the inputs are read from the case at the moment the run starts. A case edited this
 morning is therefore checked tonight in its new form — the alternative silently tests last month's

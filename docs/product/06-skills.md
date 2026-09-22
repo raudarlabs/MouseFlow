@@ -145,7 +145,7 @@ hundreds of pixels.
 | **Use in AI** | The tool definition in three shapes, and a SKILL.md an agent can be handed. In the row rather than behind the "…", because it is what the product is for. |
 | **Open** | Desktop skills only. Adopts the flow into the Record console under `from_<id>` and navigates there, ready to play. Adopting the same one twice is a no-op rather than a second copy. |
 | *(browser skills)* | A note instead of a button: this one aims at page elements, so the extension is the half that can replay it. |
-| **Schedule** (clock) | Opens the form: a time of day with every-day/weekdays, or an interval; a label; and the browser's own time zone, shown rather than assumed. One icon and no word, because the last column is a fixed 20rem and a fifth label pushed **Withdraw** onto a second line. See [24 — Schedules](24-schedules.md). |
+| ~~**Schedule** (clock)~~ | **Gone from this row, 2026-09-22.** Putting a skill on a clock is done on [Tests](27-cases.md), where the schedules are now shown — see *Runs by itself* below. |
 | **Publish** / **Republish** | Puts it in the shared gallery. See [07 — Gallery](07-gallery.md). |
 | **Withdraw** | Only when there is a listing to take down, armed in the button. The row keeps its `withdrawn_at` and copies people already installed go on working. |
 | **More** | Its structure, a copy of it, and Delete. |
@@ -171,19 +171,19 @@ Two things it deliberately does **not** copy from that table:
 - **The whole selection goes in one push.** `push` already takes a list, and a loop over it would be N round
   trips that can half-succeed — leaving the person to work out which four of seven went.
 
-### Runs by itself
+### Runs by itself — moved to Tests, 2026-09-22
 
-Above the library, and drawn only when there is something in it: the schedules on the account, each with the
-rule in words, the next run **in the schedule's own zone**, the last outcome, and the counts — runs, missed,
-failed. Pause keeps the rule and runs nothing; Resume recomputes the next time rather than firing at once;
-Remove asks first and says the skill stays.
+This strip used to stand above the library, and the clock in each row opened the form that made a schedule.
+Both are on **[Tests](27-cases.md)** now. Everything else on this page belongs to the second product — the
+library, the procedure, the tool schema, publishing, pairing — and the schedules were the one thing on it
+that belonged to the first. A case is already *a skill plus what must hold, run every night*; a skill on a
+clock is the same question with nothing asserted at the end, so they stand together.
 
-The counts matter more here than anywhere else on this page, because a scheduled run happens only while that
-computer is awake and taking work — so *missed* is a real and common outcome, and it never becomes a run.
-The whole of it, including why the clock is the agent's own poll and not a cron, is
-[24 — Schedules](24-schedules.md).
+Nothing about a schedule changed, only where it is set and seen: the rule in words, the next run **in the
+schedule's own zone**, the last outcome, and the counts — runs, missed, failed. The whole of it, including
+why the clock is the agent's own poll and not a cron, is [24 — Schedules](24-schedules.md).
 
-![Runs by itself, above the skill library](../img/schedules.png)
+![Runs by itself — the screenshot predates the move to Tests](../img/schedules.png)
 
 ## Skill structure, and the three wire formats
 

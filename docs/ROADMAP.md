@@ -8,7 +8,7 @@ stood in three places "by comment"; `db/022`'s header contradicted the database 
 So: **change a status here, change the reasoning there.** If an item's shape changes, the plan is edited and
 this line follows — never the other way round.
 
-Updated **2026-09-21**. Live: `https://mouseflowapp.vercel.app`. Every step ends the same way —
+Updated **2026-09-22**. Live: `https://mouseflowapp.vercel.app`. Every step ends the same way —
 `npm test` zero FAIL, `npx tsc --noEmit -p web/tsconfig.json`, `npm run build` in `web/`, push, then one
 concrete thing named for the owner to check.
 
@@ -24,8 +24,12 @@ concrete thing named for the owner to check.
 
 ## Next up
 
-- [ ] **7 · Split Skills into Library (P2) and Runs (P1)** — the last screen still marked `both`, and the
-      only thing between here and two coherent products. [§5.1](SPLIT-PLAN.md)
+- [x] **7 · Skills is P2's, schedules are in Tests — done 2026-09-22.** The cut was a subtraction: all of
+      that screen is P2's workshop and P1 owned only the schedules. They moved into Tests as a third card
+      (strip + a skill picker, since the clock left the library row with them) rather than onto a fifth
+      screen — a case is already *a skill plus what must hold, run nightly*, and a skill on a clock is the
+      same question with nothing asserted. Name kept. **No screen is marked `both` any more.**
+      [§5.1](SPLIT-PLAN.md)
 - [ ] **8 · P2 dashboard asks `?half=did`** — the route half is one line, the page is not: without the run
       blocks removed it renders *0 runs, —% success, no failures*, which is absence shown as a negative
       fact. Needs eyes on the result. [§5.2](SPLIT-PLAN.md)

@@ -29,6 +29,8 @@ import { refreshLive } from '@/lib/live';
 import { useAgent } from '@/lib/store';
 import { useAccount } from '@/shell/AccountProvider';
 import { Page } from '@/shell/Surface';
+/* Переехало со страницы Skills вместе с полосой - см. RunsByItself ниже. */
+import { ScheduleFor, Schedules } from './Schedules';
 import { asDid, describe } from '@/features/create/describe';
 import { evidenceOf, verdictKind } from '@/features/create/verdict';
 import { Frames } from '@/features/create/Frames';
@@ -343,6 +345,84 @@ const NewCase = ({ onMade }: { onMade: (made: Case) => void }) => {
   );
 };
 
+/* ЧТО ИДЁТ САМО - карточка, переехавшая со страницы Skills (SPLIT-PLAN §5.1, шаг 7).
+ *
+ * ПОЧЕМУ СЮДА, А НЕ НА СВОЙ ЭКРАН. Решение владельца 2026-09-22: первый продукт - это четыре экрана, и
+ * пятый ради расписаний означал бы, что «оно идёт само» - отдельная тема. Это не отдельная тема: кейс уже
+ * определён как «скилл плюс то, что должно быть правдой, прогоняемое каждую ночь». Расписание скилла -
+ * тот же вопрос без утверждений в конце, и стоять им следует рядом.
+ *
+ * ПОЧЕМУ ЗДЕСЬ ЖЕ И СТАВИТСЯ. Часы уехали из строки скилла вместе с полосой, и оставить только показ
+ * значило бы убрать способ завести расписание вообще. Выбор скилла здесь уже есть - его делает «New case»
+ * из того же `flows`, - так что это тот же список, а не второй.
+ *
+ * ПОЛОСА САМА СЕБЯ НЕ РИСУЕТ, когда расписаний нет (см. Schedules.tsx), поэтому пустой аккаунт видит
+ * только строку выбора, а не рамку с обещанием.
+ */
+const RunsByItself = ({ onNote }: { onNote: (text: string, kind: 'good' | 'bad') => void }) => {
+  const { flows } = useAccount();
+  const skills = useMemo(() => flows.filter((one) => one.kind === 'created'), [flows]);
+  const [pick, setPick] = useState('');
+  /* Меняется, когда поставили новое: полоса перечитывает себя по ключу, а не надеется на перерисовку. */
+  const [key, setKey] = useState(0);
+
+  const chosen = skills.find((one) => one.id === pick) || null;
+
+  return (
+    <section className={CARD}>
+      {/* Ярлык НЕ повторяет заголовок полосы внутри. Оба говорили «Runs by itself», и на экране это
+        * читалось как два блока об одном - увидено при первом же взгляде на страницу. Полоса называет
+        * себя сама; карточке остаётся сказать, зачем она тут стоит. */}
+      <Typography variant="span" className={cn(LABEL, 'block')}>Without you</Typography>
+      <Typography variant="h2" weight="semibold" className="mt-0.5 text-[1.35rem]">
+        What happens while nobody is watching
+      </Typography>
+      <Typography variant="p" className="mt-1 max-w-[72ch] text-ink-inactive text-[0.85rem]">
+        Cases scheduled above appear here too, beside any skill you have put on a clock. A scheduled run
+        happens only while that computer is awake and taking work — so the commonest outcome is a missed
+        turn, and the row says so rather than staying silent.
+      </Typography>
+
+      {!skills.length ? (
+        <Typography variant="p" className="mt-3 text-[0.85rem] text-ink-inactive">
+          There is no skill made from a goal on this account yet. Make one on the Skills page, and it can be
+          put on a clock from here.
+        </Typography>
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Typography variant="span" className="text-[0.85rem] text-ink-secondary">Put a skill on a clock</Typography>
+          <select
+            value={pick}
+            onChange={(ev) => setPick(ev.target.value)}
+            aria-label="Skill to schedule"
+            className={cn(SELECT, 'max-w-[26rem] flex-1')}
+          >
+            <option value="">Choose a skill…</option>
+            {skills.map((one) => (
+              <option key={one.id} value={one.id}>{one.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {chosen && (
+        <ScheduleFor
+          flowId={chosen.id}
+          name={chosen.name}
+          onCancel={() => setPick('')}
+          onDone={(text) => {
+            setPick('');
+            onNote(text, 'good');
+            setKey((n) => n + 1);
+          }}
+        />
+      )}
+
+      <Schedules reloadKey={key} onNote={onNote} />
+    </section>
+  );
+};
+
 export const TestsView = () => {
   const [rows, setRows] = useState<Case[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -568,6 +648,11 @@ export const TestsView = () => {
         setRows((was) => [made, ...(was || [])]);
         setNote({ text: `Written down: “${made.name}”. Press Nightly to have it run by itself.`, kind: 'good' });
       }} />
+
+      {/* ПОД «New case», а не над списком кейсов: расписание - следствие того, что уже есть, а не первое,
+        * что делают на этой странице. Порядок чтения - какие кейсы есть, как написать новый, что из всего
+        * этого идёт без меня. */}
+      <RunsByItself onNote={(text, kind) => setNote({ text, kind })} />
     </Page>
   );
 };

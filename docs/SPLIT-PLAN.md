@@ -397,6 +397,29 @@ The Dashboard itself still shows both halves, so it asks for `both` — named in
 
 ### 5.1 Skills (`web/src/features/skills/SkillsView.tsx`, 1 879 lines) — the most divided screen in the app
 
+**Done 2026-09-22, and the cut was a subtraction rather than a division.** The paragraph below reads as
+though the screen splits in half. It does not: *everything* on it — the library, the procedure, the tool
+schema, SKILL.md, publish, pairing, "Ready to become a skill" — belongs to P2. P1 owned exactly one thing,
+**the schedules**, and they were a strip above the library plus a clock in every row.
+
+Two decisions from the owner, both on the day:
+
+- **The schedules go into Tests, not onto a fifth screen.** P1 being four screens is a decision, and a
+  screen for schedules would make "it runs by itself" a separate subject. It is not one: a case is already
+  defined as *a skill plus what must hold, run every night*. A skill on a clock is the same question with
+  nothing asserted at the end, and the two belong side by side.
+- **The name stays `Skills`.** `Library` names the shelf rather than what is on it, and renaming costs
+  everybody who already knows the address.
+
+So `/skills` is P2's, and **no screen is marked `both` any more** — that is the end of the screen split.
+Tests grew a third card, `RunsByItself`, holding the strip and a skill picker: the clock left the library
+row with the strip, and showing schedules without a way to make one would have removed the capability
+rather than moved it. The picker reads the same `flows` that `NewCase` already reads, so it is the same
+list and not a second one.
+
+`Schedules.tsx` moved to `features/tests/` with it. A file left under `features/skills/` that no Skills
+code imports is the sort of stale placement that misleads the next reader.
+
 It currently holds, in one page: the library of flows; rename/export/delete; **tool definitions** (name,
 description, JSON schema — "which is what a model is given", its own header says); publish to the gallery;
 mint a device token and pair the extension; "Ready to become a skill"; and the **Schedules** strip ("Runs by
