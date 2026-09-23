@@ -35,7 +35,7 @@
  * Флаг --site отдельный нарочно: тест, которому нужна сеть, в CI однажды упадёт не по своей вине, и его
  * выключат целиком вместе со всем остальным в этом файле.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
@@ -309,6 +309,72 @@ if (process.argv.includes('--site')) {
       !/never captured: which key/i.test(record + priv));
   } catch (err) {
     check('сайт отвечает', false, err.message);
+  }
+}
+
+/* -------------------------------------------- два оглавления документации против одного списка экранов
+ *
+ * ШАГ 15 ПЛАНА, и его условие готовности («check-promises.mjs по-прежнему зелёный») было слишком слабым:
+ * оно проходило и для двух оглавлений, набранных руками и разошедшихся с приложением на следующей неделе.
+ * Этот файл существует ровно против такого расхождения, так что оглавления сделаны ПРОВЕРЯЕМЫМИ: строка
+ * экрана несёт его МАРШРУТ, а кому маршрут принадлежит, знает web/src/lib/product.ts - тот самый единственный
+ * список, который читают меню, заголовок и тур.
+ *
+ * Значит третьего списка нет. Страница, положенная не в ту половину, падает здесь; страница, добавленная в
+ * набор и не попавшая ни в одно оглавление, падает здесь же. Руками остаётся только текст описания - то,
+ * ради чего документ и пишут.
+ *
+ * product.ts импортируется как есть: он намеренно без зависимостей, а node снимает типы сам (см. шапку
+ * web/check-web.mjs, где это уже сделано по той же причине). */
+
+group('документация: два оглавления и один список экранов - без третьего списка');
+{
+  const { productAt, PRODUCTS } = await import('../web/src/lib/product.ts');
+  const dir = fileURLToPath(new URL('../docs/product/', import.meta.url));
+  const pages = readdirSync(dir).filter((f) => /^\d\d-.+\.md$/.test(f)).sort();
+  const index = { do: read('../docs/product/do.md'), make: read('../docs/product/make.md') };
+
+  check('в наборе найдены страницы', pages.length >= 27, String(pages.length));
+  check('и оба оглавления читаются', !!index.do && !!index.make);
+
+  /* Строка экрана: ссылка на страницу и маршрут в обратных кавычках - ровно то, что печатает таблица. */
+  const rows = (text) => [...text.matchAll(/\|\s*\[[^\]]+\]\((\d\d-[a-z0-9-]+\.md)\)\s*\|\s*`(\/[a-z]*)`\s*\|/g)]
+    .map((m) => ({ page: m[1], route: m[2] }));
+
+  for (const id of ['do', 'make']) {
+    const mine = rows(index[id]);
+    check(`у половины ${id} разобраны строки экранов`, mine.length >= 6, String(mine.length));
+    for (const row of mine) {
+      /* САМ ФАЙЛ СУЩЕСТВУЕТ. Оглавление со ссылкой в никуда - худший вид оглавления: оно выглядит полным. */
+      check(`${id}: ${row.page} существует`, pages.includes(row.page));
+      /* И МАРШРУТ ПРИНАДЛЕЖИТ ЭТОЙ ЖЕ ПОЛОВИНЕ - по product.ts, а не по нашему мнению. */
+      check(`${id}: ${row.route} принадлежит этой же половине`, productAt(row.route) === id,
+        `${row.route} -> ${productAt(row.route)}`);
+    }
+  }
+
+  /* НИ ОДНОЙ ПОТЕРЯННОЙ СТРАНИЦЫ. Набор растёт; страница, не попавшая никуда, невидима для обоих читателей
+   * и заметна только тому, кто её написал. */
+  const listed = new Set([...pages].filter((one) =>
+    index.do.includes('(' + one + ')') || index.make.includes('(' + one + ')')));
+  const lost = pages.filter((one) => !listed.has(one));
+  check('каждая страница набора стоит хотя бы в одном оглавлении', lost.length === 0, lost.join(', '));
+
+  /* И В ОБЩЕМ ОГЛАВЛЕНИИ ТОЖЕ - оно остаётся полным списком, а не третьей половиной. */
+  const readme = read('../docs/product/README.md');
+  const notInReadme = pages.filter((one) => !readme.includes('(' + one + ')'));
+  check('и в README, который остаётся полным набором', notInReadme.length === 0, notInReadme.join(', '));
+  check('а README ведёт на оба оглавления', /\(do\.md\)/.test(readme) && /\(make\.md\)/.test(readme));
+
+  /* ИМЯ ПРОДУКТА - ИЗ product.ts, а не набрано в заголовке. Рабочие имена меняются решением владельца
+   * (§11.1), и оглавление, повторившее старое, - это ровно то расхождение, против которого файл написан. */
+  for (const id of ['do', 'make']) {
+    check(`заголовок половины ${id} называет её так же, как product.ts`,
+      index[id].includes(PRODUCTS[id].name), PRODUCTS[id].name);
+    /* И КАЖДОЕ ВЕДЁТ НА ДРУГОЕ: читатель, пришедший не туда, должен уйти по ссылке, а не решить, что
+     * страницы пропали. */
+    check(`и ${id} называет, что лежит в другой половине`,
+      new RegExp('\\(' + (id === 'do' ? 'make' : 'do') + '\\.md\\)').test(index[id]));
   }
 }
 

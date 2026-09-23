@@ -88,8 +88,18 @@ concrete thing named for the owner to check.
       watching" true there, and it costs a waiting state on `run_queue`, a pause the worker protocol can
       express, the same pause handled in PowerShell **and** Swift, and a timeout that fails with words.
       Bigger than 14a, and a safety gain for runs that have none today. [§7.2](SPLIT-PLAN.md)
-- [ ] **15 · Docs set split into two indexes** — each product's documentation should read as one product's.
-      [§12](SPLIT-PLAN.md)
+- [x] **15 · Docs set split into two indexes — done 2026-09-23.** `docs/product/do.md` and `make.md`,
+      over the **same** pages: copying the thirteen shared ones (protocol, both agents, extension, API,
+      data model, privacy, configuration, limits, operations) would have made thirteen files to edit
+      twice, and the first divergence would have been silent. `README.md` stays the whole set and points
+      at both. **The indexes cannot drift**: each screen row carries the screen's route, and
+      `check-promises.mjs` reads those routes and asks `web/src/lib/product.ts` — the one list the
+      sidebar, the header and the tour already read. Wrong half, dead link, page in neither index, or a
+      working name changed in code and not in the heading: all six fail the suite, proved by mutation.
+      Two things found on the way and fixed rather than noted: **§12 of the plan did not exist** — this
+      row had linked to it for four days — and the docs README pinned a commit and "agents 0.8.2" while
+      the agents were at 0.29.0, so the one line claiming to say how current the set was, was the most
+      out-of-date line in it. [§12](SPLIT-PLAN.md)
 
 ### Step 14, decided 2026-09-20 after reading OpenClaw (MIT)
 
@@ -146,6 +156,15 @@ Not in the sequence yet — these need shapes agreed before they are steps.
         loading a second address: reloading would cost exactly what pre-warming buys.
   - [ ] **First-run permissions in the panel** — deep link to the pane, a live re-check, two lines of
         state. Accessibility can never have an Allow button; the fallback words are the product.
+        **Deferred by the owner 2026-09-23**, after looking at how ChatGPT Computer Use does it — which
+        confirms the shape rather than offering a better one: their "Allow" opens the same System Settings
+        pane and floats a coach window over it with an arrow and the app icon **to be dragged into the
+        list**. No API grants either permission; the whole thing is a well-made instruction. Worth taking
+        when it is taken: open the exact pane (we have the deep link), float a window whose drag source is
+        our own `.app`, name the `+` button as the second path (a drag that misses is the common failure),
+        and re-check on return (`--probe` already answers). Same screenshot also showed **MouseFlow Agent
+        with Screen Recording on** — so the "screen MISSING" seen in step 12's live run was the temporary
+        binary, not a lost grant: TCC follows the signature, not the name.
 
 - [ ] **A packaged desktop app, Windows first** — the macOS half is already a compiled Swift binary with a
       menu-bar item; the Windows half is PowerShell hosting C# compiled at startup. Technical answer settled

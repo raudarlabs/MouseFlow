@@ -1184,7 +1184,7 @@ split to one query parameter; P1 runs on the local agent alone; Activity became 
 | ~~12~~ | **§6.1** `--record-only` + `canAct:false` — **done 2026-09-23**. Its own decision rather than a reuse of `Input.refusal()`, because that gate lets `activate` through on purpose; a third door (the courier) was found by running the binary | | | Met: every acting action and `/replay` refused in words, six reading ones still answered, the queue no longer claimed |
 | 13 | **§7** transcription route (server-held key, capped, rate-limited) | Dictation quality was the owner's ask, and it reverses a promise the code makes — so the route and the sentence ship together | `api/claude.js` is the shape to copy; a new `LIMITS` key | A goal can be dictated, and the UI says where the audio goes **before** the microphone is armed |
 | 14 | **§7.2** one messenger channel (Telegram), with the pairing rule | Cheaper than the PWA and brings push for free; the queue already does the hard half | One ingress that turns a message into a `run_queue` row; unknown senders paired, not served | A goal sent from a phone runs on the desk, and an unapproved sender cannot queue anything |
-| 15 | **§12** docs set split into two indexes | Each product's documentation should read as one product's | Two indexes over the existing pages | `agent/check-promises.mjs` still green |
+| ~~15~~ | **§12** docs set split into two indexes — **done 2026-09-23** | | Two indexes over the existing pages, each screen row carrying its route so `product.ts` decides the half | Met, and the done-condition was **too weak as written**: "still green" passes for two hand-typed lists that drift next week. Replaced by six assertions, all proved by mutation |
 
 ### Proposals — worth doing, nobody has asked for them yet
 
@@ -1246,3 +1246,45 @@ capability rather than divide one.
 8. **Which side of the wall moves — A, B or C in §4.1's correction?** This one blocks step 1, and step 1 is
    the repair the whole "one artifact, two products" claim rests on. It is a product decision because each
    answer changes what the person is asked for and when.
+
+---
+
+## 12. The documentation set, and why it is two indexes rather than two sets
+
+**The roadmap has linked to this section since 2026-09-18. It did not exist.** Step 15 pointed at
+`§12` of this plan and the plan stopped at §11 — a dangling reference that survived four days of the
+document being read, which is its own small argument for the rule below. Written 2026-09-23, with the step.
+
+**The problem.** `docs/product/` is 27 pages and one index, and the index is ordered by the number in the
+filename — which is the order they were written in, not an order anybody reads in. A person who has come
+for "record what I do and hand it to somebody" is offered test cases, schedules and a queue on the way;
+a person who has come for "make this run every night" is offered transcripts and a gallery. Neither is
+lost, exactly. Both are told the product is twice the size it is.
+
+**What was rejected: two sets of pages.** Copying the shared half — the protocol, the two agents, the
+extension, the API, the data model, privacy, configuration, limits, operations — would make thirteen pages
+that have to be edited twice. The first divergence would be silent and would live in whichever copy the
+next reader did not open. This repository has already paid for that shape twice (the goal cap in three
+places "agreeing by comment"; `db/022`'s header contradicting the database for six days), and the whole
+point of the split is that there is **one engine**.
+
+**What was done: two indexes over the same pages.** `do.md` and `make.md`. Each lists the screens of its
+half and then the parts underneath, which are the same files in both. `README.md` stays the whole set in
+one table and now points at both.
+
+**The part that makes it hold.** An index typed by hand is a second list of what belongs where, and a
+second list drifts — that is the failure this plan keeps naming. So the screen rows carry the screen's
+**route**, and `agent/check-promises.mjs` reads those routes out of the markdown and asks
+`web/src/lib/product.ts`, which is the single list the sidebar, the header and the tour already read. A
+page filed under the wrong half fails the suite. A page added to the set and put in neither index fails
+it. A working product name changed in `product.ts` and not in the heading fails it. What is left to human
+judgement is the sentence describing each page — which is the part a person should be writing.
+
+The files are named `do.md` and `make.md` after the product **ids**, not their names: the names are
+working titles awaiting §11.1, and naming the files after them would make the owner's rename a rename of
+files and every link to them.
+
+**Known limit.** Only screen pages are checkable this way, because only screens have routes. The thirteen
+shared pages are placed by judgement and are pinned only as "present in at least one index" — a page that
+belongs to one half and sits in both is not caught. That is the right side to be loose on: the cost is a
+reader seeing one page too many, not a reader missing one.

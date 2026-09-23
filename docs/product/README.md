@@ -1,7 +1,30 @@
 # MouseFlow — product documentation
 
-Every module, every option, and the reasoning behind each one. Written from the code as it stands at
-commit `17bbcc5` (agents 0.8.2, extension 0.16.2, web app on React 19 / Vite / TanStack Router).
+Every module, every option, and the reasoning behind each one, written from the code rather than from a
+plan for it.
+
+**No commit is named here any more.** This line used to pin one (`17bbcc5`, agents 0.8.2, extension
+0.16.2) and then sat unchanged while the agents reached 0.29.0 and the extension 0.17.0 — so the one
+sentence that claimed to say how current the set was, was the most out-of-date sentence in it. A version
+belongs in the page that documents that thing, where changing the thing and changing the number are the
+same edit. The stack is React 19, Vite and TanStack Router.
+
+## Two products, and two ways in
+
+This set documents **one engine sold as two products** (`docs/SPLIT-PLAN.md`). The table below is the
+**whole set**, in one place, and it stays that way — a page belongs to the product it is about, and the
+parts underneath belong to both.
+
+| | |
+|---|---|
+| [“Do it for me”](do.md) | The machine acts and the person watches: a goal, a queue, evidence, and a check that says whether it is still true tomorrow |
+| [“Make it reusable”](make.md) | The person acts and the machine watches: a recording, a transcript, a skill, a document, and where the week went |
+
+Each of those is an **index over these same pages**, not a second copy. The screen rows in them carry the
+screen's route, and `agent/check-promises.mjs` reads those routes and asks `web/src/lib/product.ts` — the
+one file that says which half a screen belongs to. So a page filed under the wrong product fails the
+suite, and a page added here and put in neither index fails it too. That is the whole reason the routes
+are printed: this repository has paid twice for two lists that agreed for a week.
 
 ## How this is organised
 
