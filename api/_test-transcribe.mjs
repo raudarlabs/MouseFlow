@@ -10,6 +10,9 @@
  *
  * Run: node api/_test-transcribe.mjs
  */
+/* CRLF НОРМАЛИЗУЕТСЯ ПРИ ЧТЕНИИ. На Windows рабочая копия приходит с \r\n, а пины написаны с \n:
+ * многострочный пин тогда не находит того, что стережёт, а одностроч­ный проходит, перестав проверять.
+ * Та же идиома, что в agent/test-contract.mjs, mcp/test-mcp.mjs и extension/check-extension.mjs. */
 import { readFileSync } from 'node:fs';
 
 import {
@@ -35,7 +38,7 @@ group('куда уходит звук - сказано, и сказано одн
   check('и она обещает обратное прямо', /no audio is sent anywhere/.test(STAYS_HERE));
 
   /* ДО МИКРОФОНА, А НЕ ПОСЛЕ - то есть спрашивается дешёвым GET-ом, который ничего не тратит. */
-  const route = readFileSync(new URL('./transcribe.js', import.meta.url), 'utf8');
+  const route = readFileSync(new URL('./transcribe.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('маршрут отдаёт её GET-ом, без траты и без звука',
     /if \(req\.method === 'GET'\)/.test(route) && /where: WHERE_AUDIO_GOES/.test(route));
   check('и GET стоит раньше проверки POST - иначе за фразой пришлось бы слать звук',
@@ -50,7 +53,7 @@ group('имя модели - из окружения, и отсутствие э
   check('названное - берётся как есть', modelFrom({ OPENAI_TRANSCRIBE_MODEL: 'whisper-1' }) === 'whisper-1');
   /* НИКАКОГО УМОЛЧАНИЯ В ИСХОДНИКЕ. Зашитое имя работало бы до дня, когда оно меняется, а потом маршрут
    * отвечал бы чужим «model not found», за которым никто не догадается искать эту строку. */
-  const mod = readFileSync(new URL('./_transcribe.mjs', import.meta.url), 'utf8');
+  const mod = readFileSync(new URL('./_transcribe.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('и в модуле нет зашитого имени распознавателя',
     !/whisper-\d|gpt-4o-transcribe|['"]\w+-transcribe['"]/.test(mod.replace(/\/\*[\s\S]*?\*\//g, '')));
   /* И ОТКАЗ ГОВОРИТ, ГДЕ ВЗЯТЬ ИМЯ. Ответ «не настроено» без адреса - это тупик с вежливой формулировкой. */
@@ -94,8 +97,8 @@ group('что вернулось: проза, которая поедет в ц�
 
 group('маршрут: ключ на сервере, счёт до отправки, слова верха не выброшены');
 {
-  const route = readFileSync(new URL('./transcribe.js', import.meta.url), 'utf8');
-  const mod = readFileSync(new URL('./_transcribe.mjs', import.meta.url), 'utf8');
+  const route = readFileSync(new URL('./transcribe.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const mod = readFileSync(new URL('./_transcribe.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
   check('без входа не распознаём', /if \(!who\) return fail\(res, 401/.test(route));
   /* ПОТОЛОК ДО ОТПРАВКИ, а форма - до потолка: отказанный звук ничего не стоил, и считать его значило бы
@@ -109,7 +112,7 @@ group('маршрут: ключ на сервере, счёт до отправ�
     /api\.openai\.com\/v1\/audio\/transcriptions/.test(mod)
       && !/api\.openai\.com/.test(route));
   check('и мессенджер зовёт ту же функцию, а не наш же HTTP',
-    /recognise\(bytes, update\.voice\.mime\)/.test(readFileSync(new URL('./telegram.js', import.meta.url), 'utf8')));
+    /recognise\(bytes, update\.voice\.mime\)/.test(readFileSync(new URL('./telegram.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')));
   /* СЛОВА ВЕРХА НЕ ВЫБРАСЫВАЮТСЯ - тот же урок, что был оплачен «HTTP 401» на плане из телеграма. */
   check('отказ распознавателя пересказывает его собственную причину',
     /the recogniser refused \(HTTP \$\{upstream\.status\}\): \$\{why\}/.test(mod));
@@ -120,8 +123,8 @@ group('маршрут: ключ на сервере, счёт до отправ�
 
 group('голосовое в мессенджере - та же диктовка, приехавшая файлом');
 {
-  const tg = readFileSync(new URL('./_telegram.mjs', import.meta.url), 'utf8');
-  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8');
+  const tg = readFileSync(new URL('./_telegram.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
   check('и voice, и audio читаются как звук', /m\.voice[\s\S]{0,120}m\.audio/.test(tg));
   /* Телеграм почти всегда присылает ogg/opus у голосовых, но «почти» - не «всегда», а пустой тип у нас
@@ -154,7 +157,7 @@ group('голосовое в мессенджере - та же диктовка
  * то по-английски, список - это переключатель, который он обязан не забыть. */
 group('язык диктовки: «авто» у сервера, настоящий - у браузера');
 {
-  const speech = readFileSync(new URL('../web/src/features/create/dictation.ts', import.meta.url), 'utf8');
+  const speech = readFileSync(new URL('../web/src/features/create/dictation.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('«авто» объявлено', /export const AUTO = 'auto';/.test(speech));
   check('и оно умолчание - не догадка о том, на каком языке заговорят',
     /return AUTO;\n\}/.test(speech));
@@ -170,7 +173,7 @@ group('язык диктовки: «авто» у сервера, настоящ
     /next === 'browser' && dictationLang\(\) === AUTO/.test(speech)
       && /dictationVia\(\) === 'browser' && kept === AUTO/.test(speech));
   /* И ВЫБОР ЕСТЬ ТАМ, ГДЕ НАПИСАН ЯЗЫК. Надпись без способа её изменить - это то, с чего начался вопрос. */
-  const panel = readFileSync(new URL('../web/src/features/panel/PanelView.tsx', import.meta.url), 'utf8');
+  const panel = readFileSync(new URL('../web/src/features/panel/PanelView.tsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('и в панели язык выбирается, а не только называется',
     /dictation\.setLang\(ev\.target\.value\)/.test(panel) && /dictation\.choices\.map/.test(panel));
 

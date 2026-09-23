@@ -25,6 +25,9 @@
  *
  * Run: node api/_test-step.mjs
  */
+/* CRLF НОРМАЛИЗУЕТСЯ ПРИ ЧТЕНИИ. На Windows рабочая копия приходит с \r\n, а пины написаны с \n:
+ * многострочный пин тогда не находит того, что стережёт, а одностроч­ный проходит, перестав проверять.
+ * Та же идиома, что в agent/test-contract.mjs, mcp/test-mcp.mjs и extension/check-extension.mjs. */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { MAX_STEPS, MIN_SHOT_W, advance, startLoop } from './_step.mjs';
@@ -767,7 +770,7 @@ group('the window list carries where each window is');
 group('press_key promises exactly what the agent can do');
 {
   const key = TOOLS.find((t) => t.name === 'press_key');
-  const table = readFileSync(fileURLToPath(new URL('../agent/mouseflow-agent.ps1', import.meta.url)), 'utf8');
+  const table = readFileSync(fileURLToPath(new URL('../agent/mouseflow-agent.ps1', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 
   /* WHAT THIS GROUP IS FOR, restated once the answer changed - because that is when a test either becomes an
    * invariant or becomes a fossil.
@@ -802,7 +805,7 @@ group('press_key promises exactly what the agent can do');
   check('and that Win is not a way to say Command',
     /no such key on macOS/i.test(key.description) && /never reach for it to mean Command/.test(key.description));
   /* И агент отказывает теми же словами, а не своими: две формулировки одного правила - это два правила. */
-  const swift = readFileSync(fileURLToPath(new URL('../agent/mouseflow-agent.swift', import.meta.url)), 'utf8');
+  const swift = readFileSync(fileURLToPath(new URL('../agent/mouseflow-agent.swift', import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
   check('and the agent refuses it in the same terms',
     /there is no Windows key on macOS/.test(swift) && /`ctrl` already means Command/.test(swift));
   /* And the description stops listing absences, because listing one that no longer exists is worse than

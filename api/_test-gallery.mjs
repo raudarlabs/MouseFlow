@@ -13,6 +13,9 @@
  *
  * Запуск: node api/_test-gallery.mjs
  */
+/* CRLF НОРМАЛИЗУЕТСЯ ПРИ ЧТЕНИИ. На Windows рабочая копия приходит с \r\n, а пины написаны с \n:
+ * многострочный пин тогда не находит того, что стережёт, а одностроч­ный проходит, перестав проверять.
+ * Та же идиома, что в agent/test-contract.mjs, mcp/test-mcp.mjs и extension/check-extension.mjs. */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { flowFor } from './_flow-for.mjs';
@@ -26,7 +29,7 @@ const check = (name, cond, detail) => {
 };
 const group = (t) => console.log('\n' + t);
 
-const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8');
+const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), 'utf8').replace(/\r\n/g, '\n');
 
 /* ПРАВИЛА МАРШРУТА, вырезанные из него. Если публикацию ужесточат, ужесточится и проверка - потому что
  * проверяется тот же текст, а не его пересказ. */

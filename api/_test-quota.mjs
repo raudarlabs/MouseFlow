@@ -9,6 +9,9 @@
  *
  * Запуск: node api/_test-quota.mjs
  */
+/* CRLF НОРМАЛИЗУЕТСЯ ПРИ ЧТЕНИИ. На Windows рабочая копия приходит с \r\n, а пины написаны с \n:
+ * многострочный пин тогда не находит того, что стережёт, а одностроч­ный проходит, перестав проверять.
+ * Та же идиома, что в agent/test-contract.mjs, mcp/test-mcp.mjs и extension/check-extension.mjs. */
 import { readFileSync, readdirSync } from 'node:fs';
 import { freeingOrder, heldElsewhere } from './_quota.mjs';
 import { LIMITS } from './_spend.mjs';
@@ -63,7 +66,7 @@ check('и запись без id тоже',
 
 group('у каждого потолка есть продукт, и каждый потолок кто-то спрашивает');
 {
-  const spend = readFileSync(new URL('./_spend.mjs', import.meta.url), 'utf8');
+  const spend = readFileSync(new URL('./_spend.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const keys = Object.keys(LIMITS);
 
   /* SPLIT-PLAN §8. Три значения, и `both` - не «не решили», а общая инфраструктура. */
@@ -81,7 +84,7 @@ group('у каждого потолка есть продукт, и каждый
   const asked = new Set();
   for (const name of readdirSync(dir)) {
     if (!/\.(mjs|js)$/.test(name) || name.startsWith('_test')) continue;
-    const text = readFileSync(new URL(name, dir), 'utf8');
+    const text = readFileSync(new URL(name, dir), 'utf8').replace(/\r\n/g, '\n');
     /* НЕ `[^)]*?`: у api/claude.js первым аргументом стоит `neon(process.env.DATABASE_URL)`, и запрет на
      * скобку обрывал совпадение на его закрывающей - ключ `claude` не находился, и проверка объявляла
      * его несторожащим. Поймано первым же запуском. */

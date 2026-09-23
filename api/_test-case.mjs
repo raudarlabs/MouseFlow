@@ -10,6 +10,9 @@
  *
  * Run: node api/_test-case.mjs
  */
+/* CRLF НОРМАЛИЗУЕТСЯ ПРИ ЧТЕНИИ. На Windows рабочая копия приходит с \r\n, а пины написаны с \n:
+ * многострочный пин тогда не находит того, что стережёт, а одностроч­ный проходит, перестав проверять.
+ * Та же идиома, что в agent/test-contract.mjs, mcp/test-mcp.mjs и extension/check-extension.mjs. */
 import { readFileSync } from 'node:fs';
 import {
   CASE_KEY, EXPECTS_MAX, VERDICTS, caseGoal, caseIdOf, caseVerdict, expectLine, lateBound, readExpects,
@@ -300,7 +303,7 @@ group('КРУГ МЕЖДУ КЕЙСОМ И СКИЛЛОМ - чеки едут т
     procedureWith({ procedure: { steps: [] } }, [expect('w')]) === null);
 
   /* И ХЕНДЛЕР ЗОВЁТ ИМЕННО ЭТИ ДВЕ - функция, которую никто не зовёт, это то же самое, что её нет. */
-  const src = readFileSync(new URL('./cases.js', import.meta.url), 'utf8');
+  const src = readFileSync(new URL('./cases.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('создание кейса сеет через seedFrom', /const sow = seedFrom\(body\.expects, found\.skill\);/.test(src));
   check('и судит посеянное тем же readExpects', /readExpects\(sow\.list,/.test(src));
   /* Посеянное обратно не пишется: оно оттуда и пришло, а запись сдвинула бы updated_at ни за чем. */
@@ -318,7 +321,7 @@ group('КРУГ МЕЖДУ КЕЙСОМ И СКИЛЛОМ - чеки едут т
    * представления о том, что такое кейс, ровно как и два разных судьи. */
   /* Каталог тулов, а не mcp.js: половины разъехались по файлам на шаге 2 (SPLIT-PLAN §4.2), и дверь
    * тула теперь живёт здесь. */
-  const mcp = readFileSync(new URL('./_mcp-tools.mjs', import.meta.url), 'utf8');
+  const mcp = readFileSync(new URL('./_mcp-tools.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('и тул сеет той же функцией, что страница',
     /const sow = seedFrom\(args && args\.expects, entry\);/.test(mcp)
       && /readExpects\(sow\.list, checksFor\(on\)\)/.test(mcp));

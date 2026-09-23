@@ -6,6 +6,9 @@
  *
  * Run: node api/_test-telegram.mjs
  */
+/* CRLF НОРМАЛИЗУЕТСЯ ПРИ ЧТЕНИИ. На Windows рабочая копия приходит с \r\n, а пины написаны с \n:
+ * многострочный пин тогда не находит того, что стережёт, а одностроч­ный проходит, перестав проверять.
+ * Та же идиома, что в agent/test-contract.mjs, mcp/test-mcp.mjs и extension/check-extension.mjs. */
 import { readFileSync } from 'node:fs';
 
 import {
@@ -228,7 +231,7 @@ group('канал назван один раз');
  * чтением исходника - и закреплено МЕСТО, а не слово. */
 group('маршрут: четыре вещи, которые ломаются молча');
 {
-  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8');
+  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
   /* СЕКРЕТ ПЕРЕД ВСЕМ ОСТАЛЬНЫМ. Адрес функции узнать легко, и заголовок телеграма - единственное, что
    * отличает его от того, кто адрес узнал. Маршрут «пока без проверки» - это открытая дверь к мыши. */
@@ -281,7 +284,7 @@ group('маршрут: четыре вещи, которые ломаются м
  * молчание читается как «наверное, ещё идёт», и читается так весь день. */
 group('ни одно закрытие работы не остаётся беззвучным');
 {
-  const worker = readFileSync(new URL('./_mcp-worker.mjs', import.meta.url), 'utf8');
+  const worker = readFileSync(new URL('./_mcp-worker.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const lines = worker.split('\n');
   /* Закрытием считается любой UPDATE, ставящий терминальное состояние, - включая то, которое вычисляется
    * выражением: `${ok ? 'done' : 'failed'}` это закрытие ровно так же, как литерал. */
@@ -302,7 +305,7 @@ group('ни одно закрытие работы не остаётся без�
 
   /* ОТМЕНА СО СТРАНИЦЫ - ТОЖЕ ИСХОД. Нажавший кнопку получает ответ маршрута; тот, кто держит телефон,
    * не видит ничего и считает, что прогон идёт. Это два разных человека, даже когда это один человек. */
-  const mcp = readFileSync(new URL('./mcp.js', import.meta.url), 'utf8');
+  const mcp = readFileSync(new URL('./mcp.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('и отмена со страницы доходит до чата',
     /returning id, claimed_at, args/.test(mcp) && /await tellChat\(killed\[0\]\.args/.test(mcp));
 
@@ -353,7 +356,7 @@ group('правка плана держится на ответе, а не на 
   check('незнакомец не может править чужой план',
     routeOf({ row: null, update: reply('no, in Safari', planned) }).act === 'greet');
 
-  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8');
+  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   /* ПРАВКА ДОПИСЫВАЕТСЯ К ПРЕЖНЕЙ ЦЕЛИ, А НЕ ЗАМЕНЯЕТ ЕЁ. «Нет, в Safari» само по себе не задача; смысл
    * есть только рядом с прежней целью - в которой уже лежит файл и надиктованное. */
   check('прежняя цель берётся из черновика и несёт правку',

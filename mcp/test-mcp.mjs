@@ -481,10 +481,14 @@ group('the HTTPS route: one account, and no way to name another');
  * «он лежит в этом файле». Поэтому здесь склейка: пин, привязанный к имени файла, сломался бы на каждом
  * последующем шаге плана, ничего при этом не охраняя. То, что половины РАЗДЕЛЕНЫ, охраняется отдельным
  * пином ниже - он и есть настоящий страж этого шага. */
+/* CRLF НОРМАЛИЗУЕТСЯ ЗДЕСЬ ТОЖЕ, как в read() ниже. На Windows рабочая копия приходит с \r\n, а пины
+ * написаны с \n: многострочный пин тогда не находит того, что стережёт. Без этого «and an unreadable stamp
+ * leaves the worker able to work» падал на Windows, хотя код, который он стережёт, стоял на месте. */
 const mcpWhole = (rel) => (String(rel).endsWith('api/mcp.js')
   ? ['../api/mcp.js', '../api/_mcp-tools.mjs', '../api/_mcp-worker.mjs']
-    .map((f) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8')).join('\n')
-  : readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8'));
+    .map((f) => readFileSync(fileURLToPath(new URL(f, import.meta.url)), 'utf8')
+      .replace(/\r\n/g, '\n')).join('\n')
+  : readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8').replace(/\r\n/g, '\n'));
 
 const route = mcpWhole('../api/mcp.js');
 check('the caller is resolved by credential, once', /whoIsCalling\(req, sql\)/.test(route));
