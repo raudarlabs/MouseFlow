@@ -26,6 +26,10 @@ concrete thing named for the owner to check.
 
 *The split is finished. What follows is the rest of the sequence.*
 
+- [x] **P1 gets Skills; Tests leaves the menu — done 2026-09-28.** Saved-from-chat skills at `/saved`: run
+      now, repeat on a clock, runs as dots, delete. Cases stay without a UI (backend, MCP, direct `/tests`).
+      Reverses the menu half of step 7. [SPLIT-PLAN §5.1](SPLIT-PLAN.md)
+
 - [x] **Create reads like a chat — done 2026-09-28.** History moved out of the page into the sidebar
       (**Recent**, ten goal runs, P1 only; **See all** → Logs, whose rows now have **Open**). A past run
       opens at `/create/$runId` above the composer, full width, with everything the old column could do.

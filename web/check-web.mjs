@@ -177,7 +177,7 @@ group('порядок меню закреплён по каждому проду
   const ORDER = {
     /* Первый продукт - это ПРОВЕРКИ: попросил, прочитал журнал, сложил в навык, проверяешь. Галерея,
      * дашборд и команды ушли во второй - решение владельца от 2026-09-18, см. комментарии в product.ts. */
-    do: '/create,/logs,/tests',
+    do: '/create,/logs,/saved',
     make: '/record,/skills,/docs,/dashboard,/team,/gallery',
   };
   for (const id of PRODUCT_IDS) {
@@ -338,6 +338,30 @@ group('история прогонов - в сайдбаре, а открыты�
     /const on = to === '\/create' \? path === to : path\.startsWith\(to\);/.test(side));
   check('и на Logs прогон открывается тем же адресом',
     /navigate\(\{ to: '\/create\/\$runId', params: \{ runId: e\.run\.id \} \}\)/.test(logs));
+}
+
+group('у первого продукта - Skills вместо Tests: сохранить, запустить, поставить на часы');
+{
+  /* Владелец, 2026-09-28. Кейсы остаются в продукте без интерфейса - это проверено ниже тем, что маршрут и
+   * экран живы, а пункта меню нет. */
+  const bare = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\s*\}/g, '');
+  const view = bare(read('src/features/saved/SavedSkillsView.tsx'));
+  const saved = SCREENS.find((s) => s.to === '/saved');
+  const tests = SCREENS.find((s) => s.to === '/tests');
+  check('Skills - экран первого продукта, в меню', !!saved && saved.owner === 'do' && saved.nav === true
+    && saved.label === 'Skills', show(saved));
+  check('а Tests жив по адресу, но в меню его нет', !!tests && tests.nav === false
+    && /path: '\/tests', component: TestsView/.test(main), show(tests));
+  check('мастерская второго продукта не тронута', SCREENS.find((s) => s.to === '/skills')?.owner === 'make');
+  check('здесь - скиллы из цели, а не записи', /flows\.filter\(\(one\) => one\.kind === 'created'\)/.test(view));
+  check('запуск - через очередь, а не своим путём', /await runSkill\(flow\.id, given\)/.test(view)
+    && /'\/api\/queue'/.test(read('src/lib/api.ts')));
+  check('расписания - те же, что стояли на Tests, а не вторая копия',
+    /from '@\/features\/tests\/Schedules'/.test(view) && /<ScheduleFor\b/.test(view) && /<Schedules\b/.test(view));
+  check('прогон скилла открывается тем же экраном, что Recent',
+    /to="\/create\/\$runId"/.test(view) && /runsOf\.get\(flow\.id\)/.test(view));
+  check('удаление спрашивает дважды и называет отказ',
+    /<ArmedButton\b/.test(view) && /if \(saved\.problems\?\.length\) throw new Error/.test(view));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

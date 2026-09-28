@@ -185,20 +185,27 @@ export const SCREENS: Screen[] = [
         + 'output of this half of the product, and it is yours to edit, version and send.',
     } },
 
-  /* СРАЗУ ЗА SKILLS, потому что кейс делается из скилла и читается рядом с ним: «что у меня есть» и «что
-   * из этого проверяется каждую ночь» - два вопроса, которые задают друг за другом. */
+  /* SKILLS ПЕРВОГО ПРОДУКТА - вместо Tests в меню (владелец, 2026-09-28): «может просто сделаем скилы? Чтобы
+   * юзер из чата мог их сохранить, а тут был интерфейс, где их можно легко ставить на повтор». Адрес свой,
+   * а не /skills: тот - мастерская второго продукта, и здесь о тех же строках спрашивают другое - «сделай
+   * ещё раз, и вот когда». Ярлык тот же, потому что человек называет их одинаково. */
   {
-    to: '/tests',
-    label: 'Tests',
-    title: 'Tests',
+    to: '/saved',
+    label: 'Skills',
+    title: 'Skills',
     owner: 'do',
     nav: true,
     tour: {
-      title: 'Prove it still works',
-      body: 'A case is one question — "is this still true?" — asked on a schedule. It keeps the frames it '
-        + 'saw, so a failure comes with the evidence rather than with a claim.',
+      title: 'Do it again, or on a clock',
+      body: 'A run that worked can be saved as a skill. Run it again with one click, or have it repeat at a '
+        + 'time of day — it runs by itself while the computer is awake.',
     },
   },
+  /* TESTS - БЕЗ ПУНКТА МЕНЮ (владелец, 2026-09-28): кейсы остаются в продукте без интерфейса - таблицы,
+   * api/cases.js и тулы mouseflow_case* на месте, а кейс из чужой системы учёта идёт через mouseflow_do с
+   * `expect`. Экран жив по прямому адресу: на аккаунте есть расписание кейса, и ссылка на него не должна
+   * вести в никуда. */
+  { to: '/tests', label: 'Tests', title: 'Tests', owner: 'do', nav: false },
   /* Asking about the numbers happens on the page that shows them, not at its own address.
    *
    * И это экран ТОЛЬКО второго продукта, решение владельца от 2026-09-18. Дашборд отвечает на вопрос «на

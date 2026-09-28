@@ -315,7 +315,7 @@ export const ActivityView = () => {
         </div>
         {queued.length + upcoming.length === 0 ? (
           <Typography variant="p" className="mt-2 text-[0.88rem] text-ink-inactive">
-            Nothing is waiting. Schedules that are paused stay on <button type="button" className="text-brand-primary underline-offset-2 hover:underline" onClick={() => void navigate({ to: '/skills' })}>Skills → Runs by itself</button>.
+            Nothing is waiting. Schedules that are paused stay on <button type="button" className="text-brand-primary underline-offset-2 hover:underline" onClick={() => void navigate({ to: '/saved' })}>Skills</button>, under what runs by itself.
           </Typography>
         ) : (
           <ul className="mt-3 flex flex-col gap-1.5 overflow-y-auto pe-1" style={{ maxHeight: LIST_HEIGHT }}>

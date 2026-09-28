@@ -397,6 +397,15 @@ The Dashboard itself still shows both halves, so it asks for `both` — named in
 
 ### 5.1 Skills (`web/src/features/skills/SkillsView.tsx`, 1 879 lines) — the most divided screen in the app
 
+> **Revisited 2026-09-28 (owner):** *"Tests is too complicated — let's just have skills: saved from the chat,
+> and a screen where they are easy to put on repeat and schedule."* The account agreed: 0 cases, 83 skills,
+> 24 schedules. P1 now has its own **Skills** at `/saved` (`SavedSkillsView`): goal skills only, Run now
+> through the queue (`POST /api/queue {skill}`, missing values refused before queueing), Repeat with the same
+> `ScheduleFor`, the last ten runs as dots that open at `/create/$runId`, Delete asked twice, and the
+> schedules strip below. `/skills` stays P2's workshop — two views of the same rows. **Tests leaves the menu
+> but not the product**: route, `api/cases.js`, `mouseflow_case*` and the tables stay, and a case kept in
+> another system runs through `mouseflow_do` with `expect`.
+
 **Done 2026-09-22, and the cut was a subtraction rather than a division.** The paragraph below reads as
 though the screen splits in half. It does not: *everything* on it — the library, the procedure, the tool
 schema, SKILL.md, publish, pairing, "Ready to become a skill" — belongs to P2. P1 owned exactly one thing,

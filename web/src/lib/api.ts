@@ -602,6 +602,16 @@ export const caseRun = (id: string) =>
     method: 'POST',
   });
 
+/* ЗАПУСТИТЬ СОХРАНЁННЫЙ СКИЛЛ - через очередь, как и всё, что делается не на глазах (api/queue.js). Работа
+ * переживает вкладку; прогон ложится в журнал под скиллом. Отказ («машины нет», «занята», «не хватает
+ * значения») приезжает словами. */
+export const runSkill = (skill: string, args: Record<string, string> = {}) =>
+  call<{ ok: true; id: string }>('/api/queue', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ skill, arguments: args }),
+  });
+
 export const caseRemove = (id: string) =>
   call<{ ok: true; deleted: true }>(`/api/cases?case=${encodeURIComponent(id)}`, { method: 'DELETE' });
 

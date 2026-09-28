@@ -18,14 +18,14 @@
  */
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import {
-  FlaskConical,
-  FileText,
   ChartNoAxesColumn,
   ChevronsUpDown,
   CircleDot,
+  FileText,
   FolderOpen,
   LayoutGrid,
   PanelLeft,
+  Repeat,
   ScrollText,
   Sparkles,
   Users,
@@ -62,7 +62,7 @@ const ICONS: Record<string, LucideIcon> = {
   '/create': Sparkles,
   '/logs': ScrollText,
   '/skills': FolderOpen,
-  '/tests': FlaskConical,
+  '/saved': Repeat,
   '/docs': FileText,
   '/dashboard': ChartNoAxesColumn,
   '/team': Users,

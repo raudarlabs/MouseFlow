@@ -785,7 +785,7 @@ check('and it is in the sidebar, not buried in a dialog',
    с тех пор находил бы ноль пунктов и проходил бы, ничего не сравнив. Порядок здесь - объединение двух
    продуктов в порядке объявления, то есть ровно сегодняшнее меню; по каждому продукту в отдельности он
    закреплён в web/check-web.mjs. */
-const NAV_ORDER = '/record,/create,/logs,/skills,/docs,/tests,/dashboard,/team,/gallery';
+const NAV_ORDER = '/record,/create,/logs,/skills,/docs,/saved,/dashboard,/team,/gallery';
 const navNow = SCREENS.filter((s) => s.nav).map((s) => s.to).join();
 check('порядок в сайдбаре тот, о котором договорились, и Gallery последняя',
   navNow === NAV_ORDER, navNow);
@@ -5385,7 +5385,7 @@ group('Activity отвечает целиком: идёт, ждёт, было - 
   check('и свой прогон не рисуется второй карточкой «by itself»',
     /if \(job\.source === 'you'\) \{[\s\S]{0,700}?continue;\s*\n\s*\}/.test(create));
   check('источник работы - отдельное поле ответа, и страница Create - это «you»',
-    /source: q\.schedule_id \? 'schedule' : q\.tool_name === 'page' \? 'you' : 'chat'/.test(route)
+    /source: q\.schedule_id \? 'schedule'\s*: q\.tool_name === 'page' \|\| String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\) \? 'you' : 'chat'/.test(route)
       && /source: 'schedule' \| 'you' \| 'chat';/.test(client));
   check('один id на строку очереди, журнал, кадры и скилл - посчитан один раз',
     (create.match(/const runId = `dr_\$\{startedAt\.replace/g) || []).length === 1);
@@ -5561,9 +5561,12 @@ group('тест-кейс: утверждения заранее, вердикт 
    * ним. С 2026-09-22 Skills принадлежит второму продукту (шаг 7), и «рядом» стало невозможным - Tests
    * теперь последний экран первого. Довод не исчез, он переехал внутрь страницы: выбор скилла стоит и в
    * «New case», и в полосе расписаний. */
-  check('страница - маршрут и последний пункт меню первого продукта',
+  /* С 2026-09-28 пункта меню у Tests нет (владелец: кейсы - в продукте без интерфейса), а последний пункт
+   * первого продукта - его Skills. Сам экран жив по адресу: на аккаунте есть расписание кейса. */
+  check('страница - маршрут без пункта меню, и последний пункт первого продукта - его Skills',
     /path: '\/tests'/.test(read('../web/src/main.tsx'))
-      && screensFor('do').at(-1).to === '/tests'
+      && !screensFor('do').some((s) => s.to === '/tests')
+      && screensFor('do').at(-1).to === '/saved'
       && !screensFor('do').some((s) => s.to === '/skills'));
   /* ТРИ карточки: кейсы, новый кейс, и то, что идёт само. Третья переехала со страницы Skills. */
   check('три карточки в том же ободке, что у библиотеки',
@@ -6280,6 +6283,27 @@ group('mouseflow_do: test case in, verdict out, nothing stored');
   check('the report may name where the run was logged, and only in the form the extension writes it',
     /args = args \|\| \$\{JSON\.stringify\(run \? \{ \[RUN_KEY\]: run \} : \{\}\)\}::jsonb/.test(worker)
       && /\^run_\[A-Za-z0-9:\.\\-\]\{1,60\}\$/.test(worker));
+}
+
+/* «RUN NOW» С ЭКРАНА SKILLS ПЕРВОГО ПРОДУКТА - через ту же очередь, что панель и телеграм (2026-09-28). */
+group('a saved skill runs from the page through the queue, and says what it lacks first');
+{
+  const bare = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
+  const door = bare(read('../api/queue.js'));
+  const at = door.indexOf('if (body.skill !== undefined) {');
+  const block = door.slice(at, door.indexOf("const goal = String(body.goal || '').trim();", at));
+  check('the skill is looked up on the caller\'s own account',
+    /where user_id = \$\{who\.id\} and client_id = \$\{skillId\} and deleted_at is null/.test(block));
+  check('missing values are refused before anything is queued',
+    block.indexOf('missingParams(') > 0 && block.indexOf('missingParams(') < block.indexOf('queueOne(')
+      && /const missing = missingParams\([^;]+;\s*if \(missing\.length\) \{\s*return fail\(res, 400,/.test(block));
+  check('and it is queued under its own flow id, with the refusals queueOne already words',
+    /flowId: flow\.client_id,/.test(block) && /if \(put\.why\)/.test(block));
+  /* 'page' ровно - это живые зеркала со страницы; их двери трогают строки по точному имени. */
+  check('its job name is not the live mirror\'s, and Logs still reads it as "you"',
+    /toolName: `page:\$\{flow\.name\}`/.test(block)
+      && /String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\) \? 'you'/.test(read('../api/mcp.js')));
+  check('a recording is never given a gate - nobody could answer it', /flow\.kind === 'created' && asked === ONE_WAY/.test(block));
 }
 
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by

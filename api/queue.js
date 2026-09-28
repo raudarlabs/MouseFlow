@@ -1,6 +1,7 @@
 /* Одна просьба в очередь, с кукой страницы - и один вопрос «чем кончилось».
  *
  *   POST /api/queue        { goal: "..." }   -> { ok: true, id: "q_..." }
+ *   POST /api/queue        { skill: "id", arguments? } -> то же, для сохранённого скилла (экран Skills в P1)
  *   GET  /api/queue?id=q_… -> { ok: true, state, done, good, said }
  *
  * ЗАЧЕМ ОТДЕЛЬНАЯ ДВЕРЬ. Та же причина, что у schedules.js, cases.js и memory.js: читает и пишет
@@ -27,6 +28,7 @@ import { cors } from './_cors.mjs';
 import { GOAL_MAX } from './_brain.mjs';
 import { DESKTOP_GOAL, queueOne } from './_queue.mjs';
 import { ONE_WAY } from './_brain.mjs';
+import { missingParams } from '../extension/skills.js';
 /* Слова ответа - те же, что уезжают из телеграма: модель читает их как указание, и две редакции одного
  * указания однажды скажут разное. */
 import { HOLD_GO as GO, HOLD_HALT as HALT } from './_telegram.mjs';
@@ -133,6 +135,41 @@ async function handler(req, res) {
       `;
       if (!job) return fail(res, 409, 'that run is not waiting any more');
       return res.status(200).json({ ok: true, answered: go ? 'go' : 'halt' });
+    }
+
+    /* СОХРАНЁННЫЙ СКИЛЛ - «Run now» с экрана Skills первого продукта (владелец, 2026-09-28: «интерфейс, где
+     * их можно легко ставить на повтор»). Та же очередь и те же отказы, что у цели: работа переживает
+     * вкладку, машина забирает её сама, прогон ложится в журнал под скиллом. Режим - запомненный, как у цели.
+     *
+     * ПАРАМЕТРЫ ПРОВЕРЯЮТСЯ ЗДЕСЬ, а не ночью у драйвера: пустое значение подставилось бы дырой в цель, и
+     * прогон сделал бы почти то. Отказ называет, чего не хватает, - та же missingParams, что у драйвера. */
+    if (body.skill !== undefined) {
+      const skillId = String(body.skill || '').trim();
+      if (!ID.test(skillId)) return fail(res, 400, 'that is not a skill id');
+      const [flow] = await sql`
+        select client_id, kind, name, payload from user_flow
+        where user_id = ${who.id} and client_id = ${skillId} and deleted_at is null
+      `;
+      if (!flow) return fail(res, 404, 'no such skill on this account');
+      const values = body.arguments && typeof body.arguments === 'object' && !Array.isArray(body.arguments)
+        ? body.arguments : {};
+      const payload = flow.payload || {};
+      const missing = missingParams({ ...payload, params: payload.params || [] }, values);
+      if (missing.length) {
+        return fail(res, 400, `"${flow.name}" needs ${missing.join(', ')} - fill ${missing.length === 1 ? 'it' : 'them'} in first.`);
+      }
+      /* Режим едет только к цели: запись проигрывается без модели, и спросить в ней некому. */
+      const asked = body.gate === undefined ? await modeOf(sql, who.id) : body.gate;
+      const gate = flow.kind === 'created' && asked === ONE_WAY ? ONE_WAY : null;
+      const put = await queueOne(sql, who.id, {
+        flowId: flow.client_id,
+        /* 'page:<имя>' - Logs читает префикс как «you», а не «chat». Не голое 'page': так подписаны живые
+         * зеркала прогонов со страницы (api/mcp.js), и их двери трогают строки по этому точному имени. */
+        toolName: `page:${flow.name}`.slice(0, 80),
+        args: { ...values, ...(gate ? { gate } : {}) },
+      });
+      if (put.why) return res.status(409).json({ ok: false, error: { type: 'queue_error', message: put.why } });
+      return res.status(200).json({ ok: true, id: put.id });
     }
 
     const goal = String(body.goal || '').trim();

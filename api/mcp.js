@@ -178,7 +178,8 @@ async function handler(req, res) {
           scheduleId: q.schedule_id || null,
           /* Откуда работа: расписание, страница Create (человек сам, на этом компьютере) или чат через MCP.
            * Отдельным полем, потому что «by itself» и «you» - разные подписи у одной и той же строки. */
-          source: q.schedule_id ? 'schedule' : q.tool_name === 'page' ? 'you' : 'chat',
+          source: q.schedule_id ? 'schedule'
+            : q.tool_name === 'page' || String(q.tool_name || '').startsWith('page:') ? 'you' : 'chat',
           startedAt: (loop && loop.startedAt) || q.run_started || q.claimed_at || q.created_at,
           finishedAt: q.finished_at,
           /* Идущий - из loop; законченный - из журнала. Ни один не выдумывается. */
