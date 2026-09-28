@@ -128,9 +128,11 @@ concrete thing named for the owner to check.
   - [x] **The panel side of the question — done 2026-09-28.** Same poll that already watched for the
         outcome; no second subscription, because the run outlives the window and the window can be closed
         and reopened in the middle of the question.
-  - [ ] **The bot does not offer the mode yet** — the engine and the answer both work there (buttons
-        shipped with the engine), but `/mode` is not a command, so a task started from Telegram uses
-        whatever the account setting says and cannot be switched from the chat.
+  - [x] **The bot offers the mode — done 2026-09-28.** `/mode`, `/mode auto`, `/mode ask`; the choice is
+        the panel's (`modeOf`/`setMode` moved to `api/_queue.mjs`, one reading for both doors). The note
+        that stood here was wrong in a way worth recording: it said a Telegram task *used the account
+        setting* — it used **none**, the bot queued every job in Auto whatever the panel had chosen. It
+        applies the remembered mode now, and the Continue/Stop question arrives in the same chat.
   - [ ] **A third mode, "ask before every action", is NOT a wording change.** `reached_checkpoint` is a
         self-report, and asking the model to announce every step is asking it to remember something it
         will forget. A per-step gate has to be **enforced by the driver** holding each action, which is a

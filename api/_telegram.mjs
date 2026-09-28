@@ -59,8 +59,16 @@ export const SAY = {
     + 'You will get a plan with Approve and Cancel. Nothing runs until Approve.\n\n'
     + '/status - is a computer of yours awake and taking work\n'
     + '/stop - stop whatever is running\n'
+    + '/mode - run straight through, or ask before anything that cannot be undone\n'
     + '/pair mf_... - pair this chat with an account',
   empty: 'There is nothing in that message to do. Say what you want done, in a sentence.',
+  /* РЕЖИМ - тот же выбор, что в панели агента, и слова о нём те же по смыслу: «Auto» и «Ask first». */
+  modeAuto: 'Mode: Auto. An approved plan runs straight through to the end.\n\n'
+    + 'Send /mode ask to have it stop and ask you here before anything that cannot be undone - sending, '
+    + 'submitting, deleting, paying.',
+  modeAsk: 'Mode: Ask first. After you approve, it still stops before anything that cannot be undone and '
+    + 'asks you here, with Continue and Stop.\n\nSend /mode auto to run straight through.',
+  modeBad: 'That is not a mode. Send /mode auto or /mode ask.',
   declined: 'Cancelled. Nothing was run.',
   expired: 'That plan is older than half an hour, so I did not run it. Send the task again and you will '
     + 'get a fresh plan.',
@@ -214,11 +222,32 @@ export function routeOf({ row, update }) {
   if (command) {
     if (command.name === 'status') return { act: 'status' };
     if (command.name === 'stop') return { act: 'stop' };
+    if (command.name === 'mode') {
+      const wanted = modeWanted(command.rest);
+      if (wanted === false) return { act: 'refuse', say: SAY.modeBad };
+      return { act: 'mode', mode: wanted };
+    }
     /* `/start` у телеграма - первое, что нажимают; для спаренного это просто «напомни, что ты умеешь». */
     return { act: 'help' };
   }
   if (!update.text && !update.document && !update.voice) return { act: 'refuse', say: SAY.empty };
   return { act: 'goal' };
+}
+
+/**
+ * Что просят командой /mode. Пусто - вопрос «какой сейчас» (null); `auto` и `ask` - выбор; остальное - false.
+ *
+ * СЛОВА, А НЕ ИМЯ НА ПРОВОДЕ. Человек пишет «ask» или «ask first», а не «one-way»: имя режима в очереди -
+ * дело api/_brain.mjs, и переводит его вызывающий. Модуль ничего не импортирует нарочно (см. шапку).
+ *
+ * @returns {'auto'|'ask'|null|false}
+ */
+export function modeWanted(rest) {
+  const said = String(rest || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (!said) return null;
+  if (['auto', 'automatic', 'off'].includes(said)) return 'auto';
+  if (['ask', 'ask first', 'on', 'confirm', 'one-way'].includes(said)) return 'ask';
+  return false;
 }
 
 /** Почему этот документ не берём, или null. */

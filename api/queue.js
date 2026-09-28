@@ -26,7 +26,7 @@ import { whoIsCalling } from './_session.js';
 import { report, wrap } from './_report.js';
 import { cors } from './_cors.mjs';
 import { GOAL_MAX } from './_brain.mjs';
-import { DESKTOP_GOAL, queueOne } from './_queue.mjs';
+import { DESKTOP_GOAL, modeOf, queueOne, setMode } from './_queue.mjs';
 import { ONE_WAY } from './_brain.mjs';
 import { missingParams } from '../extension/skills.js';
 /* Слова ответа - те же, что уезжают из телеграма: модель читает их как указание, и две редакции одного
@@ -38,19 +38,8 @@ const fail = (res, status, message) =>
 
 const ID = /^[A-Za-z0-9_.:-]{1,80}$/;
 
-/* Где лежит выбор. В user_pref, а не на аккаунте отдельной колонкой: это предпочтение человека, а не факт
- * о нём, и таблица предпочтений для этого и есть. Ключ с точкой - как `worker.seen` и `model.desktop`. */
-const MODE_KEY = 'gate.mode';
-
-/** Что выбрано. Отсутствие строки - автомат, и отсутствие ТАБЛИЦЫ тоже: absent не значит «включить». */
-async function modeOf(sql, userId) {
-  try {
-    const [row] = await sql`select value from user_pref where user_id = ${userId} and key = ${MODE_KEY}`;
-    return row && row.value === ONE_WAY ? ONE_WAY : 'auto';
-  } catch (_) {
-    return 'auto';
-  }
-}
+/* Где лежит выбор режима и как он читается - в api/_queue.mjs (modeOf/setMode): его читают и панель, и
+ * мессенджер, и выбор, сделанный в одном месте, обязан действовать в другом. */
 
 async function handler(req, res) {
   cors(req, res, 'GET, POST, OPTIONS');
@@ -108,12 +97,7 @@ async function handler(req, res) {
     /* ВЫБОР РЕЖИМА - отдельным телом, и он ПОМНИТСЯ на аккаунте. Человек решает это один раз, а не при
      * каждой просьбе: настройка, которую надо подтверждать каждый раз, - это не настройка, а вопрос. */
     if (body.mode !== undefined) {
-      const want = body.mode === ONE_WAY ? ONE_WAY : '';
-      await sql`
-        insert into user_pref (user_id, key, value) values (${who.id}, ${MODE_KEY}, ${want})
-        on conflict (user_id, key) do update set value = excluded.value
-      `;
-      return res.status(200).json({ ok: true, mode: want || 'auto' });
+      return res.status(200).json({ ok: true, mode: await setMode(sql, who.id, body.mode) });
     }
 
     /* ОТВЕТ ОСТАНОВЛЕННОМУ ПРОГОНУ - тем же POST, потому что это та же работа, и разводить две двери к

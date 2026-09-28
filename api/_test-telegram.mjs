@@ -15,7 +15,7 @@ import {
   HOLD_GO, HOLD_HALT, holdAnswerOf, holdKeyboard, holdMessage,
   tagFor, tagIn,
   CHANNEL, DRAFT_TTL_MS, SAY, commandOf, draftId, expired, keyboardFor, looksLikeDeviceToken,
-  outcomeMessage, planMessage, refusedDocument, routeOf, updateOf, verdictOf,
+  outcomeMessage, planMessage, refusedDocument, routeOf, updateOf, verdictOf, modeWanted,
 } from './_telegram.mjs';
 
 let pass = 0;
@@ -406,6 +406,30 @@ group('ответ остановленному прогону - не трети�
   /* И ОН РАЗБИРАЕТСЯ РАНЬШЕ ПЛАНА: относится к работе, которая идёт, а всё прочее - к той, что ещё нет. */
   check('и разбирается раньше вердикта плана',
     route.indexOf('holdAnswerOf(update.data)') < route.indexOf('verdictOf(update.data)'));
+}
+
+group('/mode - тот же выбор, что в панели, и только для своего');
+{
+  const route = (text, row = allowed) => routeOf({ row, update: updateOf(dm(text)) });
+  check('без слова - вопрос «какой сейчас»', route('/mode').act === 'mode' && route('/mode').mode === null);
+  check('auto и ask - выбор, словами человека', route('/mode auto').mode === 'auto'
+    && route('/mode ask').mode === 'ask' && route('/mode Ask First').mode === 'ask');
+  check('непонятное - названный отказ, а не молчаливое «auto»',
+    route('/mode sometimes').act === 'refuse' && route('/mode sometimes').say === SAY.modeBad);
+  check('незнакомец режим не меняет', route('/mode ask', null).act === 'greet');
+  check('неизвестное слово не включает остановки', modeWanted('maybe') === false && modeWanted('') === null);
+  check('и помощь о нём говорит', /\/mode/.test(SAY.help));
+
+  /* Проводка: мессенджер читает тот же выбор, что панель, и ставит его в работу. */
+  const bare = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
+  const door = bare(readFileSync(new URL('./telegram.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+  const panel = bare(readFileSync(new URL('./queue.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+  check('выбор хранится в одном месте для обеих дверей',
+    /modeOf, queueOne, setMode/.test(door) && /modeOf, queueOne, setMode/.test(panel)
+      && !/const MODE_KEY/.test(panel) && !/const MODE_KEY/.test(door));
+  check('и одобренная в чате работа идёт в запомненном режиме',
+    /const gate = \(await modeOf\(sql, userId\)\) === ONE_WAY \? ONE_WAY : null;/.test(door)
+      && /telegram: \{ chatId: draft\.chat_id \}, \.\.\.\(gate \? \{ gate \} : \{\}\)/.test(door));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

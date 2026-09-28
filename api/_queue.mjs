@@ -15,6 +15,7 @@
  * ЧТО ЗДЕСЬ НЕ ПРОИСХОДИТ: ожидания. Тул MCP ждёт машину до 25 секунд, потому что ему надо ответить
  * результатом; страница не ждёт вовсе - она смотрит на Activity. Ожидание осталось у того, кому оно нужно.
  */
+import { ONE_WAY } from './_brain.mjs';
 
 /* Said in three different failures, so it is written once: an instruction that drifts between messages is
  * an instruction somebody follows to two different places. */
@@ -123,4 +124,34 @@ export async function queueOne(
   } catch (_) {
     return { id, unpinned: machine };
   }
+}
+
+/* ------------------------------------------------------------------ РЕЖИМ: автомат или «спроси прежде»
+ *
+ * ГДЕ ЛЕЖИТ ВЫБОР. В user_pref, а не на аккаунте отдельной колонкой: это предпочтение человека, а не факт
+ * о нём. Ключ с точкой - как `worker.seen` и `model.desktop`.
+ *
+ * ЗДЕСЬ, А НЕ В api/queue.js, с 2026-09-28: его читают две двери - панель (api/queue.js) и мессенджер
+ * (api/telegram.js, команда /mode), - и выбор, сделанный в одной, обязан действовать в другой. Две копии
+ * чтения однажды разошлись бы в том, что значит «не выбрано». */
+export const MODE_KEY = 'gate.mode';
+
+/** Что выбрано. Отсутствие строки - автомат, и отсутствие ТАБЛИЦЫ тоже: absent не значит «включить». */
+export async function modeOf(sql, userId) {
+  try {
+    const [row] = await sql`select value from user_pref where user_id = ${userId} and key = ${MODE_KEY}`;
+    return row && row.value === ONE_WAY ? ONE_WAY : 'auto';
+  } catch (_) {
+    return 'auto';
+  }
+}
+
+/** Запомнить выбор. Всё, кроме ONE_WAY, - автомат: неизвестное значение не включает остановки. */
+export async function setMode(sql, userId, mode) {
+  const want = mode === ONE_WAY ? ONE_WAY : '';
+  await sql`
+    insert into user_pref (user_id, key, value) values (${userId}, ${MODE_KEY}, ${want})
+    on conflict (user_id, key) do update set value = excluded.value
+  `;
+  return want || 'auto';
 }

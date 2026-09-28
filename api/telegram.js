@@ -27,7 +27,8 @@ import { neon } from '@neondatabase/serverless';
 import { byDeviceToken } from './_session.js';
 import { report, wrap } from './_report.js';
 import { overSpend } from './_spend.mjs';
-import { DESKTOP_GOAL, queueOne, workerSeen } from './_queue.mjs';
+import { DESKTOP_GOAL, modeOf, queueOne, setMode, workerSeen } from './_queue.mjs';
+import { ONE_WAY } from './_brain.mjs';
 import { GOAL_MAX, goalWith, looksLikeText } from './_attach.mjs';
 import { planFrom, planRequest } from './_plan.mjs';
 import { recognise, refusedAudio } from './_transcribe.mjs';
@@ -131,6 +132,15 @@ async function status(sql, update, userId) {
     ? 'A computer of yours is awake and taking work.'
     : `The last time a computer of yours asked for work was ${mins} minutes ago. It has to be awake and `
       + 'taking work when you press Approve, or the job simply waits.');
+}
+
+/* РЕЖИМ - ТОТ ЖЕ, ЧТО В ПАНЕЛИ, и лежит там же (modeOf/setMode в api/_queue.mjs): выбранный здесь действует
+ * там, и наоборот. Без аргумента - сказать, какой сейчас, и как переключить. */
+async function mode(sql, update, userId, wanted) {
+  const now = wanted === null
+    ? await modeOf(sql, userId)
+    : await setMode(sql, userId, wanted === 'ask' ? ONE_WAY : 'auto');
+  return say(update.chatId, now === ONE_WAY ? SAY.modeAsk : SAY.modeAuto);
 }
 
 async function stop(sql, update, userId) {
@@ -343,10 +353,13 @@ async function decide(sql, update, userId) {
   /* СВОБОДНАЯ ЦЕЛЬ НА ДЕСКТОПЕ. Не BROWSER_GOAL - тот помечает работу как «умеет только браузерное
    * расширение». И не выдуманное здесь имя: словарь очереди один на всех, api/_queue.mjs, и имя, которого
    * в нём нет, доедет до агента командой, которой он не знает. */
+  /* ЗАПОМНЕННЫЙ РЕЖИМ - и здесь, а не только в панели. Вопрос на остановке сюда и приедет: askChat шлёт его
+   * в чат, из которого пришла работа. Режим замирает в аргументах работы, как у панели. */
+  const gate = (await modeOf(sql, userId)) === ONE_WAY ? ONE_WAY : null;
   const put = await queueOne(sql, userId, {
     flowId: DESKTOP_GOAL,
     toolName: 'mouseflow_do',
-    args: { goal: draft.goal, telegram: { chatId: draft.chat_id } },
+    args: { goal: draft.goal, telegram: { chatId: draft.chat_id }, ...(gate ? { gate } : {}) },
   });
   if (put.why) return say(update.chatId, put.why);
 
@@ -409,6 +422,7 @@ async function handler(req, res) {
 
     if (route.act === 'status') { await status(sql, update, userId); return ok(res, 'status'); }
     if (route.act === 'stop') { await stop(sql, update, userId); return ok(res, 'stopped'); }
+    if (route.act === 'mode') { await mode(sql, update, userId, route.mode); return ok(res, 'mode'); }
     if (route.act === 'decide') { await decide(sql, update, userId); return ok(res, 'decided'); }
     if (route.act === 'goal') { await offer(sql, update, userId); return ok(res, 'offered'); }
     if (route.act === 'amend') { await amend(sql, update, userId, route.draftId); return ok(res, 'amended'); }
