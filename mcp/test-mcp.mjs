@@ -5083,8 +5083,8 @@ group('проверка читается в истории прогона - сл
   const describes = read('../web/src/features/create/describe.ts');
   const verdict = read('../web/src/features/create/verdict.ts');
   const line = read('../web/src/components/chat/index.tsx');
-  const panel = read('../web/src/features/create/EarlierPanel.tsx');
-  const earlier = read('../web/src/features/create/Earlier.tsx');
+  /* Историю прогона с 2026-09-28 рисует OpenedRun - прошлый прогон, открытый как разговор. */
+  const opened = read('../web/src/features/create/OpenedRun.tsx');
   const create = read('../web/src/features/create/CreateView.tsx');
 
   check('шаг назван утверждением, а не вызовом инструмента',
@@ -5093,9 +5093,9 @@ group('проверка читается в истории прогона - сл
     /export const evidenceOf/.test(verdict) && /\$\{out\.evidence\}/.test(verdict));
   check('три исхода - три вида строки', /'pass' \| 'fail' \| 'unchecked'/.test(line)
     && /kind === 'unchecked' && 'text-fb-attention'/.test(line));
-  check('и правило цвета - одно на оба списка истории, а не две копии',
-    panel.includes("import { evidenceOf, verdictKind } from './verdict';")
-      && earlier.includes("import { evidenceOf, verdictKind } from './verdict';"));
+  check('и правило цвета берётся из одного места, а не копией',
+    opened.includes("import { evidenceOf, verdictKind } from './verdict';")
+      && /kind=\{verdictKind\(step\)\}/.test(opened));
   check('в живой ленте исход тоже виден цветом, а не текстом',
     /type: 'check', text: said, pass: verdict\.pass/.test(read('../web/src/lib/desktop-engine.ts'))
       && /event\.pass === true \? 'pass' : event\.pass === false \? 'fail' : 'unchecked'/.test(create));
@@ -5122,7 +5122,7 @@ group('кадр сохраняется там, где он что-то дока�
   const erase = read('../api/account.js');
   const create = read('../web/src/features/create/CreateView.tsx');
   const frames = read('../web/src/features/create/Frames.tsx');
-  const panel = read('../web/src/features/create/EarlierPanel.tsx');
+  const opened = read('../web/src/features/create/OpenedRun.tsx');
   const pkg = read('../package.json');
 
   /* ОДИН КАДР НА ХОД, а не на проверку: пачка из пяти проверок решалась ОДНИМ экраном. */
@@ -5192,7 +5192,7 @@ group('кадр сохраняется там, где он что-то дока�
 
   /* И ЭТО ВИДНО. Кадр, который нельзя открыть, не отличается от кадра, которого нет. */
   check('миниатюры показываются под шагами прогона',
-    panel.includes("import { Frames } from './Frames';") && /<Frames runId=\{run\.id\} \/>/.test(panel));
+    opened.includes("import { Frames } from './Frames';") && /<Frames runId=\{run\.id\} \/>/.test(opened));
   check('и спрашиваются только когда прогон раскрыт, а не для всех подряд',
     /artifactsOf\(runId\)/.test(frames) && /\[runId\]\)/.test(frames));
   check('провал выделен, и подпись говорит, что это за кадр',

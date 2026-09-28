@@ -306,5 +306,39 @@ group('дашборд спрашивает свою половину, и на н
     !/recordings and runs/.test(page) && !/reliability/.test(page));
 }
 
+group('история прогонов - в сайдбаре, а открытый прогон - во всю ширину разговора');
+{
+  /* Владелец, 2026-09-28: «история должна быть слева в сайдбаре - 10 последних и возможность просмотреть все
+   * прогоны списком; если нажать, открывается в обычном виде». Комментарии сняты: отсутствие ищется в коде. */
+  const bare = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\s*\}/g, '');
+  const create = bare(read('src/features/create/CreateView.tsx'));
+  const opened = bare(read('src/features/create/OpenedRun.tsx'));
+  const side = bare(sidebar);
+  const logs = bare(read('src/features/activity/ActivityView.tsx'));
+  check('у прогона есть свой адрес на экране Create',
+    /path: '\/create\/\$runId', component: CreateView/.test(main));
+  check('и Create читает его из адреса, а не из своего состояния',
+    /useParams\(\{ strict: false \}\)/.test(create) && /runs\.find\(\(r\) => r\.id === openedId\)/.test(create));
+  check('старой истории внутри страницы нет - ни колонкой, ни лентой',
+    !/EarlierPanel|<Earlier\b|from '\.\/Earlier'/.test(create), 'EarlierPanel / Earlier');
+  check('открытый прогон рисуется над разговором, и нового приглашения поверх него нет',
+    /<OpenedRun\b/.test(create) && /turns\.length === 0 && !opened \? \(/.test(create));
+  check('и несуществующий прогон назван, а не выдан за новый разговор',
+    /That run is not on this account any more/.test(create));
+  /* Всё, что умела колонка, переехало - редизайн, а не вычитание. */
+  check('открытый прогон умеет всё, что умела колонка',
+    ['Ask again', 'Save as skill', 'Rename', '<Frames runId=', 'onDelete(run.id)', 'provable(run)']
+      .every((one) => opened.includes(one)));
+  check('в сайдбаре - десять последних прогонов с целью, по тем же правилам, что читала страница',
+    /goalRuns\(runs, NONE_HIDDEN\)\.slice\(0, RECENT\)/.test(side) && /const RECENT = 10;/.test(side)
+      && /to="\/create\/\$runId"/.test(side));
+  check('только у продукта, который действует', /product === 'do' && !tight && recent\.length > 0/.test(side));
+  check('и за всеми - Logs, а не второй полный список', /to="\/logs"[\s\S]{0,300}See all/.test(side));
+  check('открытый прогон подсвечивает свою строку, а не Create',
+    /const on = to === '\/create' \? path === to : path\.startsWith\(to\);/.test(side));
+  check('и на Logs прогон открывается тем же адресом',
+    /navigate\(\{ to: '\/create\/\$runId', params: \{ runId: e\.run\.id \} \}\)/.test(logs));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -26,6 +26,12 @@ concrete thing named for the owner to check.
 
 *The split is finished. What follows is the rest of the sequence.*
 
+- [x] **Create reads like a chat — done 2026-09-28.** History moved out of the page into the sidebar
+      (**Recent**, ten goal runs, P1 only; **See all** → Logs, whose rows now have **Open**). A past run
+      opens at `/create/$runId` above the composer, full width, with everything the old column could do.
+      Found on the way: the dictation language list offered *Auto* twice once it was chosen.
+      [SPLIT-PLAN §5.5](SPLIT-PLAN.md)
+
 - [x] **Test cases from somebody else's system — done 2026-09-28.** The owner's scenario: an assistant is
       connected to MouseFlow *and* to a test-management MCP (TestRail), and asks us to run a case there.
       Keeping a copy of that case here would be a second source of truth, so `mouseflow_do` got three

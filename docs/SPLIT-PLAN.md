@@ -518,6 +518,15 @@ switch between products landed with step 4. Create already keeps a panel of past
 Create's composer (`RELAUNCH_KEY`, through `sessionStorage`). So "repeat it" is built; what is missing is
 the *shape* — a list you read down the left, where a row is a task rather than a row in a table.
 
+> **Done 2026-09-28** (owner: *"history on the left in the sidebar — the last 10, and all runs as a list;
+> clicking one opens it the ordinary way, with its steps on top, so it can be repeated, changed or saved as a
+> skill"*). The column and the narrow-window ribbon are gone (`EarlierPanel`, `Earlier.tsx` deleted). The
+> sidebar carries **Recent** — ten goal runs, P1 only, read by the same `goalRuns` — and **See all** goes to
+> Logs, whose rows gained **Open**. A run opens at `/create/$runId` in the Create screen itself
+> (`OpenedRun`): full-width steps, frames, outcome, and every button the column had — Ask again (goal into
+> the composer, to repeat or edit), Save as skill, Rename, Delete. The opened run's row is highlighted
+> instead of Create, as a chat list highlights the open chat.
+
 **The one thing that is genuinely missing is the thread.** A run today is a single execution, not a
 conversation: `user_run` holds a goal, steps and an outcome, and two runs of the same goal are two
 unrelated rows. Claude's shape implies that reopening a row continues something. Two honest readings, and

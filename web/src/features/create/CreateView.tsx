@@ -16,7 +16,7 @@
  * the Insights page reads), and persisting a second copy here would give two records that can disagree.
  * Reloading the page clears the thread and loses nothing that matters.
  */
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { ChevronDown, CircleDot, Crosshair, FileText, Mic, MicOff, Monitor, Paperclip, Send, Sparkles, Square, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@insightis/ui/Button';
@@ -69,9 +69,8 @@ import { useProduct } from '@/shell/useProduct';
 import { useAccount } from '@/shell/AccountProvider';
 import { usePageChrome } from '@/shell/Surface';
 import { type Plan, askForPlan } from '@/lib/plan';
-import { EarlierPanel } from './EarlierPanel';
+import { OpenedRun } from './OpenedRun';
 import { describe } from './describe';
-import { Earlier } from './Earlier';
 /* Сказать о конце прогона тому, кто на эту вкладку не смотрит. Смысл прогона в том, что человек уходит
  * заниматься другим - вкладка позади других окон НАМЕРЕННО, - и результат, живущий только на экране, никто не
  * видит до момента, когда сам решит проверить. */
@@ -146,6 +145,11 @@ export const CreateView = () => {
     { run: NonNullable<Turn['proved']>; goal: string } | null
   >(null);
   const navigate = useNavigate();
+  /* ОТКРЫТЫЙ ПРОШЛЫЙ ПРОГОН - из адреса (`/create/$runId`), а не из состояния страницы: ссылка из сайдбара,
+   * назад и вперёд в браузере и перезагрузка должны открывать одно и то же. */
+  const { runId: openedId } = useParams({ strict: false }) as { runId?: string };
+  const opened = useMemo(() => (openedId ? runs.find((r) => r.id === openedId) ?? null : null),
+    [openedId, runs]);
 
   /* ЧЕМ ЭТОТ ПРОДУКТ УМЕЕТ ДЕЙСТВОВАТЬ - спрашивается у продукта, а не решается здесь. Первый продукт
    * предлагает только локального агента (см. PRODUCTS.do.runsIn и комментарий там), и тогда выбора нет:
@@ -846,13 +850,6 @@ export const CreateView = () => {
     await reload();
   }, [reload]);
 
-  /* Прогоны, показанные живьём в этой же сессии. Считается один раз на оба вида истории - колонку и
-   * ленту, - чтобы они не могли разойтись в том, что уже показано. */
-  const earlierHide = useMemo(
-    () => new Set(turns.map((t) => t.proved?.runId).filter(Boolean) as string[]),
-    [turns],
-  );
-
   const planned = !!plan && plan.for === asked;
 
   /* ЧТО СЕЙЧАС СДЕЛАЕТ КНОПКА - и, значит, что сделает Enter, потому что это одно и то же действие.
@@ -865,62 +862,35 @@ export const CreateView = () => {
   const act = () => (wants === 'run' ? send() : makePlan());
 
   return (
-    /* Two columns on a wide window: what happened before, and what is happening now. The shell gives this
-     * route a header and nothing else, so each column owns its own height and scrolls on its own.
-     *
-     * СПИСОК ЗАДАЧ СЛЕВА, а не справа - решение владельца 2026-09-18: «как у Клода, переключение между
-     * приложениями, а снизу список тасков, которые создавались». Это не перестановка ради моды. Колонка
-     * справа была ОСТАТКОМ от панели Live Context, которая там стояла раньше; список прошлых задач - это
-     * навигация, а навигация в этом приложении уже слева, и стоять ей по обе стороны от работы незачем.
-     * Рядом с боковым меню он читается как его продолжение: продукты, экраны, задачи.
-     *
-     * Ниже xl второй колонки нет вовсе, и история переезжает наверх ленты - там же, где была. */
+    /* ОДНА КОЛОНКА - РАЗГОВОР (владелец, 2026-09-28). Раньше слева от него стояла история прогонов: решение
+     * 2026-09-18 («как у Клода, снизу список тасков») было верным по смыслу и неверным по месту - навигация
+     * в этом приложении живёт в сайдбаре, и теперь история там же, десятью последними. Открытый прогон
+     * читается здесь, во всю ширину, над полем ввода. */
     <div className={cn('flex gap-4', page.height)}>
-      {/* История прогонов. Своя высота и свой скроллер, чтобы длинный список не тянул ленту.
-        *
-        * Одинаковая для обоих исполнителей, в отличие от того, что здесь стояло раньше: прогон в браузере
-        * и прогон на машине - это одна и та же просьба, записанная одной и той же строкой, и делить их
-        * колонкой значило бы прятать половину своей истории за положением тумблера. */}
-      <div className="hidden w-[22rem] shrink-0 py-4 ps-5 xl:flex xl:flex-col">
-        <EarlierPanel
-          runs={runs}
-          flows={flows}
-          hide={earlierHide}
-          onAskAgain={reopen}
-          onSaveAsSkill={(run, goal) => setSaving({ run, goal })}
-          onRename={renameRun}
-          onDelete={deleteRun}
-        />
-      </div>
-
       <div className="flex min-w-0 flex-1 flex-col">
       <Thread>
-        {/* ЧТО БЫЛО РАНЬШЕ - наверху ленты, из записи на аккаунте, а не из второй копии рядом с ней.
-          *
-          * ТОЛЬКО НА УЗКОМ ОКНЕ. С xl та же история стоит колонкой справа, где она видна сразу и не
-          * соревнуется за место с тем, что происходит сейчас; ниже xl колонки нет вовсе, и без этой ленты
-          * история стала бы недостижимой на ноутбуке поменьше. Один источник, два вида - см. run-history.ts.
-          *
-          * Развёрнуто, когда живых ходов нет: человек, открывший пустую страницу Create, пришёл либо
-          * начать новое, либо найти старое. Свёрнуто, когда он уже работает.
-          *
-          * `hide` - прогоны, показанные живьём в этой же сессии. После удачного прогона страница
-          * перечитывает аккаунт, и без этого он появился бы в ленте дважды: один раз как ход, второй раз
-          * как история этого же хода. */
-        <div className="xl:hidden">
-          <Earlier
-            runs={runs}
+        {/* ПРОШЛЫЙ ПРОГОН, ОТКРЫТЫЙ ИЗ САЙДБАРА - шапкой разговора, над тем, что просят сейчас. Истории
+          * внутри страницы больше нет ни колонкой, ни лентой (владелец, 2026-09-28): десять последних - в
+          * сайдбаре, все - на Logs, а открытый читается во всю ширину. См. OpenedRun.tsx. */}
+        {openedId && (opened ? (
+          <OpenedRun
+            key={opened.id}
+            run={opened}
             flows={flows}
-            hide={earlierHide}
-            openByDefault={turns.length === 0}
             onAskAgain={reopen}
             onSaveAsSkill={(run, goal) => setSaving({ run, goal })}
             onRename={renameRun}
-            onDelete={deleteRun}
+            onDelete={async (id) => { await deleteRun(id); void navigate({ to: '/create' }); }}
+            onClose={() => void navigate({ to: '/create' })}
           />
-        </div>}
+        ) : (
+          /* Нет на аккаунте - сказать это, а не показать пустой экран, будто ссылка открыла новый разговор. */
+          <Typography variant="p" className="text-ink-inactive text-[0.85rem]">
+            That run is not on this account any more. Every run there is lies on Logs.
+          </Typography>
+        ))}
 
-        {turns.length === 0 ? (
+        {turns.length === 0 && !opened ? (
           /* Подсказки ушли ПОД композер - см. Composer.below. На пустом экране между заголовком и полем
              стоял третий блок, и взгляд шёл заголовок → подсказки → поле, то есть мимо поля. */
           <Opener

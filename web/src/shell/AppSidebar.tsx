@@ -32,7 +32,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@insightis/ui/Badge';
 import { cn } from '@insightis/ui/cn';
 import {
@@ -47,9 +47,13 @@ import { hoursOf } from '@/lib/api';
 import { PRODUCTS, PRODUCT_IDS, type Product, screensFor } from '@/lib/product';
 import { useActivityCount } from '@/features/activity/ActivityView';
 import { useAccount } from '@/shell/AccountProvider';
+import { goalRuns, titleOf } from '@/features/create/run-history';
 import { chooseProduct, lockedProduct, useProduct } from '@/shell/useProduct';
 
 const TIGHT = 'mouseflow.side.tight';
+/* Сколько прогонов в «Recent». Сайдбар - это «вернуться к недавнему», а не «найти что угодно»: всё - на Logs. */
+const RECENT = 10;
+const NONE_HIDDEN = new Set<string>();
 
 /* Значок на пункт меню, по маршруту. Единственное, что осталось здесь от прежнего списка: остальное -
  * ярлык, заголовок, бета, счётчик, шаг тура - переехало в product.ts, где у него один экземпляр. */
@@ -100,6 +104,10 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
   const { product } = useProduct();
   const navigate = useNavigate();
   const nav = screensFor(product);
+  /* ДЕСЯТЬ ПОСЛЕДНИХ, СВЕРХУ ВНИЗ. Строки приезжают с аккаунта уже упорядоченными - пересортировывать их
+   * здесь значило бы завести второе мнение о том, что такое «недавний». И только прогоны с целью, тем же
+   * goalRuns, что читала колонка на Create: повтор записи - реплика без слов, в списке разговоров ей не место. */
+  const recent = useMemo(() => goalRuns(runs, NONE_HIDDEN).slice(0, RECENT), [runs]);
   /* В сборке на один продукт переключателя нет: кнопка, предлагающая половину, которой в этой сборке
    * не существует, - хуже её отсутствия. Знак при этом остаётся и ведёт домой, как вёл до всего этого. */
   const locked = lockedProduct() !== null;
@@ -244,7 +252,9 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
         {nav.map((row) => {
           const { to, label } = row;
           const Icon = ICONS[to] ?? LayoutGrid;
-          const on = path.startsWith(to);
+          /* ОТКРЫТЫЙ ПРОШЛЫЙ ПРОГОН ПОДСВЕЧИВАЕТ СВОЮ СТРОКУ В «Recent», а не Create: как у чатов - выделен
+           * разговор, который открыт, а не кнопка «новый». Два выделения рядом не говорили бы, где ты. */
+          const on = to === '/create' ? path === to : path.startsWith(to);
           return (
             <Link
               key={to}
@@ -280,6 +290,58 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
           );
         })}
       </nav>
+
+      {/* ЧТО УЖЕ ПРОСИЛИ - В САЙДБАРЕ, А НЕ КОЛОНКОЙ ВНУТРИ СТРАНИЦЫ (владелец, 2026-09-28).
+        *
+        * История жила колонкой на самой Create и раскрывалась там же, на месте: строка разворачивалась в
+        * двадцать два рема ширины, и шаги прогона ломались в ней по два слова. То есть вся запись о том,
+        * что произошло на настоящей машине, читалась в щели. Прогон - это разговор, и открываться он
+        * должен там, где разговоры и живут: в главной области.
+        *
+        * ДЕСЯТЬ, А НЕ ВСЁ. Сайдбар - это «вернуться к недавнему», а не «найти что угодно»: список, который
+        * прокручивается, перестаёт быть списком недавнего. За всем остальным - Logs, где прогоны уже лежат
+        * вместе с очередью и расписаниями; заводить второй полный список значило бы иметь два ответа на
+        * вопрос «что у меня было».
+        *
+        * ТОЛЬКО У ПЕРВОГО ПРОДУКТА. Прогон - это P1: «сделай за меня». У мастерской P2 своя недавняя
+        * работа, и она не прогоны. */}
+      {product === 'do' && !tight && recent.length > 0 && (
+        <div className="mt-4 flex min-h-0 flex-col gap-0.5">
+          <div className="flex items-center justify-between px-2.5 pb-1">
+            <span className="font-medium text-[0.688rem] text-ink-secondary">Recent</span>
+            <Link
+              to="/logs"
+              title="Every run, with the queue and the schedules"
+              className="text-[0.688rem] text-ink-inactive hover:text-ink-body"
+            >
+              See all
+            </Link>
+          </div>
+          {recent.map((run) => (
+            <Link
+              key={run.id}
+              to="/create/$runId"
+              params={{ runId: run.id }}
+              title={run.goal || titleOf(run)}
+              className={cn(
+                ROW, 'w-full px-2.5 text-[0.82rem] text-ink-body',
+                'hover:bg-state-hover hover:text-ink-primary',
+                path === `/create/${run.id}` && 'bg-state-pressed font-medium text-ink-primary',
+              )}
+            >
+              {/* Точка исхода, а не слово: в строке шириной с сайдбар слово отняло бы у цели половину
+                * места, а узнать «получилось ли» надо одним взглядом. Цвет и подпись - из общего
+                * словаря, чтобы «ok» значило здесь то же, что на Logs. */}
+              <CircleDot
+                className={cn(GLYPH, 'shrink-0',
+                  run.outcome === 'ok' ? 'text-fb-green-text'
+                    : run.outcome === 'failed' ? 'text-fb-red-text' : 'text-ink-inactive')}
+              />
+              <span className="truncate">{titleOf(run)}</span>
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className={cn(
         'mt-auto flex w-full flex-col gap-0.5 border-stroke border-t pt-2',

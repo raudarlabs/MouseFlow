@@ -19,7 +19,7 @@
  * ли продукт». У прогона может стоять «ok» и рядом «1 check failed» - это найденный дефект, а не путаница.
  */
 import { useNavigate } from '@tanstack/react-router';
-import { ChevronDown, ChevronRight, Clock, Download, Pause, RotateCcw, Search, Square } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, Download, MessageSquare, Pause, RotateCcw, Search, Square } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
@@ -518,6 +518,15 @@ export const ActivityView = () => {
                             {/* ПЕРЕЗАПУСК - у всего, что кончилось и у чего есть цель: та же дверь, что
                               * «Ask again» в панели истории, чтобы одна и та же вещь не делалась двумя
                               * путями. */}
+                            {/* ОТКРЫТЬ КАК РАЗГОВОР - тем же адресом, что строка «Recent» в сайдбаре: здесь все
+                              * прогоны, там десять последних, а открываются они одним экраном (OpenedRun). */}
+                            {e.kind === 'run' && e.run.kind === 'agent' && e.run.goal && (
+                              <Button size="xs" variant="ghost" leftSlot={<MessageSquare className="size-3" />}
+                                title="Open this run as a conversation in Create"
+                                onClick={() => void navigate({ to: '/create/$runId', params: { runId: e.run.id } })}>
+                                Open
+                              </Button>
+                            )}
                             {finished && goal && (
                               <Button size="xs" variant="ghost" leftSlot={<RotateCcw className="size-3" />} title="Put this goal into Create, ready to run again"
                                 onClick={() => relaunch(goal)}>

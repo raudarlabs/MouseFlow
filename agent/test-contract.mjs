@@ -392,34 +392,34 @@ group('история читает ту запись, которая уже ес
 {
   const api = read('web/src/lib/api.ts');
   const sync = read('api/sync.js');
-  const earlier = read('web/src/features/create/Earlier.tsx');
+  /* С 2026-09-28 истории внутри Create нет: десять последних стоят в сайдбаре, открытый прогон читается во
+   * всю ширину разговора (OpenedRun). Вопрос тот же - «одна запись, не вторая», - читателей двое других. */
+  const opened = read('web/src/features/create/OpenedRun.tsx');
+  const side = read('web/src/shell/AppSidebar.tsx');
   const create = read('web/src/features/create/CreateView.tsx');
 
   check('сервер отдаёт шаги и слова прогона', /steps: r\.steps, said: r\.said/.test(sync));
   check('и клиент их наконец объявляет, а не выбрасывает типом',
     /steps\?: unknown\[\];/.test(api) && /said\?: unknown\[\];/.test(api));
   /* Ни fetch, ни useEffect, ни своего кэша: всё приезжает через useAccount, который уже это держит. */
-  check('история не делает своего запроса', !/fetch\(|useEffect/.test(earlier));
-  check('а берёт прогоны с аккаунта', /runs=\{runs\}/.test(create) && /const \{ reload, flows, runs \} = useAccount\(\)/.test(create));
+  check('история не делает своего запроса', !/fetch\(|useEffect/.test(opened) && !/fetch\(/.test(side));
+  check('а берёт прогоны с аккаунта',
+    /const \{ reload, flows, runs \} = useAccount\(\)/.test(create) && /const \{ account, runs \} = useAccount\(\)/.test(side));
 
   /* Повтор записи - не реплика: у него нет цели, а лента читается как разговор. */
-  /* ДВА ВИДА, ОДНИ ПРАВИЛА. История стоит колонкой справа на широком окне (EarlierPanel) и лентой над
-   * полем ввода на узком (Earlier). Всё, от чего зависит, какой прогон показывать и можно ли из него
-   * сделать скилл, лежит в run-history.ts - иначе колонка однажды посчитала бы прогон удачным, а лента
-   * тот же самый нет. */
+  /* ДВА ВИДА, ОДНИ ПРАВИЛА. Сайдбар решает, какой прогон показать, открытый прогон - можно ли сделать из
+   * него скилл; всё это лежит в run-history.ts - иначе сайдбар однажды покажет прогон, которого открытая
+   * страница не признает. */
   const rules = read('web/src/features/create/run-history.ts');
-  const panel = read('web/src/features/create/EarlierPanel.tsx');
   check('оба вида читают одни и те же правила',
-    /from '\.\/run-history'/.test(earlier) && /from '\.\/run-history'/.test(panel));
+    /from '\.\/run-history'/.test(opened) && /from '@\/features\/create\/run-history'/.test(side)
+      && /goalRuns\(runs,/.test(side));
 
   check('повторы записей в ленту не попадают',
     /r\.kind === 'agent' && !!r\.goal/.test(rules));
-  /* После удачного прогона страница перечитывает аккаунт - и без этого он оказался бы в ленте дважды.
-   * Множество считается ОДИН раз на оба вида, иначе они разошлись бы в том, что уже показано. */
-  check('и прогон этой сессии не показывается вторым разом как своя же история',
-    /const earlierHide = useMemo\(\s*\(\) => new Set\(turns\.map/.test(create)
-      && (create.match(/hide=\{earlierHide\}/g) || []).length === 2
-      && /!hide\.has\(r\.id\)/.test(rules));
+  /* Прятать прогон этой сессии больше некому: ленты истории над живыми ходами нет, а сайдбар - это
+   * навигация, и только что сделанное в нём и должно появиться первым. Правило в run-history.ts осталось. */
+  check('и правило «не показывать дважды» по-прежнему одно', /!hide\.has\(r\.id\)/.test(rules));
 
   /* Скилл собирается с agent: 'desktop' из шагов вида {tool, input}. У расширения форма другая, и
    * предложить из неё десктопный скилл значило бы собрать то, что не запустится. */
@@ -437,11 +437,10 @@ group('история читает ту запись, которая уже ес
 
   /* Колонка справа держит историю, а не снимок рабочего стола. Панель Live Context снята целиком: её
    * прямоугольник почти всё время стоял пустым - снимок читался по кнопке, - а место занимал постоянно. */
-  check('правая колонка - это история, и снимка экрана в ней больше нет',
-    /<EarlierPanel/.test(create) && !/LiveContext/.test(create));
-  /* Ниже xl второй колонки нет вовсе, и без ленты история стала бы недостижимой на окне поменьше. */
-  check('на узком окне история остаётся над полем ввода',
-    /<div className="xl:hidden">\s*<Earlier/.test(create));
+  check('колонки истории и снимка экрана на странице нет',
+    !/<EarlierPanel/.test(create) && !/LiveContext/.test(create));
+  /* История достижима на любом окне: сайдбар стоит всегда, и за всем остальным - Logs. */
+  check('история открывается тем же экраном', /<OpenedRun\b/.test(create));
 
   /* user_run.said существует с самого начала и на этом пути не заполнялся - api/insights.js вынужден
    * объяснять, что пустая колонка не значит «прогон молчал». */
@@ -453,7 +452,7 @@ group('история читает ту запись, которая уже ес
    * разошлись бы молча. */
   check('шаг описывается одной функцией на живой фид и на историю',
     /export function describe\(did: Did, /.test(read('web/src/features/create/describe.ts'))
-      && /from '\.\/describe'/.test(create) && /from '\.\/describe'/.test(earlier));
+      && /from '\.\/describe'/.test(create) && /from '\.\/describe'/.test(opened));
 }
 
 /* ------------------------------------------------------------------- порог: кого агент слушает */
@@ -1236,8 +1235,7 @@ group('прогон можно назвать и удалить, не переп
 {
   const sync = read('api/sync.js');
   const rules = read('web/src/features/create/run-history.ts');
-  const panel = read('web/src/features/create/EarlierPanel.tsx');
-  const feed = read('web/src/features/create/Earlier.tsx');
+  const opened = read('web/src/features/create/OpenedRun.tsx');
   const migration = read('db/013_run_named.sql');
 
   check('колонки заведены миграцией',
@@ -1262,22 +1260,22 @@ group('прогон можно назвать и удалить, не переп
   /* Показывается подпись, если она есть, - но цель при этом остаётся видна в обоих видах. */
   check('в списке показывается подпись, а под ней - настоящая цель',
     /\(run\.name && run\.name\.trim\(\)\) \|\| run\.goal/.test(rules)
-    && /asked for: \{run\.goal\}/.test(panel) && /asked for: \{run\.goal\}/.test(feed));
+    && /asked for: \{run\.goal\}/.test(opened));
   /* «Ask again» посылает то, что запускали, а не то, как это назвали. */
   check('и «Ask again» посылает цель, а не подпись',
-    /onAskAgain\(run\.goal!\)/.test(panel) && /onAskAgain\(run\.goal!\)/.test(feed));
+    /onAskAgain\(run\.goal \|\| ''\)/.test(opened) && !/onAskAgain\(titleOf|onAskAgain\(run\.name/.test(opened));
 
   /* Строка прогона - единственная его запись: удаление уносит и итоги на Dashboard, и то, что видит
    * ассистент. Поэтому спрашивается дважды, обоими видами, одной и той же кнопкой. */
-  check('удаление спрашивает дважды в обоих видах',
-    (panel.match(/<ArmedButton/g) || []).length === 1 && (feed.match(/<ArmedButton/g) || []).length === 1);
+  check('удаление спрашивает дважды',
+    (opened.match(/<ArmedButton/g) || []).length === 1 && /onConfirm=\{\(\) => \{ setArmed\(false\); void act/.test(opened));
   /* Отказ сервера при HTTP 200 приезжает в `problems`; проглотить его значило бы нарисовать успех. */
   check('отказ аккаунта называется, а не глотается',
     /if \(saved\.problems\?\.length\) throw new Error\(saved\.problems\[0\]\)/.test(read('web/src/features/create/CreateView.tsx')));
 
-  /* Секцию можно свернуть, и выбор переживает перезагрузку - как остальные предпочтения этой страницы. */
-  check('секцию истории можно свернуть',
-    /aria-expanded=\{shown\}/.test(panel) && /localStorage\.setItem\(OPEN_KEY/.test(panel));
+  /* Свернуть историю теперь значит свернуть сайдбар: в узком он «Recent» не показывает вовсе. */
+  check('история уходит вместе со свёрнутым сайдбаром',
+    /product === 'do' && !tight && recent\.length > 0/.test(read('web/src/shell/AppSidebar.tsx')));
 }
 
 /* Высота шапки и высота страницы - одно число в двух файлах, и разошлись они молча.
@@ -1552,11 +1550,10 @@ group('набранный текст: запись слепа, чтение ок
     check('аккорд подписывается по платформе, а не одним словом',
       /const command = on === 'macos' \? 'Cmd' : 'Ctrl';/.test(describer)
         && /input\.ctrl && command/.test(describer));
-    /* Три вида читают одну функцию - иначе живой фид и история назовут одно нажатие по-разному. */
-    check('и платформу передают все три вида',
+    /* Оба вида читают одну функцию - иначе живой фид и история назовут одно нажатие по-разному. */
+    check('и платформу передают оба вида',
       /describe\(event, health\?\.platform\)/.test(read('web/src/features/create/CreateView.tsx'))
-        && /describe\(asDid\(step\), platform\)/.test(read('web/src/features/create/EarlierPanel.tsx'))
-        && /describe\(asDid\(step\), platform\)/.test(read('web/src/features/create/Earlier.tsx')));
+        && /describe\(asDid\(step\), platform\)/.test(read('web/src/features/create/OpenedRun.tsx')));
     /* Без агента платформа неизвестна, и выдумывать одну из двух значит ошибаться в половине случаев. */
     check('а без агента остаётся словарь провода',
       /export function describe\(did: Did, on: On = undefined\): string/.test(describer));

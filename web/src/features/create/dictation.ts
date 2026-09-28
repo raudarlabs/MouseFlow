@@ -141,7 +141,9 @@ export function dictationChoices(current: string, via: Via = 'openai'): string[]
     if (!tag) continue;
     /* По базовому языку, а не по полному тегу: "ru" из настроек и "ru-RU" из списка - один и тот же выбор,
      * и две строки «русский» подряд читаются как ошибка. */
-    if (tag === AUTO) { out.push(tag); continue; }
+    /* ОДИН РАЗ, И ТОЛЬКО У СЕРВЕРНОГО ПУТИ. Выбранный «Авто» приходит ещё и как `current` - и стоял в
+     * списке дважды (React ругался на два ключа 'auto'); а браузерному распознавателю «авто» не язык. */
+    if (tag === AUTO) { if (via === 'openai' && !out.includes(AUTO)) out.push(tag); continue; }
     const base = tag.split('-')[0];
     if (out.some((have) => have.split('-')[0] === base)) continue;
     out.push(tag);
