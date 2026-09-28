@@ -26,6 +26,10 @@ import { report, wrap } from './_report.js';
 import { cors } from './_cors.mjs';
 import { GOAL_MAX } from './_brain.mjs';
 import { DESKTOP_GOAL, queueOne } from './_queue.mjs';
+import { ONE_WAY } from './_brain.mjs';
+/* Слова ответа - те же, что уезжают из телеграма: модель читает их как указание, и две редакции одного
+ * указания однажды скажут разное. */
+import { HOLD_GO as GO, HOLD_HALT as HALT } from './_telegram.mjs';
 
 const fail = (res, status, message) =>
   res.status(status).json({ ok: false, error: { type: 'queue_error', message } });
@@ -54,14 +58,21 @@ async function handler(req, res) {
       /* ЧУЖОЙ id И НЕСУЩЕСТВУЮЩИЙ ОТВЕЧАЮТ ОДИНАКОВО - как у расписаний и кейсов, и по той же причине:
        * существует ли работа на чужом аккаунте, это не вопрос, на который здесь отвечают. */
       const [job] = await sql`
-        select state, ok, said from run_queue where id = ${id} and user_id = ${who.id}
+        select state, ok, said, loop from run_queue where id = ${id} and user_id = ${who.id}
       `;
       if (!job) return fail(res, 404, 'no such job on this account');
       const done = job.state === 'done' || job.state === 'failed' || job.state === 'cancelled';
+      /* ОСТАНОВИЛСЯ И СПРАШИВАЕТ (SPLIT-PLAN §7.2, шаг 14b). Читается из цикла, потому что ожидание живёт
+       * там: строка всё это время `claimed`, и она И ЕСТЬ занятая - мышь держит этот прогон. Отдаётся
+       * только то, что показывают человеку; ответ придёт отдельным POST. */
+      const hold = job.loop && job.loop.hold && job.loop.hold.id && !job.loop.hold.answer
+        ? { said: String(job.loop.hold.said || ''), since: job.loop.hold.since || null }
+        : null;
       return res.status(200).json({
         ok: true,
         state: job.state,
         done,
+        holding: hold,
         /* `good`, а не `ok`: у ответа уже есть `ok`, и оно значит «запрос удался», а не «прогон удался».
          * Два разных смысла под одним именем - это ровно тот ложный зелёный, против которого написан
          * весь цикл. */
@@ -73,6 +84,28 @@ async function handler(req, res) {
     if (req.method !== 'POST') return fail(res, 405, 'GET or POST');
 
     const body = req.body && typeof req.body === 'object' ? req.body : {};
+
+    /* ОТВЕТ ОСТАНОВЛЕННОМУ ПРОГОНУ - тем же POST, потому что это та же работа, и разводить две двери к
+     * одной строке значило бы иметь две проверки того, чья она. Разбирается ПЕРВЫМ: у него есть id, а у
+     * постановки в очередь его нет и быть не может. */
+    if (body.answer !== undefined) {
+      const id = String(body.id || '').trim();
+      if (!ID.test(id)) return fail(res, 400, 'that is not a job id');
+      const go = body.answer === true || body.answer === 'go';
+      /* УСЛОВИЕ В САМОМ UPDATE, как и в телеграме: панель может нажать дважды при плохой связи, а второй
+       * ответ - это ответ, приехавший уже после того, как прогон пошёл дальше. */
+      const [job] = await sql`
+        update run_queue
+           set loop = jsonb_set(loop, '{hold,answer}', ${JSON.stringify(go ? GO : HALT)}::jsonb)
+         where id = ${id} and user_id = ${who.id} and state = 'claimed'
+           and loop -> 'hold' ->> 'id' is not null
+           and loop -> 'hold' ->> 'answer' is null
+         returning id
+      `;
+      if (!job) return fail(res, 409, 'that run is not waiting any more');
+      return res.status(200).json({ ok: true, answered: go ? 'go' : 'halt' });
+    }
+
     const goal = String(body.goal || '').trim();
     if (!goal) return fail(res, 400, 'What should it do? Pass the errand as `goal`, in a sentence.');
     /* ОБРЕЗАТЬ МОЛЧА НЕЛЬЗЯ: цель, укороченная по дороге, - это прогон, который сделает почти то, о чём
@@ -83,8 +116,12 @@ async function handler(req, res) {
 
     /* Оба отказа - «машины нет» и «машина занята» - живут в queueOne и приезжают готовыми словами. Вторая
      * их редакция здесь была бы инструкцией, которая в одном месте останется верной, а в другом устареет. */
+    /* РЕЖИМ ЗАМИРАЕТ В АРГУМЕНТАХ РАБОТЫ, а не читается из настроек на каждом ходу: переключённый на
+     * середине прогона он дал бы прогон, про который человек не знает, в каком режиме тот шёл. Умолчание -
+     * автомат: неизвестное значение читается как «не сказано», а не как «включить». */
+    const gate = body.gate === ONE_WAY ? ONE_WAY : null;
     const put = await queueOne(sql, who.id, {
-      flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal },
+      flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}) },
     });
     if (put.why) return res.status(409).json({ ok: false, error: { type: 'queue_error', message: put.why } });
     return res.status(200).json({ ok: true, id: put.id });

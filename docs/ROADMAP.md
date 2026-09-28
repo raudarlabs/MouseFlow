@@ -83,11 +83,26 @@ concrete thing named for the owner to check.
         the plan's `HTTP 401` explained nothing; a free desktop goal had no name in the queue dictionary,
         so the agent's courier took it and answered "does not understand"; and a job could end in ten
         places while only three of them said so in the chat.
-- [ ] **14b · A checkpoint answered from the messenger** — the cloud path is ungated on purpose (*"нет шлюза
-      — нет инструмента"*, `api/_brain.mjs`). A messenger is the first thing that makes "somebody is
-      watching" true there, and it costs a waiting state on `run_queue`, a pause the worker protocol can
-      express, the same pause handled in PowerShell **and** Swift, and a timeout that fails with words.
-      Bigger than 14a, and a safety gain for runs that have none today. [§7.2](SPLIT-PLAN.md)
+- [ ] **14b · A run that stops to ask — the engine is done 2026-09-28, the choosing is not.** The owner
+      overruled the first shape: a plan carries three to six checkpoints, which on a seven-step run is
+      three interruptions, *«инструмент, который перебивает, перестают звать»*. So it is a **mode**, auto
+      by default, and the gate stops only before what **cannot be undone**.
+      **It cost a fraction of this line's estimate.** None of the waiting state on `run_queue`, the new
+      worker-protocol shape or the two agent rebuilds were needed: the hold lives in `loop` (already
+      persisted between turns), the row stays `claimed` because it *is* busy — one mouse — and the pause
+      is a `wait` action **both agents have performed since day one**, so Stop works inside it for free.
+      Shipped: the mode on the loop, the one-way wording, the cut at the checkpoint, the answer as the
+      call's own `tool_result`, a 15-minute ceiling that ends the run **with words**, the question posted
+      to the chat once, the buttons, and `/api/queue` carrying both. [§7.2](SPLIT-PLAN.md)
+  - [ ] **Where the person picks the mode** — a named list (the owner pointed at Claude Code's), remembered
+        per account, shown in the panel and the bot. The engine reads `args.gate`; nothing sets it yet
+        except an explicit field on the request.
+  - [ ] **The panel side of the question** — `/api/queue?id=` already answers `holding`, and the POST
+        already takes the answer; the panel does not draw either yet.
+  - [ ] **A third mode, "ask before every action", is NOT a wording change.** `reached_checkpoint` is a
+        self-report, and asking the model to announce every step is asking it to remember something it
+        will forget. A per-step gate has to be **enforced by the driver** holding each action, which is a
+        different mechanism — decide whether it is wanted before building it.
 - [x] **15 · Docs set split into two indexes — done 2026-09-23.** `docs/product/do.md` and `make.md`,
       over the **same** pages: copying the thirteen shared ones (protocol, both agents, extension, API,
       data model, privacy, configuration, limits, operations) would have made thirteen files to edit

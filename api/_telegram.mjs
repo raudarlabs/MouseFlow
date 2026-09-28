@@ -307,6 +307,36 @@ export function verdictOf(data) {
   return m ? { verdict: VERDICTS[m[1]], draftId: m[2] } : null;
 }
 
+/* ОТВЕТ НА ОСТАНОВКУ ПОСРЕДИ ПРОГОНА (SPLIT-PLAN §7.2, шаг 14b) - отдельный разбор, а не третий вердикт
+ * у плана. Разные вещи: у плана решают, начинать ли; здесь прогон УЖЕ идёт, мышь занята, и на том конце
+ * ждёт остановленная модель. Один разбор на оба смысла однажды ответил бы «продолжай» строке очереди,
+ * которая ещё не начиналась. */
+export function holdAnswerOf(data) {
+  const m = /^(go|halt):([A-Za-z0-9_.:-]{1,80})$/.exec(String(data || ''));
+  return m ? { go: m[1] === 'go', jobId: m[2] } : null;
+}
+
+export const holdKeyboard = (jobId) => ({
+  inline_keyboard: [[
+    { text: 'Continue', callback_data: `go:${jobId}` },
+    { text: 'Stop', callback_data: `halt:${jobId}` },
+  ]],
+});
+
+/* ЧТО ЧИТАЕТ ЧЕЛОВЕК, КОГДА ПРОГОН ОСТАНОВИЛСЯ. Первой строкой - что он собирается сделать, потому что
+ * решение принимают об этом, а не о номере рубежа. */
+export function holdMessage(said) {
+  return `Waiting for you — it is about to do something that cannot be undone.\n\n`
+    + `${String(said || '').trim() || 'It did not say what.'}\n\n`
+    + 'Continue, or Stop and it will finish and tell you where it got to.';
+}
+
+/* И ОТВЕТ, КОТОРЫЙ ПОЕДЕТ МОДЕЛИ. Не «yes»/«no»: это тот самый tool_result, который модель прочтёт как
+ * указание, и одно слово она может прочесть как угодно. */
+export const HOLD_GO = 'The user answered: go ahead.';
+export const HOLD_HALT = 'The user answered: stop. Do not do it. Call finish now and say where you got to '
+  + 'and what is left.';
+
 /** Просрочен ли показанный план. Считается от времени показа, а не от нажатия. */
 export const expired = (createdAt, now = Date.now()) => {
   const at = new Date(createdAt).getTime();

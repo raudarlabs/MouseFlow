@@ -12,7 +12,7 @@
  * чата, всё равно записан в журнал и виден на странице. Потерять ответ неприятно; уронить из-за него
  * работу, которая уже сделана, - хуже.
  */
-import { outcomeMessage } from './_telegram.mjs';
+import { holdKeyboard, holdMessage, outcomeMessage } from './_telegram.mjs';
 
 const API = 'https://api.telegram.org';
 
@@ -77,5 +77,24 @@ export async function tellChatAbout(sql, userId, id, ok, said) {
     if (row) await tellChat(row.args, ok, said);
   } catch (_) {
     /* Нет строки, нет таблицы, база моргнула - исход всё равно записан там, где его читают глазами. */
+  }
+}
+
+/* ПРОГОН ОСТАНОВИЛСЯ И СПРАШИВАЕТ (SPLIT-PLAN §7.2, шаг 14b).
+ *
+ * Тот же адрес, что и у исхода, и тот же довод: он замер в аргументах работы в момент постановки. Кнопки
+ * несут ИДЕНТИФИКАТОР РАБОТЫ, а не черновика: черновик кончился в тот миг, когда нажали Approve, а
+ * спрашивает теперь прогон.
+ *
+ * Лучшее усилие - как и всё в этом файле. Но цена у потери здесь выше, чем у потерянного исхода: прогон
+ * будет стоять, пока не выйдет его время, и закроется причиной. Поэтому HOLD_MAX_MS существует. */
+export async function askChat(args, jobId, hold) {
+  const at = args && typeof args === 'object' && args.telegram && typeof args.telegram === 'object'
+    ? args.telegram : null;
+  if (!at || !at.chatId) return;
+  try {
+    await sendChat(at.chatId, holdMessage(hold && hold.said), { reply_markup: holdKeyboard(jobId) });
+  } catch (_) {
+    /* Сказано выше: молчание здесь дешевле падения. */
   }
 }

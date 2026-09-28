@@ -34,8 +34,8 @@ import { recognise, refusedAudio } from './_transcribe.mjs';
 import { callModel } from './_vision.mjs';
 import { callTelegram, fileUrl, sendChat } from './_telegram-out.mjs';
 import {
-  CHANNEL, SAY, draftId, expired, keyboardFor, outcomeMessage, planMessage, refusedDocument,
-  routeOf, tagFor, updateOf, verdictOf,
+  CHANNEL, HOLD_GO, HOLD_HALT, SAY, draftId, expired, holdAnswerOf, keyboardFor, outcomeMessage,
+  planMessage, refusedDocument, routeOf, tagFor, updateOf, verdictOf,
 } from './_telegram.mjs';
 
 /* Модель для плана. Одна строка, одна причина: план - это один вызов перед прогоном, и он не должен стоить
@@ -247,6 +247,38 @@ async function offer(sql, update, userId, { carry = null } = {}) {
   return say(update.chatId, planMessage({ plan, files, heard, id }), { reply_markup: keyboardFor(id) });
 }
 
+/* ОТВЕТ ОСТАНОВЛЕННОМУ ПРОГОНУ (SPLIT-PLAN §7.2, шаг 14b).
+ *
+ * Пишется В ЦИКЛ, а не в отдельную колонку: цикл и так уезжает в run_queue.loop между ходами, а ответ -
+ * это часть разговора с моделью, а не факт о строке очереди. Следующий ход агента (он приходит каждые три
+ * секунды, пока прогон ждёт) его увидит и закроет им вызов.
+ *
+ * УСЛОВИЕ В САМОМ UPDATE, как и у одобрения плана, и по той же причине: телеграм повторяет callback при
+ * плохой связи, а `loop->'hold'->>'answer' is null` означает, что выиграет ровно первый. Второй не найдёт
+ * строки и не ответит второй раз - а «второй раз» здесь значит ответ, приехавший уже после того, как
+ * прогон пошёл дальше.
+ *
+ * И СОСТОЯНИЕ СТРОКИ НЕ ТРОГАЕТСЯ: она `claimed` всё это время, потому что она И ЕСТЬ занятая - мышь
+ * держит этот прогон. См. записку над HOLD_POLL_MS в api/_step.mjs. */
+async function answerHold(sql, update, userId, hold) {
+  const [job] = await sql`
+    update run_queue
+       set loop = jsonb_set(loop, '{hold,answer}', ${JSON.stringify(hold.go ? HOLD_GO : HOLD_HALT)}::jsonb)
+     where id = ${hold.jobId} and user_id = ${userId} and state = 'claimed'
+       and loop -> 'hold' ->> 'id' is not null
+       and loop -> 'hold' ->> 'answer' is null
+     returning id
+  `;
+  /* Клавиатуру снимаем в обоих случаях: кнопка под отвеченным вопросом приглашает нажать её ещё раз. */
+  if (update.messageId) {
+    await callTelegram('editMessageReplyMarkup', { chat_id: update.chatId, message_id: update.messageId });
+  }
+  if (!job) return say(update.chatId, 'That run is not waiting any more.');
+  return say(update.chatId, hold.go
+    ? 'Going ahead.'
+    : 'Stopping — it will finish and tell you where it got to.');
+}
+
 /* ОТВЕТ НА ПЛАН - ЭТО ПРАВКА. Прежняя цель достаётся из черновика и НЕ пересобирается: одобряют то, что
  * показали, а показанное считалось из неё - вместе с приложенным файлом и надиктованным. */
 async function amend(sql, update, userId, draftId) {
@@ -264,9 +296,15 @@ async function amend(sql, update, userId, draftId) {
 
 /* НАЖАТИЕ. Половина этой функции - про то, чтобы одно нажатие не стало двумя прогонами. */
 async function decide(sql, update, userId) {
-  const said = verdictOf(update.data);
   /* Кнопка должна перестать крутиться, что бы мы дальше ни решили. */
   await callTelegram('answerCallbackQuery', { callback_query_id: update.callbackId });
+
+  /* ОТВЕТ ОСТАНОВЛЕННОМУ ПРОГОНУ - ПЕРВЫМ, и это не порядок ради порядка: он относится к работе, которая
+   * ИДЁТ, а всё ниже - к плану, который ещё не начинался. */
+  const hold = holdAnswerOf(update.data);
+  if (hold) return answerHold(sql, update, userId, hold);
+
+  const said = verdictOf(update.data);
   if (!said) return;
 
   /* ОДНИМ ОПЕРАТОРОМ, а не «прочитать, проверить, записать». Телеграм повторяет callback при плохой связи,

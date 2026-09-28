@@ -648,7 +648,26 @@ export const TOOLS = [
  *
  * Копия описания, а не правка общего: TOOLS - модуль-константа, и дописать в неё строку значило бы, что
  * следующий прогон унаследует условие предыдущего. */
-export const toolsFor = (gated, success = null, caps = null) => {
+/* ЧТО ЗНАЧИТ «ШЛЮЗ» В РЕЖИМЕ, КОТОРЫЙ ВЫБРАЛИ ПО УМОЛЧАНИЮ (SPLIT-PLAN §7.2, шаг 14b).
+ *
+ * Владелец возразил на первую редакцию, и возражение верное: план несёт три-шесть чекпоинтов, на прогоне в
+ * семь шагов это три остановки, а инструмент, который перебивает, перестают звать. Останавливаться надо не
+ * «на каждом рубеже», а ПЕРЕД НЕОБРАТИМЫМ - там, где ошибка стоит не повтора, а чужого письма.
+ *
+ * Почему это возможно сказать словами, а не списком действий: необратимость - свойство не действия, а
+ * НАМЕРЕНИЯ. Один и тот же клик отправляет письмо и открывает папку. Список «опасных инструментов» ловил бы
+ * клик по «Сохранить» и пропускал бы Enter в поле адреса.
+ *
+ * Описание подменяется КОПИЕЙ, как и у `finish` ниже, и по той же причине: TOOLS - модуль-константа, и
+ * дописать в неё строку значило бы, что следующий прогон унаследует режим предыдущего. */
+export const ONE_WAY = 'one-way';
+
+const ONE_WAY_SAID = 'Call this BEFORE anything that cannot be undone - sending a message, submitting a '
+  + 'form, deleting, paying, replying to somebody - and stop until the user answers. Not before ordinary '
+  + 'steps: opening, clicking about, typing into a field and checking things are what nobody needs to '
+  + 'confirm. Say in one sentence what you are about to do that cannot be taken back.';
+
+export const toolsFor = (gated, success = null, caps = null, gate = null) => {
   const list = (gated ? TOOLS : TOOLS.filter((t) => t.name !== 'reached_checkpoint'))
     /* ПО ФЛАГУ, А НЕ ПО ВЕРСИИ, и отсутствие флага - это ответ: «слишком старый, чтобы сказать», а не
      * «нет». Инструмент, которого агент не умеет, стоит РОВНО ТОГО, что этот пункт снимает: модель зовёт
@@ -659,8 +678,17 @@ export const toolsFor = (gated, success = null, caps = null) => {
      * а на порядке держится кеш: `finish` стоит в TOOLS последним, на нём метка cache_control, и
      * выбрасывание элемента из середины оставляет его последним. См. payloadFor в api/_vision.mjs. */
     .filter((t) => t.name !== 'click_named' || (caps && caps.canClickName === true));
-  if (!success) return list;
-  return list.map((tool) => (tool.name === 'finish'
+  /* И ЕСЛИ ШЛЮЗ СТОИТ НА НЕОБРАТИМОМ - чекпоинт получает СВОИ слова. Общее описание говорит «дошли до
+   * одного из чекпоинтов, которые вам дали», а на облачном пути чекпоинтов нет вовсе: план строится до
+   * цикла и в цикл не едет (см. api/_plan.mjs). Просить модель сослаться на список, которого она не
+   * видела, - способ получить остановку наугад. */
+  const said = gate === ONE_WAY
+    ? list.map((tool) => (tool.name === 'reached_checkpoint'
+      ? { ...tool, description: ONE_WAY_SAID }
+      : tool))
+    : list;
+  if (!success) return said;
+  return said.map((tool) => (tool.name === 'finish'
     ? { ...tool, description: `${tool.description} The user said done looks like this: ${success}. `
       + 'Check it before setting ok true.' }
     : tool));

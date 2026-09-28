@@ -10,7 +10,7 @@
 import { flowBody, parseMacro, summarize } from './_macro.mjs';
 import { flowFor } from './_flow-for.mjs';
 import { advance, startLoop } from './_step.mjs';
-import { EARLIER_RUNS, GOAL_MAX, earlierRuns } from './_brain.mjs';
+import { EARLIER_RUNS, GOAL_MAX, ONE_WAY, earlierRuns } from './_brain.mjs';
 import { ALLOWED_MODELS } from './_vision.mjs';
 import { readSettings } from './admin.js';
 import { fillGoal, missingParams } from '../extension/skills.js';
@@ -24,7 +24,7 @@ import { caseGoal, caseIdOf, stripCase } from './_case.mjs';
 import { PAYLOAD_MAX_BYTES } from './_payload.mjs';
 /* Исход работы, пришедшей из чата, отвечает туда же. Обе формы - в api/_telegram-out.mjs, потому что
  * говорят в чат двое и с разных концов прогона; там же сказано, почему тишина хуже плохой новости. */
-import { tellChat, tellChatAbout } from './_telegram-out.mjs';
+import { askChat, tellChat, tellChatAbout } from './_telegram-out.mjs';
 
 /* And how long a worker's claim request may hold open with nothing to do. One request every half minute
  * beats one every three seconds, and an idle loop is not billed as CPU. */
@@ -793,7 +793,11 @@ export async function workerRoute(action, req, res, sql, who) {
           return (pref && pref.value) || null;
         } catch (_) { return null; }
       })();
-      loop = startLoop({ goal, model, success, earlier, zone });
+      /* РЕЖИМ ШЛЮЗА - ИЗ АРГУМЕНТОВ РАБОТЫ (SPLIT-PLAN §7.2, шаг 14b), и оттуда же, откуда цель у
+       * свободного прогона. Неизвестное значение читается как автомат: «не сказано» это не «включить», и
+       * строка очереди, поставленная до появления режимов, обязана идти как шла. */
+      const gate = job.args && job.args.gate === ONE_WAY ? ONE_WAY : null;
+      loop = startLoop({ goal, model, success, earlier, zone, gate });
       /* Who is driving. A worker runs the loop itself and never writes here; recorded so that a machine
        * with both cannot end up driving one mouse twice. */
       await sql`update run_queue set stepping = true where id = ${id} and user_id = ${who.id}`;
@@ -859,6 +863,9 @@ export async function workerRoute(action, req, res, sql, who) {
      * Плоский объект флагов из его же /health. Пустой у любого агента, который о них не говорит, и это
      * правильный ответ для такого: инструмент, которого он не умеет, стоит хода - модель его зовёт, агент
      * отвечает "unknown action", и пять секунд ушли на то, чтобы узнать про чужую машину. */
+    /* Ждал ли прогон ДО этого хода - чтобы вопрос ушёл в чат один раз, а не на каждом опросе: ожидание
+     * отдаётся агенту каждые три секунды, и сообщение на каждый из них - это не уведомление, а звонок. */
+    const wasHolding = !!(loop && loop.hold && loop.hold.id);
     const out = await advance({
       loop, shot: body.shot, windows: body.windows, results: body.results,
       caps: body.caps && typeof body.caps === 'object' ? body.caps : null,
@@ -943,6 +950,12 @@ export async function workerRoute(action, req, res, sql, who) {
       update run_queue set loop = ${JSON.stringify(out.loop)}, claimed_at = now()
       where id = ${id} and user_id = ${who.id} and state = 'claimed'
     `;
+    /* ВОПРОС УХОДИТ ТУДА, ОТКУДА ПРИШЛА РАБОТА, и только в тот ход, когда прогон остановился. Кнопок
+     * две, и обе значат разное для прогона, а не для строки очереди: «дальше» закрывает вызов словами, а
+     * «стоп» тоже едет МОДЕЛИ - остановленная модель обязана закончить сама и сказать, чем кончилось. */
+    if (out.holding && !wasHolding) {
+      await askChat(job.args, id, out.holding);
+    }
     if (out.shrink) return res.status(200).json({ ok: true, shrink: out.shrink });
     return res.status(200).json({
       ok: true, step: out.step, shotWidth: out.shotWidth, actions: out.actions,

@@ -30,8 +30,8 @@
  * Та же идиома, что в agent/test-contract.mjs, mcp/test-mcp.mjs и extension/check-extension.mjs. */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { MAX_STEPS, MIN_SHOT_W, advance, startLoop } from './_step.mjs';
-import { BATCH_MAX, SETTLE_MAX_MS, TOOLS, WAVE_TURNS } from './_brain.mjs';
+import { HOLD_MAX_MS, HOLD_POLL_MS, MAX_STEPS, MIN_SHOT_W, advance, startLoop } from './_step.mjs';
+import { BATCH_MAX, ONE_WAY, SETTLE_MAX_MS, TOOLS, WAVE_TURNS } from './_brain.mjs';
 
 let pass = 0;
 let fail = 0;
@@ -1519,6 +1519,83 @@ group('нажатие по имени - ход, снятый целиком, и 
   check('отказ агента приезжает модели дословно',
     JSON.stringify(askBack.seen[1].messages).includes('NOTHING was clicked'));
   check('и прогон не считает его успехом', back.done && back.done.ok === false);
+}
+
+
+/* ------------------------------------------------------------------ шлюз по выбору (шаг 14b) */
+
+group('шлюз стоит только там, где его попросили, и останавливает прогон, а не ход');
+{
+  /* АВТОМАТ - УМОЛЧАНИЕ, и это не настройка «по умолчанию выключено», а отсутствие инструмента: модель не
+   * может остановиться там, где ей нечем об этом сказать. Прогон без выбора идёт байт в байт как до 14b. */
+  const auto = scripted([answer([use('finish', { ok: true, said: 'done' })])]);
+  await advance({ loop: start(), shot: SHOT, windows: WINDOWS, results: [], ask: auto });
+  check('без выбора инструмента остановки у модели нет вовсе',
+    !JSON.stringify(auto.seen[0].tools).includes('reached_checkpoint'));
+
+  const gated = startLoop({ goal: 'send the invoice', model: 'claude-opus-5', gate: ONE_WAY });
+  const ask = scripted([answer([
+    use('reached_checkpoint', { n: 1, said: 'Draft is written. Next I press Send.' }, 'h1'),
+    /* И ЧТО-ТО ПОСЛЕ НЕГО - ровно то, что не должно случиться, пока человек думает. */
+    use('click', { x: 10, y: 20, label: 'Send' }, 'c1'),
+  ])]);
+  const held = await advance({ loop: gated, shot: SHOT, windows: WINDOWS, results: [], ask });
+  check('с выбором инструмент предлагается', JSON.stringify(ask.seen[0].tools).includes('reached_checkpoint'));
+  check('и его описание - про необратимое, а не про список рубежей',
+    /cannot be undone/.test(JSON.stringify(ask.seen[0].tools)));
+
+  check('прогон встал и не закончился', !held.done && !!held.holding);
+  check('и сказал, о чём спрашивает', /press Send/.test(held.holding.said));
+  /* ХОД ОБРЕЗАН: всё, что модель собиралась сделать ПОСЛЕ объявления, она собиралась сделать уже за
+   * рубежом, о котором спрашивает. Клик по «Send» - ровно то, ради чего вся эта работа.
+   *
+   * ДОКАЗАТЕЛЬСТВО - `pending`, А НЕ `actions`. Ожидание подменяет список действий целиком, так что
+   * пустой `actions` не говорит ничего: он был бы пуст и с невыполненным клик��м внутри. А вот запись в
+   * pending означала бы, что клик УШЁЛ агенту и ответа на него ждут. Мутацией проверено: снятый `cut`
+   * ловится именно этой строкой. */
+  check('и ничего за объявлением не ушло агенту',
+    (held.loop.pending || []).length === 0 && (held.actions || []).every((a) => a.kind === 'wait'),
+    JSON.stringify(held.loop.pending));
+  /* ОЖИДАНИЕ - ЭТО `wait`, КОТОРЫЙ АГЕНТ УЖЕ УМЕЕТ: ни новой формы ответа, ни правки бинарников. */
+  check('ожидание отдаётся действием, которое агент умеет с первого дня',
+    held.actions.length === 1 && held.actions[0].kind === 'wait' && held.actions[0].ms === HOLD_POLL_MS);
+  /* И РЕЗУЛЬТАТ ЭТОГО ОЖИДАНИЯ НИКУДА НЕ ЕДЕТ: положить его в pending было нельзя - каждый pending
+   * становится tool_result с tool_use_id, а такого вызова в разговоре нет, и API отверг бы историю. */
+
+  /* ПОКА НЕ ОТВЕТИЛИ - модель не спрашивается вовсе: ход ожидания ничего не решает и ничего не стоит. */
+  const idle = scripted([]);
+  const again = await advance({
+    loop: held.loop, shot: SHOT, windows: WINDOWS, results: [{ id: 'hold', output: 'ok' }], ask: idle,
+  });
+  check('пока ждут, модель не спрашивают и шаг не считают',
+    idle.seen.length === 0 && again.step === held.step, `${idle.seen.length} ${again.step} ${held.step}`);
+
+  /* ОТВЕТ - ЭТО РЕЗУЛЬТАТ ТОГО ЖЕ ВЫЗОВА, а не новое сообщение: он закрывает tool_use, которым модель
+   * остановилась. Иначе история уезжает к модели с незакрытым вызовом, и API её отвергает. */
+  again.loop.hold.answer = 'The user answered: go ahead.';
+  const after = scripted([answer([use('finish', { ok: true, said: 'Sent it.' })])]);
+  const done = await advance({ loop: again.loop, shot: SHOT, windows: WINDOWS, results: [], ask: after });
+  const sent = JSON.stringify(after.seen[0].messages);
+  check('ответ закрывает тот самый вызов', /"tool_use_id":"h1"/.test(sent));
+  check('и приезжает его результатом, а не новым сообщением', /"type":"tool_result"/.test(sent));
+  check('и прогон идёт дальше', done.done && done.done.ok === true);
+  check('и ожидание снято', !done.loop || !done.loop.hold);
+
+  /* ВРЕМЯ ВЫШЛО - ПРОГОН ЗАКРЫВАЕТСЯ ПРИЧИНОЙ. Ожидание без предела это ровно то, о чём предупреждает
+   * записка над toolsFor: остановка, которую никто не обработал, встаёт навсегда. Человек - не обработчик. */
+  /* СВЕЖИЙ ПРОГОН, а не тот же: `advance` работает с циклом НА МЕСТЕ, и выше ему уже вписали ответ -
+   * переиспользованный, он ушёл бы дальше вместо того, чтобы истечь. Поймано первым запуском. */
+  const late = startLoop({ goal: 'send the invoice', model: 'claude-opus-5', gate: ONE_WAY });
+  const asked = scripted([answer([use('reached_checkpoint', { n: 1, said: 'Next I press Send.' }, 'h2')])]);
+  const waiting = await advance({ loop: late, shot: SHOT, windows: WINDOWS, results: [], ask: asked });
+  waiting.loop.hold.since = Date.now() - HOLD_MAX_MS - 1;
+  const stale = await advance({
+    loop: waiting.loop, shot: SHOT, windows: WINDOWS, results: [], ask: scripted([]),
+  });
+  check('неотвеченное ожидание закрывает прогон, а не висит',
+    !!stale.done && stale.done.ok === false);
+  check('и причина называет и время, и о чём спрашивали',
+    /minutes/.test(stale.done.error) && /press Send/.test(stale.done.error), stale.done.error);
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

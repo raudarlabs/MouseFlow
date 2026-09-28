@@ -75,6 +75,40 @@ import { kindOf, saidOf } from './_artifact.mjs';
 import { DEFAULT_SHOT_W } from './_brain.mjs';
 import { callModel } from './_vision.mjs';
 
+/* ПАУЗА ПОСРЕДИ ПРОГОНА - и почему она стоила несравнимо меньше, чем оценивал план (§7.2, шаг 14b).
+ *
+ * План считал, что шлюз на облачном пути требует нового состояния в `run_queue`, новой формы ответа в
+ * протоколе воркера и правки ОБОИХ установленных агентов. Ничего из этого не понадобилось:
+ *
+ *   ОЖИДАНИЕ ЖИВЁТ В `loop`, а он и так уезжает в run_queue.loop между ходами. Строка при этом остаётся
+ *   `claimed`, и это не уловка: она И ЕСТЬ занятая - мышь держит этот прогон, вторую работу ставить
+ *   нельзя, Stop обязан её находить. Новое состояние пришлось бы учить трём читателям колонки (выбор в
+ *   claim, подметание зависших, проверка занятости) - и первый забывший превратил бы ожидание в потерю.
+ *
+ *   ПАУЗА - ЭТО `wait`, КОТОРЫЙ ОБА АГЕНТА УЖЕ УМЕЮТ. Агент получает одно действие «подожди столько-то»,
+ *   выполняет его, присылает новый снимок и спрашивает снова. Поллинг без единой строки в бинарниках - и,
+ *   что важнее, Stop работает ВНУТРИ паузы: агент следит за отменой во время ожидания (stopSeen).
+ *
+ *   РЕЗУЛЬТАТ ЭТОГО ОЖИДАНИЯ НИКУДА НЕ ЕДЕТ. `loop.pending` на таком ходу пуст, поэтому ответ агента
+ *   просто игнорируется. Положить туда синтетическую запись было нельзя: каждый pending превращается в
+ *   tool_result с чужим tool_use_id, а такого вызова в разговоре нет, и API отверг бы всю историю.
+ *
+ * ЧЕГО ЭТО СТОИТ ЧЕСТНО: пока прогон ждёт, машина занята. Это не побочный эффект, это правда - мышь одна,
+ * и держит её тот, кто остановился на полпути. Отсюда потолок ожидания ниже.
+ */
+
+/** Сколько ждать между вопросами агенту. Три секунды: человек столько не замечает, а прогон и так стоит. */
+export const HOLD_POLL_MS = 3000;
+
+/* Сколько ждать ответа ВСЕГО. Пятнадцать минут: телефон в кармане, уведомление, дорога до него. Дальше
+ * прогон закрывается ПРИЧИНОЙ, а не висит - ожидание без предела это ровно то, о чём предупреждает записка
+ * над toolsFor: «остановиться там, где остановка ничем не обрабатывается, встанет навсегда». Здесь она
+ * обрабатывается, но человек - не обработчик, и рассчитывать на него нельзя. */
+export const HOLD_MAX_MS = 15 * 60 * 1000;
+
+/** Ждёт ли этот прогон ответа прямо сейчас. Читают и цикл, и маршрут, который показывает вопрос. */
+export const heldBy = (loop) => (loop && loop.hold && loop.hold.id ? loop.hold : null);
+
 export const LOOP_VERSION = 1;
 /** Under this a screenshot is unreadable; a turn that is still too large at 320px ends the run. */
 export const MIN_SHOT_W = 320;
@@ -89,11 +123,21 @@ export const MAX_STEPS = WAVE_TURNS * MAX_WAVES;
 export const MODEL_TIMEOUT_MS = 75_000;
 
 /** A run at its first step: the goal, and nothing seen yet. */
-export function startLoop({ goal, model, success = null, earlier = null, zone = null }) {
+export function startLoop({ goal, model, success = null, earlier = null, zone = null, gate = null }) {
   return {
     v: LOOP_VERSION,
     goal: String(goal || ''),
     model: String(model || ''),
+    /* РЕЖИМ, ВЫБРАННЫЙ ЧЕЛОВЕКОМ, и он замирает здесь вместе с остальным.
+     *
+     * На цикле, а не читается из настроек на каждом ходу: настройку можно переключить, пока прогон идёт, и
+     * прогон, у которого шлюз появился на пятом шаге, - это прогон, про который человек не знает, в каком
+     * режиме он шёл. Тот же довод, по которому в строку очереди копируется привязка к машине (db/022):
+     * замирает ровно то, что должно замереть.
+     *
+     * null - автомат, и это умолчание. Пустой шлюз не просто не останавливает: модель тогда вовсе не видит
+     * инструмента (toolsFor), то есть автоматический прогон идёт байт в байт как до шага 14b. */
+    gate: gate ? String(gate) : null,
     /* Зона человека, чтобы сказать модели, который час, - и чтобы «в 19:41» значило его 19:41. Единственное,
      * чего сервер знать не может: приезжает с расписанием, с аргументами прогона или из настроек аккаунта;
      * без неё часы честно говорят UTC, и это сказано в строке. */
@@ -135,6 +179,23 @@ export function startLoop({ goal, model, success = null, earlier = null, zone = 
 function pack(loop) {
   forgetOldPictures(loop.messages);
   return loop;
+}
+
+/* ЧТО ОТДАЁТСЯ АГЕНТУ, ПОКА ПРОГОН ЖДЁТ - одной функцией, потому что таких мест два и они в разных концах
+ * хода: ход, НА КОТОРОМ модель остановилась, и каждый следующий, пока ответа нет. Две редакции этой формы
+ * разошлись бы ровно в том, чего никто не проверяет глазом, - в числе миллисекунд.
+ *
+ * ОЖИДАНИЕ ОТДАЁТСЯ ДЕЙСТВИЕМ `wait`, которое оба агента умеют с первого дня: поллинг без единой строки в
+ * бинарниках, и Stop работает ВНУТРИ паузы - агент следит за отменой, пока ждёт. Ответ на это действие
+ * никуда не едет: `pending` пуст, и результат просто не с чем сопоставить. */
+function holdTurn(loop, hold) {
+  return {
+    loop: pack(loop),
+    actions: [{ id: 'hold', kind: 'wait', ms: HOLD_POLL_MS, reason: 'waiting for an answer' }],
+    step: loop.stepNo,
+    shotWidth: loop.shotWidth,
+    holding: hold,
+  };
 }
 
 /* The upstream call, as this side makes it. Injectable so the loop can be driven by a test without an API
@@ -320,6 +381,40 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
     },
   });
 
+  /* ЖДЁМ ЛИ МЫ ОТВЕТА - ПЕРВЫМ ДЕЛОМ, до картинки и до любого счёта.
+   *
+   * Ход ожидания - НЕ ШАГ: он ничего не решил, ничего не стоил у модели и не должен попадать ни в счётчик
+   * шагов, ни в журнал. Поэтому проверка стоит выше всего, что считает.
+   *
+   * ТРИ ИСХОДА, И ТОЛЬКО ТРИ. Ответ пришёл - закрываем вызов его словами и идём дальше обычным ходом.
+   * Время вышло - закрываем ПРОГОН причиной. Ни того ни другого - отдаём агенту одно ожидание и ждём
+   * дальше. Четвёртого («ждать вечно») здесь нет нарочно: см. HOLD_MAX_MS. */
+  const hold = heldBy(loop);
+  if (hold) {
+    if (hold.answer) {
+      /* ОТВЕТ ЧЕЛОВЕКА - ЭТО РЕЗУЛЬТАТ ВЫЗОВА, а не новое сообщение: он закрывает тот самый tool_use,
+       * которым модель остановилась, и встаёт в разговоре ровно там, где остановка и произошла. Новое
+       * сообщение «человек сказал: продолжай» оставило бы вызов незакрытым, а историю - отвергнутой API.
+       *
+       * СТОП ТОЖЕ ЕДЕТ МОДЕЛИ, а не рвёт прогон снаружи: остановленная модель должна закончить сама -
+       * позвать `finish` и сказать, чем кончилось. Прогон, оборванный мимо неё, пишется в журнал без
+       * единого слова о том, почему. */
+      loop.messages.push({
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: hold.id, content: String(hold.answer).slice(0, 600) }],
+      });
+      loop.hold = null;
+    } else if (Date.now() - Number(hold.since || 0) > HOLD_MAX_MS) {
+      return over({
+        ok: false,
+        error: `It stopped to ask, and nobody answered for ${Math.round(HOLD_MAX_MS / 60000)} minutes, so `
+          + `nothing further was done. It had said: ${hold.said || 'nothing'}`,
+      });
+    } else {
+      return holdTurn(loop, hold);
+    }
+  }
+
   // 1. What the agent did with what it was last told to do.
   if (typeof loop.still !== 'number') loop.still = 0;      // a loop stored before this counter existed
 
@@ -441,9 +536,14 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
   try {
     answer = await model({
       model: loop.model, max_tokens: MAX_TOKENS, system: SYSTEM,
-      /* No checkpoint tool on this path: a checkpoint stops the run until a person answers, and on this
-       * path there is no one at the other end of it - the request came from a machine. */
-      tools: toolsFor(false, loop.success || null, caps || null), messages: loop.messages,
+      /* ШЛЮЗ - ПО ВЫБОРУ ЧЕЛОВЕКА, а не по природе пути (SPLIT-PLAN §7.2, шаг 14b).
+       *
+       * Здесь стояло `toolsFor(false, …)` с запиской: чекпоинт останавливает прогон, а на этом конце
+       * некому ответить - просьба пришла от машины. Это было верно ровно до того дня, когда отвечать стало
+       * кому: мессенджер и панель показывают вопрос и приносят ответ обратно. Решает по-прежнему драйвер,
+       * потому что только он знает, смотрит ли кто-нибудь, - но теперь он знает это из выбора, а не из
+       * того, кем он сам является. Нет выбора - нет инструмента, и прогон идёт как раньше. */
+      tools: toolsFor(!!loop.gate, loop.success || null, caps || null, loop.gate), messages: loop.messages,
     });
   } catch (err) {
     return over({ ok: false, error: `The model could not be reached at step ${loop.stepNo}: ${err && err.message}` });
@@ -610,6 +710,24 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
       ...(cached ? { cached } : {}),
     });
 
+    /* ОСТАНОВКА. Ход обрезается здесь же: всё, что модель собиралась сделать ПОСЛЕ объявления, она
+     * собиралась сделать уже за рубежом, о котором спрашивает. Выполнить это, пока человек думает, значит
+     * задать вопрос и не дождаться ответа.
+     *
+     * Вызов остаётся БЕЗ ОТВЕТА в разговоре, и это не забывчивость: tool_result на него - и есть ответ
+     * человека, он приедет ходом позже. До тех пор история кончается незакрытым tool_use, что законно:
+     * следующий запрос к модели случится только после того, как мы его закроем. */
+    if (use.name === 'reached_checkpoint') {
+      loop.hold = {
+        id: use.id,
+        n: Number(use.input && use.input.n) || 0,
+        said: String((use.input && use.input.said) || '').slice(0, 600),
+        since: Date.now(),
+      };
+      cut = true;
+      continue;
+    }
+
     if (use.name === 'wait') {
       const ms = Math.min(SETTLE_MAX_MS, Math.max(200, Number(use.input && use.input.ms) || 2000));
       actions.push({ id: use.id, kind: 'wait', ms, reason: String((use.input && use.input.reason) || '') });
@@ -647,6 +765,12 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
   if (actions.length && shouldPeek(loop.still)) {
     actions.push({ id: PEEK_ID, kind: 'do', name: 'read_window', body: peekBody(shot) });
   }
+
+  /* ОСТАНОВИЛИСЬ ЭТИМ ЖЕ ХОДОМ - ждём сразу, а не через лишний круг. Иначе агент получил бы ход без единого
+   * действия, немедленно снял бы новый снимок и спросил снова: лишняя картинка и лишний запрос ровно там,
+   * где прогон и так уже стоит. */
+  const held = heldBy(loop);
+  if (held && !held.answer) return holdTurn(loop, held);
 
   return { loop: pack(loop), actions, step: loop.stepNo, shotWidth: loop.shotWidth, keep };
 }
