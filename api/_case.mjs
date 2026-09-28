@@ -331,3 +331,107 @@ export function tallyOf(verdicts) {
   }
   return out;
 }
+
+/* ------------------------------------------------------------------ РАЗОВЫЙ ПРОГОН С ПРОВЕРКАМИ
+ *
+ * ЗАЧЕМ (владелец, 2026-09-28). Кейсы, которые хранятся здесь, - это один случай. Второй: кейсы живут в
+ * чужой системе учёта (TestRail и подобные), и ассистент, подключённый к обеим, говорит нам «выполни это и
+ * скажи, прошло ли». Держать у себя копию такого кейса значило бы завести второй источник правды, который
+ * разойдётся с первым после первой же правки там. Поэтому у mouseflow_do есть проверки БЕЗ кейса: цель,
+ * утверждения и чужой номер на входе, вердикт и то, что не сошлось, на выходе - и ничего не сохраняется.
+ *
+ * ТЕ ЖЕ ПРАВИЛА, А НЕ ВТОРАЯ ИХ РЕДАКЦИЯ: утверждения разбирает readExpects, цель с проверками
+ * составляет caseGoal, вердикт считает caseVerdict. Отличается только то, где лежат утверждения: у кейса -
+ * в user_case, у разового прогона - в аргументах работы, под служебными ключами (двойное подчёркивание, как
+ * CASE_KEY), которые stripCase снимает прежде, чем они дойдут до чего-нибудь ещё. */
+
+/** Утверждения разового прогона - в аргументах работы, а не в строке кейса. */
+export const EXPECT_KEY = '__expect';
+
+/** Чужой номер (например, «C1234» из TestRail): приехал с просьбой и уезжает с ответом, ничего не значит здесь. */
+export const REF_KEY = '__ref';
+
+/* ГДЕ ЛЕЖИТ ЗАПИСЬ ПРОГОНА, если не под id работы. Облачный драйвер пишет user_run под id работы; расширение -
+ * под своим 'run_<startedAt>' (им же подписаны кадры, см. extension/background.js), и сообщает его в отчёте.
+ * Без этой ссылки вердикт браузерного прогона было бы не из чего считать. */
+export const RUN_KEY = '__run';
+
+/* Длина чужого номера. Это номер, а не описание: сто двадцать знаков вмещают «TestRail C123456 · run 42»
+ * и не вмещают абзац, который следовало положить в цель. */
+export const REF_MAX = 120;
+
+/** Утверждения разового прогона, или null, если их не просили. */
+export function expectsOf(args) {
+  const list = args && typeof args === 'object' ? args[EXPECT_KEY] : null;
+  return Array.isArray(list) && list.length ? list : null;
+}
+
+/** Чужой номер из аргументов работы, или null. */
+export function refOf(args) {
+  const ref = args && typeof args === 'object' ? str(args[REF_KEY]) : '';
+  return ref ? ref.slice(0, REF_MAX) : null;
+}
+
+/** Под каким id лежит запись прогона этой работы. */
+export function runIdOf(jobId, args) {
+  const run = args && typeof args === 'object' ? str(args[RUN_KEY]) : '';
+  return run || String(jobId || '');
+}
+
+/**
+ * Отчёт о разовом прогоне с проверками - словами, которые ассистент перенесёт в чужую систему учёта.
+ *
+ * КАЖДАЯ ПРОВЕРКА ОТДЕЛЬНОЙ СТРОКОЙ, и сошедшиеся тоже. У кейса в TestRail ожидаемый результат обычно не один,
+ * и отчёт «1 из 3 не сошлась» без того, какая именно, заставил бы угадывать, какой шаг там пометить красным.
+ *
+ * НЕТ ЗАПИСИ - НЕТ ВЕРДИКТА, а не «прошло». Прогон мог кончиться раньше, чем запись доехала, или не доехать
+ * вовсе (старое расширение не присылает, где она); тогда отчёт говорит это и называет исход работы как есть.
+ *
+ * @param {{ ok?: boolean|null, said?: string|null, ref?: string|null, run?: {
+ *   outcome?: string|null, checks?: object|null, steps?: unknown } | null, asked?: unknown }} it
+ * @returns {{ verdict: string, text: string }}
+ */
+export function checkedReport(it) {
+  const run = it && it.run && typeof it.run === 'object' ? it.run : null;
+  const asked = Array.isArray(it && it.asked) ? it.asked : [];
+  const head = [];
+  if (it && it.ref) head.push(`Ref: ${it.ref}`);
+
+  if (!run) {
+    head.push(`Verdict: ${verdictSaid('blocked')}.`,
+      'The record of this run did not reach the account, so no check can be read from it. '
+        + (it && it.ok ? 'The run itself reported success - that is not a verdict.' : 'The run did not succeed.'));
+    if (it && it.said) head.push(`It said: ${it.said}`);
+    return { verdict: 'blocked', text: head.join('\n') };
+  }
+
+  const made = (Array.isArray(run.steps) ? run.steps : [])
+    .filter((step) => step && typeof step === 'object' && named(step) === 'expect' && step.outcome);
+  /* ПРОСИЛИ БОЛЬШЕ, ЧЕМ СДЕЛАНО - и это не зелёный. caseVerdict видит только сделанные: несделанная
+   * проверка не попадает даже в `unchecked`, и прогон, проверивший одно из трёх, читался бы полным pass.
+   * Провал при этом остаётся провалом - найденный дефект не прячется за тем, что проверили не всё. */
+  const skipped = Math.max(0, asked.length - made.length);
+  const judged = caseVerdict({ outcome: run.outcome, checks: run.checks, steps: run.steps });
+  const verdict = skipped && (judged === 'pass' || judged === 'pass_with_repairs') ? 'blocked' : judged;
+  head.push(`Verdict: ${verdictSaid(verdict)}.`);
+  if (it && it.said) head.push(`It said: ${it.said}`);
+
+  const lines = made.map((step) => {
+    const word = step.outcome.pass === true ? 'held'
+      : step.outcome.pass === false ? 'DID NOT HOLD' : 'could not be checked';
+    const evidence = str(step.outcome.evidence);
+    return `  ${word}: ${expectLine(step.input || {})}${evidence ? ` -> ${evidence}` : ''}`
+      + `${step.outcome.how ? ` (${step.outcome.how})` : ''}`;
+  });
+  if (lines.length) head.push('Checks:', ...lines);
+
+  if (skipped) {
+    head.push(`${skipped} of the ${asked.length} checks asked for ${skipped === 1 ? 'was' : 'were'} never made.`);
+  }
+  const late = lateBound(run.steps, asked);
+  if (late > 0) {
+    head.push(`${late} check${late === 1 ? '' : 's'} bound to a moment ${late === 1 ? 'was' : 'were'} made at `
+      + 'the end anyway, so this ran as a weaker test than it says.');
+  }
+  return { verdict, text: head.join('\n') };
+}

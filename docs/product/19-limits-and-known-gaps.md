@@ -724,10 +724,11 @@ about what had already been recorded: `mouseflow_run` takes a `skill`. There was
 mail and find the message from Ann" through MCP on EITHER surface — a goal reached the queue only as a
 saved *created* skill, which somebody had to make first. `mouseflow_do` takes the errand itself.
 
-It is browser-only, and that is not small print. The extension carries its own model (`runGoal`): it looks
-at the page and decides one action at a time by itself. The desktop agent carries none — it steps through
-`?worker=step` — so giving it a free errand means changing a compiled binary on somebody's machine, which
-is its own piece of work. The queue marks the job `#goal.browser` rather than `#goal` for that reason: work
+It was browser-only at first, and that was not small print: the extension carries its own model and the
+desktop agent carries none. Since 14a the free desktop goal steps through `?worker=step` with the model on
+the server, and since 2026-09-28 `mouseflow_do` reaches it with `on: "desktop"`. The same date gave it
+`expect` and `ref`, so a test case that lives in another system (TestRail) can be run and judged here
+without being copied here; see `checkedReport` in `api/_case.mjs`. The queue marks the job `#goal.browser` rather than `#goal` for that reason: work
 only one surface can do has to say so, or the other takes it and answers "I do not understand", and the
 turn is spent.
 

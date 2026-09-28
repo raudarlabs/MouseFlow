@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import {
   CASE_KEY, EXPECTS_MAX, VERDICTS, caseGoal, caseIdOf, caseVerdict, expectLine, lateBound, readExpects,
   repairsOf, stripCase, tallyOf, verdictSaid,
+  EXPECT_KEY, REF_KEY, RUN_KEY, REF_MAX, checkedReport, expectsOf, refOf, runIdOf,
 } from './_case.mjs';
 import { checksOnSkill, procedureWith, seedFrom } from './_procedure.mjs';
 
@@ -329,6 +330,62 @@ group('КРУГ МЕЖДУ КЕЙСОМ И СКИЛЛОМ - чеки едут т
     /const payload = procedureWith\(entry\.payload, read\.expects\);/.test(mcp));
   check('и обе двери берут эти функции из одного модуля, а не друг у друга',
     /from '\.\/_procedure\.mjs'/.test(mcp) && /from '\.\/_procedure\.mjs'/.test(src));
+}
+
+
+group('РАЗОВЫЙ ПРОГОН С ПРОВЕРКАМИ: кейс живёт в чужой системе, вердикт - здесь');
+{
+  const want = [
+    { check: 'text_is', name: 'Status', text: 'Paid', why: 'the invoice is marked paid' },
+    { check: 'present', name: 'Receipt', why: 'a receipt was issued' },
+  ];
+  const step = (input, pass, evidence) => ({ tool: 'expect', input, outcome: { pass, evidence, how: 'tree' } });
+  const args = { goal: 'pay invoice 42', [EXPECT_KEY]: want, [REF_KEY]: 'TestRail C1234' };
+
+  check('служебные ключи - под двойным подчёркиванием, и stripCase снимает их все',
+    [EXPECT_KEY, REF_KEY, RUN_KEY].every((k) => k.startsWith('__'))
+      && Object.keys(stripCase({ ...args, [RUN_KEY]: 'run_x', who: 'Ann' })).join() === 'goal,who');
+  check('проверки читаются из аргументов, а пустой список - это «не просили»',
+    expectsOf(args).length === 2 && expectsOf({ [EXPECT_KEY]: [] }) === null && expectsOf(null) === null);
+  check('чужой номер читается как есть и не длиннее потолка',
+    refOf(args) === 'TestRail C1234' && refOf({}) === null
+      && refOf({ [REF_KEY]: 'x'.repeat(REF_MAX + 50) }).length === REF_MAX);
+  check('запись прогона - под id работы, если машина не назвала свою',
+    runIdOf('q_1', {}) === 'q_1' && runIdOf('q_1', { [RUN_KEY]: 'run_2026' }) === 'run_2026');
+
+  const held = checkedReport({ ok: true, said: 'paid', ref: 'TestRail C1234', asked: want, run: {
+    outcome: 'ok', checks: checks(2),
+    steps: [step(want[0], true, 'Status = "Paid"'), step(want[1], true, 'found')] } });
+  check('всё сошлось - pass, и номер уехал обратно в ответе',
+    held.verdict === 'pass' && /^Ref: TestRail C1234$/m.test(held.text) && /Verdict: passed/.test(held.text),
+    held.text);
+  check('и каждая проверка - своей строкой, сошедшиеся тоже',
+    (held.text.match(/^ {2}held: /gm) || []).length === 2, held.text);
+
+  const broke = checkedReport({ ok: true, asked: want, run: {
+    outcome: 'ok', checks: checks(1, 1),
+    steps: [step(want[0], false, 'Status = "Pending"'), step(want[1], true, 'found')] } });
+  check('не сошлась одна - это найденный дефект, и сказано, что было на самом деле',
+    broke.verdict === 'fail' && /DID NOT HOLD: text_is "Status" = "Paid".*-> Status = "Pending"/.test(broke.text),
+    broke.text);
+
+  /* САМОЕ ВАЖНОЕ ЗДЕСЬ: проверили одно из двух, оно сошлось - это НЕ зелёный. caseVerdict видит только
+   * сделанные проверки, и без этого правила недоделанный тест приехал бы в TestRail как Passed. */
+  const half = checkedReport({ ok: true, asked: want, run: {
+    outcome: 'ok', checks: checks(1), steps: [step(want[0], true, 'Status = "Paid"')] } });
+  check('проверили не всё, что просили, - вердикта нет, а не «прошло»',
+    half.verdict === 'blocked' && /1 of the 2 checks asked for was never made/.test(half.text), half.text);
+  check('и первая строка вердикта говорит то же, что поле verdict',
+    /Verdict: no verdict/.test(half.text), half.text);
+  const halfBroke = checkedReport({ ok: false, asked: want, run: {
+    outcome: 'failed', checks: checks(0, 1), steps: [step(want[0], false, 'Pending')] } });
+  check('а найденный дефект остаётся дефектом, даже если до второй проверки не дошли',
+    halfBroke.verdict === 'fail', halfBroke.verdict);
+
+  const lost = checkedReport({ ok: true, said: 'done', ref: 'C9', asked: want, run: null });
+  check('записи прогона нет - вердикта нет, и слово машины вердиктом не выдаётся',
+    lost.verdict === 'blocked' && /did not reach the account/.test(lost.text)
+      && /not a verdict/.test(lost.text) && /^Ref: C9$/m.test(lost.text), lost.text);
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

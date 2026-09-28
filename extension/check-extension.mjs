@@ -1360,6 +1360,40 @@ group('и свободную цель - предложение, а не навы
   check('и исход отчитан обратно', !!rep && rep[1].id === 'g1' && rep[1].ok === true, show(rep && rep[1]));
   check('и в отчёте слова прогона, а не наши', !!rep && /opened/.test(String(rep[1].said)),
     show(rep && rep[1].said));
+  /* ВЕРДИКТ РАЗОВОГО ПРОГОНА С ПРОВЕРКАМИ считается облаком из записи прогона в ту секунду, когда работа
+   * закрыта. Поэтому запись уходит ДО отчёта, а отчёт называет, под каким id она легла. */
+  const syncAt = posted.findIndex(([k, b]) => k === 'sync' && Array.isArray(b.runs) && b.runs.length);
+  const reportAt = posted.findIndex(([k]) => k === 'report');
+  check('и запись прогона уехала раньше отчёта, а не после', syncAt >= 0 && syncAt < reportAt,
+    show(posted.map(([k]) => k)));
+  check('и отчёт называет, под каким id она легла',
+    !!rep && /^run_/.test(String(rep[1].run))
+      && withRun.some((b) => b.runs.some((r) => r.id === rep[1].run)), show(rep && rep[1].run));
+}
+
+group('и цель с проверками - составленная сервером, а не здесь');
+{
+  store.taking = true;
+  store.syncToken = 'mf_test';
+  const posted = [];
+  let seenGoal = null;
+  netHandler = async (url, init) => {
+    const body = init && init.body ? JSON.parse(init.body) : {};
+    if (String(url).includes('worker=claim')) {
+      return reply({ ok: true, job: { id: 'g3', toolName: 'mouseflow_do', args: { goal: 'pay invoice 42' },
+        command: '#goal.browser', flow: null, caseGoal: 'pay invoice 42\n\nTHIS IS A TEST CASE. check Paid' } });
+    }
+    if (String(url).includes('worker=report')) { posted.push(body); return reply({ ok: true }); }
+    if (String(url).includes('/api/sync')) return reply({ ok: true, flows: 0, runs: 0, deleted: 0, problems: [] });
+    if (!init || init.method === 'GET') return reply({ extensionModel: 'claude-opus-5' });
+    seenGoal = JSON.stringify(body.messages || []);
+    return reply({ stop_reason: 'end_turn',
+      content: [{ type: 'tool_use', id: 'f', name: 'finish', input: { ok: true, summary: 'paid' } }] });
+  };
+  await listeners.alarm({ name: 'mouseflow.claim' });
+  for (let i = 0; i < 80 && !posted.length; i++) await new Promise((r) => setTimeout(r, 100));
+  check('модель получила цель с проверками, а не голую', /THIS IS A TEST CASE/.test(String(seenGoal)),
+    show(seenGoal && seenGoal.slice(0, 120)));
 }
 
 group('а цель без текста - названный отказ, а не тихий прогон ни о чём');

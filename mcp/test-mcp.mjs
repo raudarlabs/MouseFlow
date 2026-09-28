@@ -2615,8 +2615,10 @@ check('when both are listening, the worker is not offered a goal',
 check('и браузер умеет цели сам, потому что несёт свою модель',
   /const goalCapable = claimerSteps \|\| browserDoesGoals;/.test(mcpApi)
     && /const browserDoesGoals = claimerIsBrowser;/.test(mcpApi));
+/* Тул выбирает поверхность по `on`, и каждая уходит под своим именем: браузерная цель, отданная десктопу,
+ * вернулась бы «does not understand». Пин - на месте выбора, а не на одной из двух строк. */
 check('и свободная цель уезжает только на ту поверхность, которая её выполнит',
-  /flowId: BROWSER_GOAL/.test(mcpApi)
+  /flowId: on === 'desktop' \? DESKTOP_GOAL : BROWSER_GOAL,/.test(mcpApi)
     && /then q\.flow_id = \$\{BROWSER_GOAL\}/.test(mcpApi)
     && /else q\.flow_id <> \$\{BROWSER_GOAL\}/.test(mcpApi));
 check('and "listening" means it asked recently, not that it once existed',
@@ -6244,6 +6246,42 @@ group('ДВЕ ПОЛОВИНЫ ОДНОГО МАРШРУТА ЛЕЖАТ ОТДЕ
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
+/* РАЗОВЫЙ ПРОГОН С ПРОВЕРКАМИ ЧЕРЕЗ mouseflow_do (владелец, 2026-09-28): кейс живёт в чужой системе учёта,
+ * здесь - только исполнение и вердикт. Правила вердикта проверены вычислением в api/_test-case.mjs; здесь -
+ * что каждая дверь действительно ими пользуется. Комментарии сняты: искать отсутствие можно только в коде. */
+group('mouseflow_do: test case in, verdict out, nothing stored');
+{
+  const bare = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const tools = bare(mcpWhole('../api/_mcp-tools.mjs'));
+  const worker = bare(mcpWhole('../api/_mcp-worker.mjs'));
+  const doAt = tools.indexOf('if (asked === DO_TOOL.name) {');
+  const doBlock = tools.slice(doAt, tools.indexOf('if (AGENT_JOBS[asked])', doAt));
+  check('both surfaces are offered, and the schema carries expect and ref',
+    /enum: \['browser', 'desktop'\]/.test(tools) && /expect: \{[\s\S]{0,300}items: EXPECT_ITEM,/.test(tools)
+      && /ref: \{\s*type: 'string'/.test(tools));
+  check('and the case tool takes its checks in the same schema, not a copy of it',
+    (tools.match(/items: EXPECT_ITEM,/g) || []).length === 2);
+  check('checks are read by the case\'s own rules, with the kinds of the surface that will check them',
+    /readExpects\(args\.expect, checksFor\(on\)\)/.test(doBlock));
+  check('and ride in the job under the service keys',
+    /\[EXPECT_KEY\]: expects/.test(doBlock) && /\[REF_KEY\]: ref/.test(doBlock));
+  check('nothing is written to user_case by it', !/user_case/.test(doBlock), doBlock.slice(0, 80));
+  check('an MCP run never waits on a question nobody sees - no gate is put on it', !/gate/.test(doBlock));
+  check('a long goal is refused, not cut', !/goal\.slice\(/.test(doBlock) && /DO_GOAL_MAX/.test(doBlock));
+  check('the answer on waiting and on asking later come from one function',
+    (tools.match(/return outcomeOf\(sql, who, id, job\);/g) || []).length === 2);
+  check('and the verdict is read from the run record, under whichever id the machine logged it',
+    /client_id = \$\{runId\}/.test(tools) && /runIdOf\(id, job\.args\)/.test(tools)
+      && /checkedReport\(\{/.test(tools));
+  check('the desktop goal gets its checks from the same caseGoal a stored case uses',
+    /goal = caseGoal\(goal, expectsOf\(job\.args\)\);/.test(worker));
+  check('the browser goal gets them composed on the server and handed over ready',
+    /job\.flow_id === BROWSER_GOAL && expectsOf\(job\.args\)[\s\S]{0,120}caseGoal: caseGoal\(/.test(worker));
+  check('the report may name where the run was logged, and only in the form the extension writes it',
+    /args = args \|\| \$\{JSON\.stringify\(run \? \{ \[RUN_KEY\]: run \} : \{\}\)\}::jsonb/.test(worker)
+      && /\^run_\[A-Za-z0-9:\.\\-\]\{1,60\}\$/.test(worker));
+}
+
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by
  * here, and a keep-alive socket that outlives them keeps the loop open - which turns a suite that has
  * finished and said so into one that appears to hang, and `npm test` never returns. Everything this file

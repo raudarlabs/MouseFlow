@@ -18,8 +18,11 @@ import { report } from './_report.js';
 import { help } from './_help.mjs';
 import { firstAt, readRule, ruleOf, ruleSaid, whenSaid } from './_schedule.mjs';
 import { checksOf } from './_expect.mjs';
-import { BROWSER_GOAL, WHERE, jobId, queueOne, scheduleId, workerSeen } from './_queue.mjs';
-import { CASE_KEY, VERDICTS, checksFor, expectLine, readExpects, tallyOf, verdictSaid } from './_case.mjs';
+import { BROWSER_GOAL, DESKTOP_GOAL, WHERE, jobId, queueOne, scheduleId, workerSeen } from './_queue.mjs';
+import {
+  CASE_KEY, EXPECT_KEY, REF_KEY, REF_MAX, VERDICTS, checkedReport, checksFor, expectLine, expectsOf, readExpects,
+  refOf, runIdOf, tallyOf, verdictSaid,
+} from './_case.mjs';
 import { casesFor, runsForCase } from './cases.js';
 
 
@@ -36,6 +39,10 @@ export const SERVER = { name: 'mouseflow', version: '0.2.0' };
  * tool asks after it - is a better outcome than a dropped connection in every case. */
 const CALL_WAIT_MS = 25_000;
 const CALL_POLL_MS = 1_500;
+/* Сколько раз спросить запись прогона с проверками, прежде чем сказать, что её нет. См. outcomeOf. */
+const RECORD_TRIES = 4;
+/* Потолок цели у этой двери. См. GOAL_MAX в api/_brain.mjs - почему он здесь свой и меньше. */
+const DO_GOAL_MAX = 2000;
 
 
 /** RFC 6750 / RFC 9728: say it is a bearer resource and where the authorisation server will be found. */
@@ -217,23 +224,83 @@ export const STOP_RECORDING_TOOL = {
  * Отдельным `#goal.browser`, а не общим `#goal`: очередь развозит работу по поверхностям, и команда,
  * которую может выполнить только одна из них, обязана это о себе говорить - иначе её заберёт тот, кто
  * ответит «не понимаю», и ход будет потрачен. */
+/* ОДНО УТВЕРЖДЕНИЕ - одной схемой на оба тула, что его принимают: mouseflow_case (кейс, который хранится
+ * здесь) и mouseflow_do (разовый прогон с проверками, кейс которого живёт в чужой системе). Две схемы одного
+ * утверждения разошлись бы первым же новым видом проверки, и один тул принимал бы то, что другой отвергает. */
+const EXPECT_ITEM = {
+  type: 'object',
+  properties: {
+    check: {
+      type: 'string',
+      /* Оба словаря в одной схеме, а какие из них можно - решает поверхность скилла: у окна
+       * приложения нет адреса, поэтому url_* и count_is там отвергаются при записи, а не молчат
+       * ночью. text_is/text_contains и value_is/value_contains - два написания одного, принимаемые
+       * взаимно (см. judge в api/_expect.mjs). */
+      enum: ['present', 'absent', 'value_is', 'value_contains', 'text_is', 'text_contains',
+        'enabled', 'disabled', 'url_is', 'url_contains', 'count_is'],
+      description: 'present/absent, value_is/value_contains (text_is/text_contains say the same '
+        + 'thing), enabled/disabled work everywhere. url_is, url_contains and count_is need the '
+        + 'browser: a desktop window has no address and no exact count.',
+    },
+    name: { type: 'string', description: 'The control, as it appears on screen' },
+    text: { type: 'string', description: 'For value_is and value_contains' },
+    process: { type: 'string', description: 'Narrow to a process instead of the window in front' },
+    why: { type: 'string', description: 'What this proves, in the case\'s own words' },
+    /* КОГДА проверять - фразой, а не номером чекпоинта: у сохранённого скилла плана нет, а
+     * ночной драйвер получает toolsFor(false) - без reached_checkpoint. См. api/_case.mjs. */
+    after: {
+      type: 'string',
+      description: 'The moment this belongs to, as a sentence - "the message has been sent". '
+        + 'Leave it out for a check that belongs at the end. Use it when the thing being checked '
+        + 'would have moved on by the end: an outbox is empty after it sends, so checking it at '
+        + 'the end is a different test.',
+    },
+  },
+  required: ['check', 'name', 'why'],
+  additionalProperties: false,
+};
+
 export const DO_TOOL = {
   name: 'mouseflow_do',
-  description: 'Have the MouseFlow browser extension carry out something described in plain language, in '
-    + "the user's own Chrome, with their sessions already signed in. Use this when there is no saved skill "
-    + 'for what is wanted. It looks at the page and decides one action at a time, so say what should be '
-    + 'true at the end rather than which buttons to press. This acts on a real logged-in browser and the '
-    + 'actions cannot be undone from here: an errand that sends, buys or deletes should be the one the user '
-    + 'actually asked for. It needs "Let my AI run skills in this browser" switched on in the panel. For a '
-    + 'DESKTOP errand there is no equivalent yet - the desktop agent carries no model of its own - so use '
-    + 'mouseflow_run with a saved skill there.',
+  description: 'Have MouseFlow carry out something described in plain language, when there is no saved '
+    + 'skill for it - in the user\'s own Chrome (`on: "browser"`, the default, with their sessions already '
+    + 'signed in) or on their computer itself (`on: "desktop"`, any app). It looks at the screen and decides '
+    + 'one action at a time, so say what should be true at the end rather than which buttons to press. This '
+    + 'acts on a real machine and the actions cannot be undone from here: an errand that sends, buys or '
+    + 'deletes should be the one the user actually asked for. The browser needs "Let my AI run skills in '
+    + 'this browser" switched on in the panel; the desktop needs "Let Claude drive this computer".\n\n'
+    + 'TO RUN A TEST CASE - for example one read from a test management system such as TestRail - put its '
+    + 'steps in `goal`, its expected results in `expect`, and its id in `ref`. Every expected result is then '
+    + 'checked by the machine from what is on screen, never from a picture, and the answer is a verdict: '
+    + 'passed, failed a check (a defect was found), or no verdict (the run could not get far enough to '
+    + 'prove anything - that is Blocked or Retest, not Failed). Each check comes back on its own line, '
+    + 'held or not, with what was actually there. Nothing is saved here: the case stays where it lives.',
   inputSchema: {
     type: 'object',
     properties: {
       goal: {
         type: 'string',
-        description: 'What should be done, in a sentence or two, as the user would say it. Name the things '
-          + 'that matter - which account, which item, which recipient - because the run has only this.',
+        description: 'What should be done, in a sentence or two, as the user would say it - or a test '
+          + 'case\'s steps, in order. Name the things that matter - which account, which item, which '
+          + 'recipient - because the run has only this.',
+      },
+      on: {
+        type: 'string',
+        enum: ['browser', 'desktop'],
+        description: 'Where: "browser" (default) is the user\'s Chrome through the extension; "desktop" '
+          + 'is the computer itself through the MouseFlow agent - any app, not only a browser.',
+      },
+      expect: {
+        type: 'array',
+        description: 'What must be true - a test case\'s expected results, one check each. Leave it out '
+          + 'for an ordinary errand. Each is checked at the END unless it carries `after`, which names the '
+          + 'moment it belongs to instead.',
+        items: EXPECT_ITEM,
+      },
+      ref: {
+        type: 'string',
+        description: 'The case\'s id in the system it came from - "TestRail C1234". Nothing here reads '
+          + 'it: it is handed back with the verdict so the result can be written to the right case.',
       },
     },
     required: ['goal'],
@@ -398,38 +465,7 @@ export const CASE_TOOL = {
         description: 'What must be true - checked one by one with the expect tool. Say what each one '
           + 'proves: that sentence is what somebody reads in a red report. Each is checked at the END of '
           + 'the run unless it carries `after`, which names the moment it belongs to instead.',
-        items: {
-          type: 'object',
-          properties: {
-            check: {
-              type: 'string',
-              /* Оба словаря в одной схеме, а какие из них можно - решает поверхность скилла: у окна
-               * приложения нет адреса, поэтому url_* и count_is там отвергаются при записи, а не молчат
-               * ночью. text_is/text_contains и value_is/value_contains - два написания одного, принимаемые
-               * взаимно (см. judge в api/_expect.mjs). */
-              enum: ['present', 'absent', 'value_is', 'value_contains', 'text_is', 'text_contains',
-                'enabled', 'disabled', 'url_is', 'url_contains', 'count_is'],
-              description: 'present/absent, value_is/value_contains (text_is/text_contains say the same '
-                + 'thing), enabled/disabled work everywhere. url_is, url_contains and count_is need a '
-                + 'browser skill: a desktop window has no address and no exact count.',
-            },
-            name: { type: 'string', description: 'The control, as it appears on screen' },
-            text: { type: 'string', description: 'For value_is and value_contains' },
-            process: { type: 'string', description: 'Narrow to a process instead of the window in front' },
-            why: { type: 'string', description: 'What this proves, in the case\'s own words' },
-            /* КОГДА проверять - фразой, а не номером чекпоинта: у сохранённого скилла плана нет, а
-             * ночной драйвер получает toolsFor(false) - без reached_checkpoint. См. api/_case.mjs. */
-            after: {
-              type: 'string',
-              description: 'The moment this belongs to, as a sentence - "the message has been sent". '
-                + 'Leave it out for a check that belongs at the end. Use it when the thing being checked '
-                + 'would have moved on by the end: an outbox is empty after it sends, so checking it at '
-                + 'the end is a different test.',
-            },
-          },
-          required: ['check', 'name', 'why'],
-          additionalProperties: false,
-        },
+        items: EXPECT_ITEM,
       },
     },
     required: ['name', 'skill', 'expects'],
@@ -1178,13 +1214,13 @@ export async function callTool(sql, who, params, req) {
   if (asked === RUN_STATUS_TOOL.name) {
     const id = String(args.run || '');
     const rows = await sql`
-      select state, ok, said, finished_at from run_queue where id = ${id} and user_id = ${who.id}
+      select state, ok, said, args, finished_at from run_queue where id = ${id} and user_id = ${who.id}
     `;
     if (!rows.length) return say(`There is no run "${id}" on this account.`, true);
     const job = rows[0];
     if (job.state === 'queued') return say('Still waiting for a machine to pick it up.');
     if (job.state === 'claimed') return say('A machine has it and is working on it.');
-    return say(job.said || (job.ok ? 'Done.' : 'It did not finish.'), !job.ok);
+    return outcomeOf(sql, who, id, job);
   }
 
   /* The timer, and skills. Both are the same thing from here: something only a machine can do, so it goes
@@ -1192,8 +1228,38 @@ export async function callTool(sql, who, params, req) {
   if (asked === DO_TOOL.name) {
     const goal = String((args && args.goal) || '').trim();
     if (!goal) return say('What should it do? Pass the errand as `goal`, in a sentence.', true);
+    /* ОБРЕЗАТЬ МОЛЧА НЕЛЬЗЯ - как и в api/queue.js. Раньше цель здесь срезалась до потолка без слова, и для
+     * поручения это было терпимо; для тест-кейса это прогон, из которого пропали последние шаги, и вердикт о
+     * том, чего никто не просил. Потолок прежний (см. GOAL_MAX в api/_brain.mjs - почему у этой двери свой). */
+    if (goal.length > DO_GOAL_MAX) {
+      return say(`That goal is ${goal.length - DO_GOAL_MAX} characters over the ${DO_GOAL_MAX} this tool takes. `
+        + 'Shorten it - or, for a long test case, run its steps in parts.', true);
+    }
+    const on = args && args.on === 'desktop' ? 'desktop' : 'browser';
+    if (args && args.on !== undefined && args.on !== 'desktop' && args.on !== 'browser') {
+      return say(`"on" is "browser" or "desktop", not "${String(args.on)}".`, true);
+    }
+    /* ПРОВЕРКИ - ТЕМ ЖЕ readExpects, что у кейса, и с набором видов ТОЙ поверхности, где их будут
+     * проверять: url_contains на десктопе отвергается сейчас, а не молчит в отчёте. Пустой список - это
+     * «проверок не просили», а не кейс без утверждений: поручение и есть поручение. */
+    let expects = null;
+    if (Array.isArray(args && args.expect) && args.expect.length) {
+      const read = readExpects(args.expect, checksFor(on));
+      if (read.why) return say(`Nothing was run: ${read.why}`, true);
+      expects = read.expects;
+    }
+    const ref = String((args && args.ref) || '').trim();
+    if (ref.length > REF_MAX) {
+      return say(`\`ref\` is an id, and ${REF_MAX} characters is the most one takes. Put the rest in the goal.`,
+        true);
+    }
+    /* РЕЖИМА ШЛЮЗА ЗДЕСЬ НЕТ НАРОЧНО, и запомненный «Ask first» на MCP не распространяется. Остановка
+     * спрашивает человека - в панели или в телеграме, - а этот прогон заказал другой агент, и ждать ответа на
+     * вопрос, которого человек не видит, прогон будет до таймаута. Прогон по MCP - автомат. */
     return queueAndWait(sql, who, {
-      flowId: BROWSER_GOAL, toolName: asked, args: { goal: goal.slice(0, 2000) },
+      flowId: on === 'desktop' ? DESKTOP_GOAL : BROWSER_GOAL,
+      toolName: asked,
+      args: { goal, ...(expects ? { [EXPECT_KEY]: expects } : {}), ...(ref ? { [REF_KEY]: ref } : {}) },
     });
   }
 
@@ -1279,6 +1345,41 @@ export async function callTool(sql, who, params, req) {
  * the row, not how it gets there. Waiting rather than returning an id is the point: a tool that comes back
  * before the work happened has told the caller nothing, and the answer says plainly when the wait ran out
  * rather than reporting a success nobody saw. */
+/**
+ * Чем кончилась работа - словами, одними для ответа на вызов и для mouseflow_run_status.
+ *
+ * ОБЫЧНАЯ РАБОТА отвечает тем, что сказала машина, как всегда. РАБОТА С ПРОВЕРКАМИ отвечает вердиктом: он
+ * считается из записи прогона (user_run), а не из слов модели - слова могут сказать «всё сошлось», а
+ * записанные шаги expect говорят, что именно. Один ответ, два входа: и тот, кто дождался, и тот, кто
+ * спросил потом, получают одно и то же.
+ *
+ * ВЕРДИКТ - НЕ ОШИБКА ТУЛА. Найденный дефект - это успешно выполненная проверка; isError стоит только там,
+ * где прогон с проверками даже не оставил записи, из которой их прочесть.
+ */
+async function outcomeOf(sql, who, id, job) {
+  const asked = expectsOf(job.args);
+  const ref = refOf(job.args);
+  if (!asked) {
+    const said = job.said || (job.ok ? 'Done.' : 'It did not finish.');
+    return say(ref ? `Ref: ${ref}\n${said}` : said, !job.ok);
+  }
+  /* ЗАПИСЬ МОЖЕТ ОТСТАТЬ ОТ ОТЧЁТА на секунду: расширение отдаёт прогон аккаунту перед отчётом, но это два
+   * запроса, и второй не обязан приехать после первого. Несколько коротких попыток дешевле ложного
+   * «записи нет». */
+  const runId = runIdOf(id, job.args);
+  let run = null;
+  for (let i = 0; i < RECORD_TRIES && !run; i++) {
+    if (i) await new Promise((done) => setTimeout(done, CALL_POLL_MS));
+    const rows = await sql`
+      select outcome, checks, steps from user_run
+      where user_id = ${who.id} and client_id = ${runId} and deleted_at is null
+    `.catch(() => []);
+    if (rows.length) run = rows[0];
+  }
+  const out = checkedReport({ ok: job.ok, said: job.said, ref, run, asked });
+  return say(out.text, !run);
+}
+
 async function queueAndWait(sql, who, { flowId, toolName, args }) {
   /* Обе проверки и оба отказа - в общей двери: страница тестов ставит работу тем же способом и обязана
    * отказывать теми же словами. Здесь остаётся только то, чего у страницы нет, - ожидание результата. */
@@ -1289,11 +1390,11 @@ async function queueAndWait(sql, who, { flowId, toolName, args }) {
   const until = Date.now() + CALL_WAIT_MS;
   while (Date.now() < until) {
     await new Promise((done) => setTimeout(done, CALL_POLL_MS));
-    const rows = await sql`select state, ok, said from run_queue where id = ${id}`;
+    const rows = await sql`select state, ok, said, args from run_queue where id = ${id}`;
     if (!rows.length) break;
     const job = rows[0];
     if (job.state === 'done' || job.state === 'failed' || job.state === 'cancelled') {
-      return say(job.said || (job.ok ? 'Done.' : 'It did not finish.'), !job.ok);
+      return outcomeOf(sql, who, id, job);
     }
   }
 

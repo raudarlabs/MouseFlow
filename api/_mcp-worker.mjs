@@ -20,7 +20,7 @@ import { checksOf } from './_expect.mjs';
 import { ARTIFACT_KEEP_DAYS, artifactId, dropWhich, tooBig } from './_artifact.mjs';
 import { overSpend, spentWhy } from './_spend.mjs';
 import { BROWSER_GOAL, DESKTOP_GOAL, jobId, scheduleId } from './_queue.mjs';
-import { caseGoal, caseIdOf, stripCase } from './_case.mjs';
+import { RUN_KEY, caseGoal, caseIdOf, expectsOf, stripCase } from './_case.mjs';
 import { PAYLOAD_MAX_BYTES } from './_payload.mjs';
 /* Исход работы, пришедшей из чата, отвечает туда же. Обе формы - в api/_telegram-out.mjs, потому что
  * говорят в чат двое и с разных концов прогона; там же сказано, почему тишина хуже плохой новости. */
@@ -441,6 +441,14 @@ export async function workerRoute(action, req, res, sql, who) {
                * что оба уже умеют всё, что для неё нужно, и объявляют это как `steps: true`. Ни одной
                * правки в установленных двоичниках, потому что правка была не там. */
               goal: job.flow_id === DESKTOP_GOAL,
+              /* РАЗОВЫЙ ПРОГОН С ПРОВЕРКАМИ В БРАУЗЕРЕ (mouseflow_do с `expect`) - цель с проверками
+               * составляется ЗДЕСЬ и едет готовой, тем же полем, что у кейса. Слова «проверь это тулом, а не
+               * глазом» одни на все драйверы (caseGoal); расширение их только исполняет. Старое расширение
+               * поля не знает и пойдёт по голой цели - и отчёт скажет «нет вердикта», а не «прошло»: записи
+               * проверок у такого прогона не будет. Десктопу это не нужно - там цель складывает ?worker=step. */
+              ...(job.flow_id === BROWSER_GOAL && expectsOf(job.args)
+                ? { caseGoal: caseGoal(String((job.args && job.args.goal) || ''), expectsOf(job.args)) }
+                : {}),
             },
           });
         }
@@ -696,12 +704,17 @@ export async function workerRoute(action, req, res, sql, who) {
        *
        * Поэтому цель едет В АРГУМЕНТАХ РАБОТЫ, а flow_id помечен как команда - тем же способом, что
        * '#record.start' и '#goal.browser'. Кейса у такой работы нет по определению: кейс - это проверки
-       * НАЗВАННОГО навыка. */
+       * НАЗВАННОГО навыка.
+       *
+       * НО ПРОВЕРКИ БЫТЬ МОГУТ - разовые, приехавшие в аргументах (mouseflow_do с `expect`: кейс живёт в
+       * чужой системе учёта, см. api/_case.mjs). Цель с ними складывает та же caseGoal, что у кейса: одни
+       * слова на оба случая. Без проверок возвращает цель как есть. */
       let goal = null;
       let success = null;
       if (job.flow_id === DESKTOP_GOAL) {
         goal = String((job.args && job.args.goal) || '').trim();
         if (!goal) return fail('This job carries no goal text to carry out.');
+        goal = caseGoal(goal, expectsOf(job.args));
       } else {
         const flow = await sql`
           select client_id, kind, name, payload from user_flow
@@ -985,9 +998,15 @@ export async function workerRoute(action, req, res, sql, who) {
       }
     }
 
+    /* ГДЕ ЗАПИСЬ ЭТОГО ПРОГОНА, если машина ведёт свой журнал под своим id. Расширение пишет user_run под
+     * 'run_<startedAt>' (им же подписаны кадры), а не под id работы, и без этой ссылки вердикт разового
+     * прогона с проверками было бы не из чего считать. Ложится в аргументы работы служебным ключом - рядом с
+     * тем, что спросили, - и принимается только в той форме, в которой расширение его составляет. */
+    const run = typeof body.run === 'string' && /^run_[A-Za-z0-9:.\-]{1,60}$/.test(body.run) ? body.run : null;
+
     const done = await sql`
       update run_queue set state = ${ok ? 'done' : 'failed'}, ok = ${ok}, said = ${said},
-             finished_at = now()
+             finished_at = now(), args = args || ${JSON.stringify(run ? { [RUN_KEY]: run } : {})}::jsonb
       where id = ${id} and user_id = ${who.id} and state = 'claimed'
       returning id
     `;

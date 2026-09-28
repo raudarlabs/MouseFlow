@@ -32,7 +32,7 @@ import { fitBlock, webKeyFor } from './memory.js';
 /* Kept in step with the manifest by hand, and asserted in the tests: the popup compares the two to
  * tell the user when the worker it is talking to is an older build. A stale constant here would make
  * that warning cry wolf. */
-const VERSION = '0.17.0';
+const VERSION = '0.18.0';
 // Where the gallery lives. The same deployment that serves the shared Claude key.
 const APP_URL = 'https://mouseflowapp.vercel.app';
 const KEEPALIVE_MS = 20000;
@@ -2694,11 +2694,13 @@ function busyWith() {
   return null;
 }
 
-async function reportJob(token, id, ok, said) {
+async function reportJob(token, id, ok, said, run) {
   await fetch(REPORT_URL, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: 'Bearer ' + token },
-    body: JSON.stringify({ id, ok, said: String(said || '').slice(0, 4000) }),
+    /* `run` - под каким id этот прогон лежит на аккаунте (см. runsToPush). Облако считает по нему вердикт
+     * разового прогона с проверками; без него проверки сделаны, а прочесть их не из чего. */
+    body: JSON.stringify({ id, ok, said: String(said || '').slice(0, 4000), ...(run ? { run } : {}) }),
   }).catch(() => {});
 }
 
@@ -2713,10 +2715,10 @@ async function untilIdle(limitMs) {
 }
 
 /* Чем кончился прогон, словами - одними и теми же, чем бы он ни был начат. */
-async function tellOutcome(token, id, what) {
+async function tellOutcome(token, id, what, run) {
   const r = agent.result || {};
   await reportJob(token, id, r.ok === true,
-    r.ok ? (r.summary || 'Done.') : (r.error || `${what} did not finish.`));
+    r.ok ? (r.summary || 'Done.') : (r.error || `${what} did not finish.`), run);
 }
 
 async function carryJob(token, job) {
@@ -2729,8 +2731,10 @@ async function carryJob(token, job) {
       await reportJob(token, job.id, false, 'the errand arrived with nothing in it');
       return;
     }
+    /* С ПРОВЕРКАМИ - цель приезжает уже составленной (caseGoal на сервере, одни слова на все драйверы):
+     * здесь её только исполняют. Без них - голая цель, как всегда. */
     try {
-      await agentStart(goal);
+      await agentStart(job.caseGoal || goal);
     } catch (err) {
       await reportJob(token, job.id, false, err.message);
       return;
@@ -2739,7 +2743,11 @@ async function carryJob(token, job) {
       await reportJob(token, job.id, false, 'it was still going after twenty minutes, so nothing is reported');
       return;
     }
-    await tellOutcome(token, job.id, 'The errand');
+    /* ЗАПИСЬ ПРОГОНА - ДО ОТЧЁТА, и отчёт называет, где она. Тот, кто ждёт ответа по MCP, считает вердикт
+     * из записи в ту секунду, когда работа закрыта; отданная после отчёта, она приехала бы к нему позже, чем
+     * он спросил. Отдача, которая не удалась, отчёта не отменяет: исход работы важнее её вердикта. */
+    await syncNow().catch(() => null);
+    await tellOutcome(token, job.id, 'The errand', 'run_' + agent.startedAt);
     return;
   }
 

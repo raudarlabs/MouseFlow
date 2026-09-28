@@ -200,10 +200,13 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'mouseflow_do',
     group: 'control',
-    what: 'Carries out something described in plain language in your own Chrome, through the browser '
-      + 'extension, when no saved skill covers it. Needs "Let my AI run skills in this browser" switched '
-      + 'on in the panel. There is no desktop equivalent yet: the desktop agent carries no model of its own.',
-    args: 'goal: what should be done, in a sentence (required)',
+    what: 'Carries out something described in plain language when no saved skill covers it - in your own '
+      + 'Chrome through the extension, or on the computer itself through the agent. Given expected results, '
+      + 'it runs a test case: each one is checked from what is on screen and the answer is a verdict, check '
+      + 'by check, with the case id handed back - so a test case read from TestRail can be run and its '
+      + 'result written back without being copied here.',
+    args: 'goal: what should be done, or a case\'s steps (required) · on: browser (default) or desktop · '
+      + 'expect: the expected results, as checks · ref: the case id to hand back',
   },
 ];
 

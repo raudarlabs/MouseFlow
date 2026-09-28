@@ -43,3 +43,19 @@ export function caseVerdict(run: {
 export const VERDICTS: Record<Verdict, { word: string; why: string }>;
 export function verdictSaid(verdict: string): string;
 export function tallyOf(verdicts: unknown): Record<Verdict, number>;
+
+/* A one-off checked run: checks carried in the job's arguments rather than in a stored case. */
+export const EXPECT_KEY: string;
+export const REF_KEY: string;
+export const RUN_KEY: string;
+export const REF_MAX: number;
+export function expectsOf(args: unknown): Expect[] | null;
+export function refOf(args: unknown): string | null;
+export function runIdOf(jobId: string, args: unknown): string;
+export function checkedReport(it: {
+  ok?: boolean | null;
+  said?: string | null;
+  ref?: string | null;
+  run?: { outcome?: string | null; checks?: unknown; steps?: unknown } | null;
+  asked?: unknown;
+} | null): { verdict: Verdict; text: string };

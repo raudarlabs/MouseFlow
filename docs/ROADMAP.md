@@ -26,6 +26,21 @@ concrete thing named for the owner to check.
 
 *The split is finished. What follows is the rest of the sequence.*
 
+- [x] **Test cases from somebody else's system — done 2026-09-28.** The owner's scenario: an assistant is
+      connected to MouseFlow *and* to a test-management MCP (TestRail), and asks us to run a case there.
+      Keeping a copy of that case here would be a second source of truth, so `mouseflow_do` got three
+      things instead of a case library: **`on: "desktop"`** (the free desktop goal of 14a, now reachable
+      over MCP — the description had still said there was none), **`expect`** (the case's expected
+      results, read by the same `readExpects`, composed by the same `caseGoal`, judged by the same
+      `caseVerdict` as a stored case) and **`ref`** (the case's id there, handed back with the verdict).
+      The answer is a verdict with every check on its own line, held or not, with what was actually
+      there. One rule new to this door: *asked for three, made one, it held* is **no verdict**, not a
+      pass — `caseVerdict` only sees checks that were made. The browser half needed the extension
+      (0.18.0) to push its run before reporting and to name the id it logged it under; an older
+      extension runs the bare goal and the answer says *no verdict*, never *passed*. A goal over 2000
+      characters is now refused instead of silently cut. Stored cases, `mouseflow_case*` and the tables
+      stay as they were — the backend for anybody without such a system.
+
 - [x] **7 · Skills is P2's, schedules are in Tests — done 2026-09-22.** The cut was a subtraction: all of
       that screen is P2's workshop and P1 owned only the schedules. They moved into Tests as a third card
       (strip + a skill picker, since the clock left the library row with them) rather than onto a fifth
