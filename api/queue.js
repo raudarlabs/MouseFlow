@@ -36,6 +36,20 @@ const fail = (res, status, message) =>
 
 const ID = /^[A-Za-z0-9_.:-]{1,80}$/;
 
+/* Где лежит выбор. В user_pref, а не на аккаунте отдельной колонкой: это предпочтение человека, а не факт
+ * о нём, и таблица предпочтений для этого и есть. Ключ с точкой - как `worker.seen` и `model.desktop`. */
+const MODE_KEY = 'gate.mode';
+
+/** Что выбрано. Отсутствие строки - автомат, и отсутствие ТАБЛИЦЫ тоже: absent не значит «включить». */
+async function modeOf(sql, userId) {
+  try {
+    const [row] = await sql`select value from user_pref where user_id = ${userId} and key = ${MODE_KEY}`;
+    return row && row.value === ONE_WAY ? ONE_WAY : 'auto';
+  } catch (_) {
+    return 'auto';
+  }
+}
+
 async function handler(req, res) {
   cors(req, res, 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS') { res.status(204).end(); return; }
@@ -54,6 +68,10 @@ async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const id = String((req.query && req.query.id) || '').trim();
+      /* БЕЗ id - ВОПРОС «КАК БУДУТ ИДТИ ПРОГОНЫ», а не «как идёт вот этот». Та же дверь, потому что это
+       * один и тот же вопрос с разных сторон: здесь работы ставят, здесь же и спрашивают, чем это
+       * кончится. Вторая дверь ради одной строки настроек - это вторая проверка того, чей это аккаунт. */
+      if (!id) return res.status(200).json({ ok: true, mode: await modeOf(sql, who.id) });
       if (!ID.test(id)) return fail(res, 400, 'that is not a job id');
       /* ЧУЖОЙ id И НЕСУЩЕСТВУЮЩИЙ ОТВЕЧАЮТ ОДИНАКОВО - как у расписаний и кейсов, и по той же причине:
        * существует ли работа на чужом аккаунте, это не вопрос, на который здесь отвечают. */
@@ -84,6 +102,17 @@ async function handler(req, res) {
     if (req.method !== 'POST') return fail(res, 405, 'GET or POST');
 
     const body = req.body && typeof req.body === 'object' ? req.body : {};
+
+    /* ВЫБОР РЕЖИМА - отдельным телом, и он ПОМНИТСЯ на аккаунте. Человек решает это один раз, а не при
+     * каждой просьбе: настройка, которую надо подтверждать каждый раз, - это не настройка, а вопрос. */
+    if (body.mode !== undefined) {
+      const want = body.mode === ONE_WAY ? ONE_WAY : '';
+      await sql`
+        insert into user_pref (user_id, key, value) values (${who.id}, ${MODE_KEY}, ${want})
+        on conflict (user_id, key) do update set value = excluded.value
+      `;
+      return res.status(200).json({ ok: true, mode: want || 'auto' });
+    }
 
     /* ОТВЕТ ОСТАНОВЛЕННОМУ ПРОГОНУ - тем же POST, потому что это та же работа, и разводить две двери к
      * одной строке значило бы иметь две проверки того, чья она. Разбирается ПЕРВЫМ: у него есть id, а у
@@ -118,8 +147,12 @@ async function handler(req, res) {
      * их редакция здесь была бы инструкцией, которая в одном месте останется верной, а в другом устареет. */
     /* РЕЖИМ ЗАМИРАЕТ В АРГУМЕНТАХ РАБОТЫ, а не читается из настроек на каждом ходу: переключённый на
      * середине прогона он дал бы прогон, про который человек не знает, в каком режиме тот шёл. Умолчание -
-     * автомат: неизвестное значение читается как «не сказано», а не как «включить». */
-    const gate = body.gate === ONE_WAY ? ONE_WAY : null;
+     * автомат: неизвестное значение читается как «не сказано», а не как «включить».
+     *
+     * ЗАПОМНЕННОЕ - ЕСЛИ НЕ СКАЗАЛИ ИНАЧЕ. Явное поле в запросе сильнее настройки: у панели и у бота
+     * может быть переключатель «на этот раз», и он обязан значить «на этот раз». */
+    const asked = body.gate === undefined ? await modeOf(sql, who.id) : body.gate;
+    const gate = asked === ONE_WAY ? ONE_WAY : null;
     const put = await queueOne(sql, who.id, {
       flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}) },
     });

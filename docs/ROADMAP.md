@@ -94,11 +94,18 @@ concrete thing named for the owner to check.
       Shipped: the mode on the loop, the one-way wording, the cut at the checkpoint, the answer as the
       call's own `tool_result`, a 15-minute ceiling that ends the run **with words**, the question posted
       to the chat once, the buttons, and `/api/queue` carrying both. [§7.2](SPLIT-PLAN.md)
-  - [ ] **Where the person picks the mode** — a named list (the owner pointed at Claude Code's), remembered
-        per account, shown in the panel and the bot. The engine reads `args.gate`; nothing sets it yet
-        except an explicit field on the request.
-  - [ ] **The panel side of the question** — `/api/queue?id=` already answers `holding`, and the POST
-        already takes the answer; the panel does not draw either yet.
+  - [x] **Where the person picks the mode — done 2026-09-28.** A named list, two entries, remembered on
+        the account in `user_pref` and read by the same door that starts runs: *Auto — it does the whole
+        thing and tells you how it went* / *Ask first — it stops before anything that cannot be undone*.
+        An explicit `gate` on the request still wins over the setting, because "just this once" has to
+        mean just this once. The chooser is not drawn until the value has been read: a switch that lies
+        about its current state is worse than no switch.
+  - [x] **The panel side of the question — done 2026-09-28.** Same poll that already watched for the
+        outcome; no second subscription, because the run outlives the window and the window can be closed
+        and reopened in the middle of the question.
+  - [ ] **The bot does not offer the mode yet** — the engine and the answer both work there (buttons
+        shipped with the engine), but `/mode` is not a command, so a task started from Telegram uses
+        whatever the account setting says and cannot be switched from the chat.
   - [ ] **A third mode, "ask before every action", is NOT a wording change.** `reached_checkpoint` is a
         self-report, and asking the model to announce every step is asking it to remember something it
         will forget. A per-step gate has to be **enforced by the driver** holding each action, which is a

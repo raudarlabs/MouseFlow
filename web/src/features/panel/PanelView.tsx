@@ -46,13 +46,23 @@ type Stage =
   | { at: 'writing' }
   | { at: 'planning' }
   | { at: 'offered'; plan: Plan }
-  | { at: 'running'; id: string }
+  | { at: 'running'; id: string; asking: string | null }
   | { at: 'over'; good: boolean; said: string };
+
+/* РЕЖИМ - ИМЕНОВАННЫЙ ВЫБОР, а не галочка (SPLIT-PLAN §7.2, шаг 14b). Галочка «спрашивать перед
+ * необратимым» описывает МЕХАНИЗМ; человек выбирает не механизм, а то, сколько он готов доверить. */
+const MODES = [
+  { id: 'auto', name: 'Auto', said: 'It does the whole thing and tells you how it went' },
+  { id: 'one-way', name: 'Ask first', said: 'It stops before anything that cannot be undone' },
+] as const;
 
 export function PanelView() {
   const [goal, setGoal] = useState('');
   const [stage, setStage] = useState<Stage>({ at: 'writing' });
   const [problem, setProblem] = useState<string | null>(null);
+  /* Читается у двери, а не хранится тут: выбор живёт на аккаунте, и панель, помнящая своё, разошлась бы
+   * с ботом на той же машине. `null` - ещё не спросили. */
+  const [mode, setMode] = useState<string | null>(null);
   const box = useRef<HTMLTextAreaElement | null>(null);
   const root = useRef<HTMLDivElement | null>(null);
 
@@ -66,6 +76,33 @@ export function PanelView() {
   /* Окно открывается по горячей клавише и должно быть готово принимать текст сразу - иначе первое, что
    * человек делает после нажатия, это щелчок мышью в поле, и клавиша не сэкономила ничего. */
   useEffect(() => { box.current?.focus(); }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch('/api/queue', { credentials: 'same-origin', headers: asPanel() });
+        const body = await res.json().catch(() => null);
+        if (body?.mode) setMode(String(body.mode));
+      } catch (_) {
+        /* Не спросили - не показываем выбора вовсе: переключатель, который врёт о текущем значении,
+         * хуже его отсутствия. */
+      }
+    })();
+  }, []);
+
+  const chooseMode = useCallback(async (want: string) => {
+    setMode(want);
+    try {
+      await fetch('/api/queue', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', ...asPanel() },
+        body: JSON.stringify({ mode: want }),
+      });
+    } catch (_) {
+      /* Не сохранилось - следующее чтение покажет прежнее, и это честнее, чем показывать новое. */
+    }
+  }, []);
 
   /* ВТОРОЙ АККОРД: «нажал и говори». Агент зовёт вот эту функцию (см. Panel.speak), а не открывает
    * второй адрес - страница уже загружена и уже та самая, и перезагрузка стоила бы ровно того, ради
@@ -140,7 +177,7 @@ export function PanelView() {
         setStage({ at: 'writing' });
         return;
       }
-      setStage({ at: 'running', id: String(body.id) });
+      setStage({ at: 'running', id: String(body.id), asking: null });
     } catch (err) {
       setProblem(`Could not reach the account: ${err instanceof Error ? err.message : 'unknown'}`);
       setStage({ at: 'writing' });
@@ -157,8 +194,12 @@ export function PanelView() {
         const res = await fetch(`/api/queue?id=${encodeURIComponent(stage.id)}`,
           { credentials: 'same-origin', headers: asPanel() });
         const body = await res.json().catch(() => null);
-        if (gone || !body?.done) return;
-        setStage({ at: 'over', good: body.good === true, said: String(body.said || '') });
+        if (gone || !body) return;
+        if (body.done) { setStage({ at: 'over', good: body.good === true, said: String(body.said || '') }); return; }
+        /* ОСТАНОВИЛСЯ И СПРАШИВАЕТ. Тот же опрос, что и за исходом: отдельной подписки не заводится -
+         * прогон переживает это окно, и окно могли закрыть и открыть заново посреди вопроса. */
+        const asking = body.holding ? String(body.holding.said || '') : null;
+        setStage((was) => (was.at === 'running' && was.asking !== asking ? { ...was, asking } : was));
       } catch (_) {
         /* Сеть моргнула - спросим через две секунды. Прогон от этого не останавливается. */
       }
@@ -167,6 +208,21 @@ export function PanelView() {
     void tick();
     return () => { gone = true; clearInterval(timer); };
   }, [stage]);
+
+  /* ОТВЕТ ОСТАНОВЛЕННОМУ ПРОГОНУ. Той же дверью, что и всё остальное про эту работу. */
+  const answer = useCallback(async (id: string, go: boolean) => {
+    setStage((was) => (was.at === 'running' ? { ...was, asking: null } : was));
+    try {
+      await fetch('/api/queue', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', ...asPanel() },
+        body: JSON.stringify({ id, answer: go ? 'go' : 'halt' }),
+      });
+    } catch (err) {
+      setProblem(`Could not answer: ${err instanceof Error ? err.message : 'unknown'}`);
+    }
+  }, []);
 
   const again = () => { setStage({ at: 'writing' }); setProblem(null); setGoal(''); box.current?.focus(); };
 
@@ -196,6 +252,21 @@ export function PanelView() {
             <Button size="sm" onClick={() => void approve()}>Approve</Button>
             <Button size="sm" variant="ghost" onClick={() => setStage({ at: 'writing' })}>Change</Button>
             <Button size="sm" variant="ghost" onClick={again}>Cancel</Button>
+          </div>
+        </>
+      ) : stage.at === 'running' && stage.asking ? (
+        /* ОСТАНОВИЛСЯ И СПРАШИВАЕТ (SPLIT-PLAN §7.2, шаг 14b). Первой строкой - что он собирается
+          * сделать: решение принимают об этом, а не о номере рубежа. */
+        <>
+          <Typography variant="p" className="px-1 text-[0.88rem] text-ink-primary">
+            {stage.asking}
+          </Typography>
+          <Typography variant="p" className="px-1 text-[0.72rem] text-ink-inactive">
+            It stopped before something that cannot be undone.
+          </Typography>
+          <div className="flex gap-1.5">
+            <Button size="sm" onClick={() => void answer(stage.id, true)}>Continue</Button>
+            <Button size="sm" variant="ghost" onClick={() => void answer(stage.id, false)}>Stop</Button>
           </div>
         </>
       ) : stage.at === 'running' ? (
@@ -254,6 +325,25 @@ export function PanelView() {
               'text-ink-primary placeholder:text-ink-inactive focus:outline-none disabled:opacity-disabled',
             )}
           />
+          {/* РЕЖИМ - РЯДОМ С ОТПРАВКОЙ, потому что решают его в тот же момент: «отправить вот это» и
+            * «сколько я готов доверить». Именами, а не галочкой - см. MODES. Не показывается, пока не
+            * прочитан: переключатель, врущий о текущем значении, хуже его отсутствия. */}
+          {mode && (
+            <select
+              value={mode}
+              onChange={(ev) => void chooseMode(ev.target.value)}
+              aria-label="How much to do without asking"
+              title={MODES.find((one) => one.id === mode)?.said}
+              className={cn(
+                'shrink-0 rounded-lg border-0 bg-transparent py-1 pr-1 text-[0.72rem]',
+                'text-ink-inactive hover:text-ink-body focus:outline-none',
+              )}
+            >
+              {MODES.map((one) => (
+                <option key={one.id} value={one.id}>{one.name}</option>
+              ))}
+            </select>
+          )}
           {dictation.supported && (
             <select
               value={dictation.lang}

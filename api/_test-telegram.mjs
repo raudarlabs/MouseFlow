@@ -12,6 +12,7 @@
 import { readFileSync } from 'node:fs';
 
 import {
+  HOLD_GO, HOLD_HALT, holdAnswerOf, holdKeyboard, holdMessage,
   tagFor, tagIn,
   CHANNEL, DRAFT_TTL_MS, SAY, commandOf, draftId, expired, keyboardFor, looksLikeDeviceToken,
   outcomeMessage, planMessage, refusedDocument, routeOf, updateOf, verdictOf,
@@ -365,6 +366,46 @@ group('правка плана держится на ответе, а не на 
     /state !== 'offered' && was\.state !== 'changing'/.test(route));
   check('и Change спрашивает ответом, а не молча ждёт следующей строки',
     /force_reply: true/.test(route));
+}
+
+
+/* -------------------------------------------------------- остановка посреди прогона (шаг 14b)
+ *
+ * ЭТО ДРУГОЙ ВОПРОС, ЧЕМ ОДОБРЕНИЕ ПЛАНА, и разбор у него отдельный нарочно. У плана решают, НАЧИНАТЬ ли;
+ * здесь работа уже идёт, мышь занята, и на том конце стоит остановленная модель. Один разбор на оба
+ * смысла однажды ответил бы «продолжай» строке очереди, которая ещё не начиналась. */
+group('ответ остановленному прогону - не третий вердикт у плана');
+{
+  check('«дальше» узнаётся', JSON.stringify(holdAnswerOf('go:q_abc123')) === JSON.stringify({ go: true, jobId: 'q_abc123' }));
+  check('«стоп» тоже', holdAnswerOf('halt:q_abc123').go === false);
+  check('и это НЕ вердикт плана', verdictOf('go:q_abc123') === null);
+  check('а вердикт плана - не ответ прогону', holdAnswerOf('ok:d1abc') === null);
+  check('чужое - null', holdAnswerOf('run:q_1') === null && holdAnswerOf('') === null);
+
+  const kb = holdKeyboard('q_abc123');
+  check('две кнопки, «дальше» первой', kb.inline_keyboard[0].length === 2
+    && kb.inline_keyboard[0][0].callback_data === 'go:q_abc123');
+  check('и данные влезают в 64 байта телеграма',
+    kb.inline_keyboard[0].every((b) => Buffer.byteLength(b.callback_data) <= 64));
+
+  const said = holdMessage('Draft is written. Next I press Send.');
+  check('первой строкой - что собирается сделать', /press Send/.test(said));
+  check('и сказано, что это необратимо', /cannot be undone/.test(said));
+  /* «СТОП» НЕ РВЁТ ПРОГОН СНАРУЖИ: остановленная модель обязана закончить сама и сказать, где встала.
+   * Прогон, оборванный мимо неё, пишется в журнал без единого слова о том, почему. */
+  check('и «стоп» обещает отчёт, а не обрыв', /finish and tell you where it got to/.test(said));
+  check('и ответ модели велит ей закончить самой', /Call finish now/.test(HOLD_HALT));
+  check('а «дальше» - коротко и однозначно', /go ahead/.test(HOLD_GO));
+
+  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8');
+  /* ОДНО НАЖАТИЕ - ОДИН ОТВЕТ. Телеграм повторяет callback при плохой связи, а второй ответ здесь - это
+   * ответ, приехавший уже после того, как прогон пошёл дальше. Условие стоит В САМОМ UPDATE. */
+  check('ответ пишется одним UPDATE с условием «ещё не отвечали»',
+    /loop -> 'hold' ->> 'answer' is null/.test(route));
+  check('и только пока строка занята этим прогоном', /state = 'claimed'/.test(route));
+  /* И ОН РАЗБИРАЕТСЯ РАНЬШЕ ПЛАНА: относится к работе, которая идёт, а всё прочее - к той, что ещё нет. */
+  check('и разбирается раньше вердикта плана',
+    route.indexOf('holdAnswerOf(update.data)') < route.indexOf('verdictOf(update.data)'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
