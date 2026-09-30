@@ -43,6 +43,7 @@ import { neon } from '@neondatabase/serverless';
 import { randomUUID } from 'node:crypto';
 import { whoIsCalling } from './_session.js';
 import { wrap } from './_report.js';
+import { productOfRequest } from './_product.mjs';
 import { scheduleId } from './_queue.mjs';
 import { cors } from './_cors.mjs';
 import {
@@ -296,7 +297,10 @@ async function handler(req, res) {
   /* КАКУЮ ПОЛОВИНУ НАБОРА НЕСЁТ ЭТОТ КОННЕКТОР. Читается из адреса один раз и служит трём ответам сразу -
    * списку инструментов, инструкциям в `initialize` и отказу на вызов не своего инструмента, - потому что
    * расходиться им нельзя: набор, инструкция и то, что реально исполняется, обязаны описывать одно. */
-  const profile = profileAsked(req.query && req.query.profile);
+  /* АДРЕС СИЛЬНЕЕ ПАРАМЕТРА, когда он закреплён за продуктом (SEPARATION-PLAN, шаг 0): тогда коннектор,
+   * добавленный на адрес P2, не может попросить набор P1. Пока карта пуста, productOfRequest читает тот же
+   * `?profile=`, что и раньше, - поведение не меняется. */
+  const profile = profileAsked(productOfRequest(req));
 
   /* A notification has no id and gets no body - 202 is the documented answer, and replying to one would
    * put an unmatched response into the client's stream. */

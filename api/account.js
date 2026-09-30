@@ -140,11 +140,26 @@ async function handler(req, res) {
         where author_id = ${who.id} and withdrawn_at is null
         returning id
       `,
+      /* ВОСЕМЬ ТАБЛИЦ, КОТОРЫХ ЗДЕСЬ НЕ БЫЛО (найдено 2026-10-01, при разборе к плану разделения). Каждая
+       * появилась позже этой транзакции и в неё не попала - а «удалено всё» оставляло: документы, написанные
+       * человеком, и все их версии; выжимки и тексты его записей; то, что агент запомнил о его приложениях;
+       * привязку его Telegram и черновики задач оттуда; журнал его вызовов модели. Версии документа - ДО
+       * документа: у них нет user_id, они находятся через него. Пин в mcp/test-mcp.mjs выводит список из
+       * миграций, чтобы следующая таблица не повторила этого молча. */
+      sql`delete from user_doc_version where doc_id in (select id from user_doc where user_id = ${who.id}) returning doc_id`,
+      sql`delete from user_doc where user_id = ${who.id} returning id`,
+      sql`delete from flow_digest where user_id = ${who.id} returning user_id`,
+      sql`delete from flow_text where user_id = ${who.id} returning user_id`,
+      sql`delete from app_memory where user_id = ${who.id} returning id`,
+      sql`delete from chat_draft where user_id = ${who.id} returning id`,
+      sql`delete from chat_sender where user_id = ${who.id} returning user_id`,
+      sql`delete from model_call where user_id = ${who.id} returning user_id`,
     ]);
 
     const [
       flows, runs, frames, devices, messages, threads, prefs, queued, schedules, cases,
       shares, memberships, invites, teamsGone, tokens, codes, published,
+      docVersions, docs, digests, texts, memory, drafts, chats, calls,
     ] = done;
 
     return res.status(200).json({
@@ -168,12 +183,20 @@ async function handler(req, res) {
         teamsClosed: teamsGone.length,
         connectors: tokens.length + codes.length,
         withdrawn: published.length,
+        documents: docs.length,
+        documentVersions: docVersions.length,
+        recordingDigests: digests.length + texts.length,
+        appMemory: memory.length,
+        messengerLinks: chats.length,
+        messengerDrafts: drafts.length,
+        modelCalls: calls.length,
       },
       /* Said out loud because the UI has to be able to tell the truth about what just happened, and
        * "account deleted" would not be it. */
-      note: 'Your flows, runs and the frames they kept, conversations, preferences, queued runs, schedules, '
-        + 'test cases and paired devices are gone, every connector is revoked, and anything you published '
-        + 'is withdrawn'
+      note: 'Your flows, runs and the frames they kept, documents and every version of them, conversations, '
+        + 'what the agent remembered about your applications, preferences, queued runs, schedules, test cases, '
+        + 'paired devices and the Telegram link are gone, every connector is revoked, and anything you '
+        + 'published is withdrawn'
         + (teamsGone.length
           ? `. ${teamsGone.length} team${teamsGone.length === 1 ? '' : 's'} you alone owned ${
             teamsGone.length === 1 ? 'was' : 'were'} closed`

@@ -10,7 +10,7 @@
  * yes to it. AccountProvider lets this path through its wall, and AppLayout renders it bare — no sidebar, no
  * agent pill: furniture for a product you are already inside, in front of somebody who may not be.
  *
- * Everything factual on it comes from features/mcp/facts.ts, which the test suite checks against api/mcp.js.
+ * Everything factual on it comes from lib/mcp-facts.ts, which the test suite checks against api/mcp.js.
  * A product page that promises a tool the server does not have is the same defect as a button that is not
  * there, and this repository has shipped that one already.
  */
@@ -20,7 +20,7 @@ import { useState } from 'react';
 import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
-import { CONNECT_WAYS, MCP_TOOLS, TOOL_GROUPS, type ToolGroup, mcpUrl } from './facts';
+import { CONNECT_WAYS, MCP_TOOLS, TOOL_GROUPS, type ToolGroup, mcpUrl } from '@/lib/mcp-facts';
 
 const Mark = () => (
   <svg viewBox="0 0 24 24" aria-hidden className="size-5 text-logo-mark">

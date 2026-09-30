@@ -33,7 +33,7 @@ import { adoptRecording } from '@/features/record/adopt';
 /* Payload записи догружается: список его больше не везёт. Скилл отдаёт свой сразу. */
 import { payloadOf } from '@/lib/api';
 import { zip } from './zip';
-import { describeRecording, hasSkillFor } from '@/features/record/save-as-skill';
+import { describeRecording, hasSkillFor } from '@/lib/save-as-skill';
 import { SkillWizard } from '@/features/record/SkillWizard';
 import {
   type SkillStructure,

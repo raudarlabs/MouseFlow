@@ -20,7 +20,7 @@
  * Маршруты из main.tsx читаются ТЕКСТОМ, и это не обход правила: там нужен список строковых литералов
  * `path: '...'`, а не поведение роутера. Исполнить main.tsx нельзя - он монтирует приложение в DOM.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
@@ -362,6 +362,58 @@ group('у первого продукта - Skills вместо Tests: сохр�
     /to="\/create\/\$runId"/.test(view) && /runsOf\.get\(flow\.id\)/.test(view));
   check('удаление спрашивает дважды и называет отказ',
     /<ArmedButton\b/.test(view) && /if \(saved\.problems\?\.length\) throw new Error/.test(view));
+}
+
+group('папки одного продукта не импортируют папки другого');
+{
+  /* Шаг 0 плана разделения (docs/SEPARATION-PLAN.md): продукты разойдутся по аккаунтам, и код экрана P1,
+   * читающий из папки экрана P2, - это нитка, которую тогда придётся рвать под нагрузкой. Общее живёт в
+   * lib/, components/ и shell/. Какая папка чья - по экрану, который она рисует. */
+  const OWNER = {
+    create: 'do', saved: 'do', activity: 'do', panel: 'do', connect: 'do', tests: 'do',
+    record: 'make', skills: 'make', docs: 'make', insights: 'make', team: 'make', gallery: 'make',
+    chat: 'make', mcp: 'make',
+  };
+  const root = join(here, 'src/features');
+  const crossings = [];
+  const walk = (dir, owner, folder) => {
+    for (const name of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, name.name);
+      if (name.isDirectory()) { walk(path, owner, folder); continue; }
+      if (!/\.(tsx?|mjs)$/.test(name.name)) continue;
+      const text = readFileSync(path, 'utf8');
+      for (const m of text.matchAll(/from '(?:@\/features\/|\.\.\/)([a-z-]+)\//g)) {
+        const other = OWNER[m[1]];
+        if (other && other !== owner) crossings.push(`${folder}/${name.name} -> ${m[1]}`);
+      }
+    }
+  };
+  for (const [folder, owner] of Object.entries(OWNER)) {
+    if (existsSync(join(root, folder))) walk(join(root, folder), owner, folder);
+  }
+  const unknown = readdirSync(root).filter((d) => !OWNER[d] && !['admin', 'auth'].includes(d));
+  check('ни одна папка P1 не читает из папки P2 и наоборот', crossings.length === 0, show(crossings));
+  check('и у каждой папки названо, чья она', unknown.length === 0, show(unknown));
+}
+
+group('какой продукт спрашивает - по адресу, одной картой для сервера и страницы');
+{
+  const { PRODUCT_HOSTS, productOfHost, productOfRequest } = await import('../api/_product.mjs');
+  const map = { 'do.example': 'do', 'make.example': 'make' };
+  check('пока адреса P2 нет, карта пуста - и ничего не заперто', Object.keys(PRODUCT_HOSTS).length === 0
+    && productOfHost('mouseflowapp.vercel.app') === null);
+  check('закреплённый адрес отвечает своим продуктом, с портом и в любом регистре',
+    productOfHost('MAKE.example:443', map) === 'make' && productOfHost('do.example', map) === 'do');
+  check('незнакомое значение - не продукт', productOfHost('x.example', { 'x.example': 'both' }) === null);
+  check('адрес сильнее ?profile=, а без адреса работает ?profile=',
+    productOfRequest({ headers: { host: 'make.example' }, query: { profile: 'do' } }, map) === 'make'
+      && productOfRequest({ headers: { host: 'other' }, query: { profile: 'do' } }, map) === 'do'
+      && productOfRequest({ headers: { 'x-forwarded-host': 'do.example, proxy' } }, map) === 'do'
+      && productOfRequest({ headers: {} }, map) === null);
+  const shell = read('src/shell/useProduct.ts');
+  check('страница запирается тем же ответом', /productOfHost\(location\.host\)/.test(shell)
+    && /from '\.\.\/\.\.\/\.\.\/api\/_product\.mjs'/.test(shell));
+  check('и MCP тоже', /profileAsked\(productOfRequest\(req\)\)/.test(readFileSync(join(here, '../api/mcp.js'), 'utf8')));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

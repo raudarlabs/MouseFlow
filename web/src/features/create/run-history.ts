@@ -10,7 +10,7 @@
  * здесь только то, как её читать.
  */
 import type { Run } from '@/lib/api';
-import type { DictatedRun } from '@/features/record/save-as-skill';
+import type { DictatedRun } from '@/lib/save-as-skill';
 
 /** Шаг прогона, как он лежит на аккаунте. Форма принадлежит тому, кто прогон записал. */
 export type Step = { tool?: string; input?: Record<string, unknown> | null };

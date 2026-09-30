@@ -662,7 +662,7 @@ The server answers in sentences rather than error codes, on purpose. These are t
 | `mcp/run.mjs` | how a skill is run. One copy, both callers |
 | `mcp/shared.mjs` | the bridge to the app's own modules |
 | `mcp/test-mcp.mjs` | all of it, against a fake deployment and a fake agent |
-| `web/src/features/mcp/facts.ts` | what the app and the product page say about all this — checked against `api/mcp.js` by the suite |
+| `web/src/lib/mcp-facts.ts` | what the app and the product page say about all this — checked against `api/mcp.js` by the suite |
 
 **It reimplements nothing**, and `shared.mjs` exists to make that true:
 

@@ -14,7 +14,7 @@ import { SKILL_ROLE } from '@/lib/flow-role';
 /* Тир 1 артефакта - та же функция, что выводит его для записи, и та же форма. См. SPLIT-PLAN §4.1: до
  * этого процедура была только у `recorded`, а кейс строится только на `created`, так что проверкам
  * было негде лечь на том скилле, который проверяют. */
-import { procedureFromSteps } from '../../../../api/_procedure.mjs';
+import { procedureFromSteps } from '../../../api/_procedure.mjs';
 import { fmtMs, summarize } from '@/lib/macro';
 import type { Recording } from '@/lib/store';
 

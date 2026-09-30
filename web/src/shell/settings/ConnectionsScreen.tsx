@@ -26,7 +26,7 @@ import { mintDeviceToken } from '@/lib/api';
 import {
   Command, DownloadLink, PlatformPicker, needsRestart, usePlatform,
 } from '@/features/connect/platform';
-import { CONSENT_LINE, mcpUrl } from '@/features/mcp/facts';
+import { CONSENT_LINE, mcpUrl } from '@/lib/mcp-facts';
 import { Row, type Say } from '../SettingsDialog';
 
 /* ОДНО ПОЛЕ, И ОНО НЕ СПРАШИВАЕТ ПОДТВЕРЖДЕНИЯ.

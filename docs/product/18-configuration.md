@@ -208,7 +208,7 @@ Sessions are gone; a recording that will not fit one row cuts itself into ordina
 | `MIN_EVERY_MINUTES` (`_schedule.mjs`) and the interval buttons in `Schedules.tsx` | A button offering something the server refuses is a form that argues with itself |
 | The edit stamp shape | `transcript.js` and `_recording-tools.js` — otherwise "revision 3" means two things and an undo restores the wrong one |
 | `CALL_WAIT_MS` (`mcp.js`) and what an MCP client will hold a request open for | Longer, and a call that is working reports itself as a dropped connection — which is what happened at 110 seconds |
-| The tool table in `mcp.js` and `web/src/features/mcp/facts.ts` | The page and the panel describe what the server offers; the suite checks both directions |
+| The tool table in `mcp.js` and `web/src/lib/mcp-facts.ts` | The page and the panel describe what the server offers; the suite checks both directions |
 
 ## Vercel project settings
 

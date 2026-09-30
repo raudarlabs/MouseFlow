@@ -1,5 +1,7 @@
 # Two products, two accounts, one deployment — the plan
 
+> **Owner, 2026-10-01: shape A; the P2 address later; P2 starts fresh.** Step 0 is done (below).
+
 *Written 2026-10-01, from the owner's answers of the same day: **P1 "Do it for me" leads; the two products
 are split completely; two accounts; one deployment for now.** SPLIT-PLAN.md split the SCREENS and the
 builds; this plan splits the PEOPLE and their data. Nothing here is built yet. Every migration in it waits
@@ -60,7 +62,7 @@ databases. B is cheaper only until the first leak.
 
 ## 3. The sequence
 
-### Step 0 — things that need no decision (start now)
+### Step 0 — things that need no decision — **done 2026-10-01**
 - **0a. Account deletion covers every table** (the bug above), with a pin that lists `user_id` tables
   from the migrations and fails when one is not in the delete.
 - **0b. The server learns the product.** One `productOf(req)` from the host (and `?profile=` for MCP),
@@ -70,6 +72,13 @@ databases. B is cheaper only until the first leak.
   P1 screens stop importing from P2 folders (pinned by a check that forbids it).
 - **0d. The product is locked by host at runtime**, not only at build time — the same bundle serves both
   hosts, so the lock has to come from the address.
+
+*As built:* 0a — eight tables added to the one deletion transaction, and a pin that derives the list of
+`user_id` tables from `db/*.sql`, so the next table cannot be missed silently. 0b/0d — `api/_product.mjs`,
+one host map read by `productOfRequest` (MCP) and by the page's lock; **the map is empty until the P2
+address exists**, which is "not split yet" everywhere, so nothing changed for anybody. 0c — `save-as-skill`
+and the MCP facts moved to `web/src/lib/`; a check in `web/check-web.mjs` fails any feature folder of one
+product importing from a folder of the other.
 
 ### Step 1 — a second address (owner: the domain)
 - A second domain on the **same** Vercel project (e.g. `mouseflow-docs…` for P2; `mouseflowapp` stays P1).
@@ -98,7 +107,7 @@ Today everything is in one account in P1's database. Two ways out:
 - **Start P2 fresh:** nothing is moved; P2 begins empty. There are no outside users yet, so this is honest
   and far cheaper — the owner's recordings stay readable in P1's database until deleted.
 
-**Recommendation: start fresh**, unless the owner's own recordings are wanted in P2.
+**Recommendation: start fresh**, unless the owner's own recordings are wanted in P2. **Owner: start fresh.**
 
 ### What stays shared, on purpose
 The code, the deployment, the agents (one binary; the image decides the mode), the extension (one build,

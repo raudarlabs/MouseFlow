@@ -19,7 +19,7 @@ import { cn } from '@insightis/ui/cn';
 import { Said } from '@/components/Said';
 import {
   type DictatedRun, type GoalParam, saveDictatedAsGoalSkill,
-} from '@/features/record/save-as-skill';
+} from '@/lib/save-as-skill';
 
 /* Имена подстановок в порядке появления, без повторов.
  *

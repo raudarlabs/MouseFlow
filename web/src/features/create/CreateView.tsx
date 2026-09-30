@@ -56,7 +56,7 @@ import {
 import { useAgent, useConsole } from '@/lib/store';
 import {
   type DictatedRun, dictatedSkillIdFor, hasSkillForRun, saveDictatedAsGoalSkill,
-} from '@/features/record/save-as-skill';
+} from '@/lib/save-as-skill';
 import {
   type Attached, FILES_MAX, GOAL_MAX, goalWith, readTextFile, sizeSaid, splitGoal,
 } from './attach';

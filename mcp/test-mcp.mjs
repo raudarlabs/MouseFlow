@@ -703,7 +703,7 @@ check('vite is told it may reach outside web/, or dev would refuse to serve it',
  * server's, in both directions - nothing offered goes undescribed, and nothing described is unoffered. */
 
 group('what the app tells people about MCP');
-const facts = readFileSync(fileURLToPath(new URL('../web/src/features/mcp/facts.ts', import.meta.url)), 'utf8');
+const facts = readFileSync(fileURLToPath(new URL('../web/src/lib/mcp-facts.ts', import.meta.url)), 'utf8');
 const mcpRoute = mcpWhole('../api/mcp.js');
 const named = (text) => new Set([...text.matchAll(/name: '(mouseflow_[a-z_]+)'/g)].map((m) => m[1]));
 const served = named(mcpRoute);
@@ -738,10 +738,10 @@ check('and builds the address from the origin it is served from, not a constant'
 const connections = readFileSync(
   fileURLToPath(new URL('../web/src/shell/settings/ConnectionsScreen.tsx', import.meta.url)), 'utf8');
 check('the Connections panel shows the address from that one file',
-  /from '@\/features\/mcp\/facts'/.test(connections) && /mcpUrl\(\)/.test(connections));
+  /from '@\/lib\/mcp-facts'/.test(connections) && /mcpUrl\(\)/.test(connections));
 const view = readFileSync(
   fileURLToPath(new URL('../web/src/features/mcp/McpView.tsx', import.meta.url)), 'utf8');
-check('and so does the page it links to', /from '\.\/facts'/.test(view));
+check('and so does the page it links to', /from '@\/lib\/mcp-facts'/.test(view));
 const main = readFileSync(fileURLToPath(new URL('../web/src/main.tsx', import.meta.url)), 'utf8');
 check('/mcp is a route', /path: '\/mcp'/.test(main));
 const account = readFileSync(
@@ -2200,7 +2200,7 @@ check('and the literal copy is gone from the row, prop and handler with it',
  * breaks when a window moves - was almost never the answer wanted. Asserted as absence in BOTH places: the
  * screen that offered it and the builder behind it, or it comes back the next time somebody needs a quick
  * copy and finds the function still sitting there. */
-const saveAsSkillModule = read('../web/src/features/record/save-as-skill.ts');
+const saveAsSkillModule = read('../web/src/lib/save-as-skill.ts');
 /* The BUTTON, not the words: the comment above the surviving one names what was taken away and why, which
  * is the thing this repository does everywhere. A check that forbade the phrase in prose would forbid the
  * explanation and pass a file that had deleted it. */
@@ -3212,7 +3212,7 @@ check('and a refused microphone says what to do, not what happened',
  * commit removing. So these hold it to one format and one save path. */
 group('a dictated flow becomes a skill, and not a second kind of skill');
 const dictated = read('../web/src/features/create/SaveDictatedSkill.tsx');
-const saver = read('../web/src/features/record/save-as-skill.ts');
+const saver = read('../web/src/lib/save-as-skill.ts');
 check('it saves the same goal skill the wizard saves — created, desktop, goalTemplate',
   /kind: 'created'/.test(saver) && /agent: 'desktop'/.test(saver)
   && /goalTemplate: said\.goal/.test(saver));
@@ -5606,7 +5606,30 @@ group('тест-кейс: утверждения заранее, вердикт 
       && /delete from user_case where user_id = \$\{who\.id\}/.test(erasing));
   check('и числа в ответе называют их обоих',
     /schedules: schedules\.length/.test(erasing) && /cases: cases\.length/.test(erasing)
-      && /schedules, '/.test(erasing));
+      && /schedules, test cases/.test(erasing));
+
+  /* КАЖДАЯ ТАБЛИЦА С user_id - В УДАЛЕНИИ, и список выводится из МИГРАЦИЙ, а не пишется здесь руками:
+   * восемь таблиц появились позже транзакции и не попали в неё (найдено 2026-10-01), и список в тесте
+   * повторил бы ту же ошибку. Исключения названы с причиной - их ровно столько, сколько устроено иначе. */
+  const OTHERWISE = {
+    gallery_skill: 'withdrawn by author_id, not deleted - installs elsewhere keep working',
+    team: 'closed via the owners who leave, by created_by',
+    team_invite: 'removed by email',
+  };
+  const owned = [];
+  for (const file of readdirSync(fileURLToPath(new URL('../db/', import.meta.url))).filter((f) => f.endsWith('.sql'))) {
+    const text = read(`../db/${file}`).replace(/--[^\n]*/g, '');
+    for (const m of text.matchAll(/create table (?:if not exists )?(\w+)\s*\(([\s\S]*?)\n\);/g)) {
+      if (/^\s*(user_id|author_id)\s/m.test(m[2]) || m[1] === 'user_doc_version') owned.push(m[1]);
+    }
+  }
+  const erasingCode = erasing.replace(/\/\*[\s\S]*?\*\//g, '');
+  const missed = owned.filter((t) => !OTHERWISE[t]
+    && !new RegExp(`(delete from|update) ${t} (set |where )`).test(erasingCode));
+  check('стирание аккаунта трогает каждую таблицу с user_id из миграций', owned.length > 20 && missed.length === 0,
+    `${owned.length} tables; missed: ${missed.join(', ')}`);
+  check('и версии документа уходят раньше документа, через который их находят',
+    erasingCode.indexOf('delete from user_doc_version') < erasingCode.indexOf('delete from user_doc where'));
 }
 
 
@@ -6214,7 +6237,7 @@ group('коннектор несёт половину набора, если о 
       && /rpc\(id, say\(/.test(only), 'mcp.js');
   /* И читается он ОДИН раз: список, инструкция и то, что исполняется, обязаны описывать одно. */
   check('и читается один раз на все три ответа',
-    (only.match(/profileAsked\(req\.query && req\.query\.profile\)/g) || []).length === 1
+    (only.match(/profileAsked\(/g) || []).length === 1 && /profileAsked\(productOfRequest\(req\)\)/.test(only)
       && /tools: toolsFor\(profile\)/.test(only)
       && /instructions: instructionsFor\(profile\)/.test(only), 'mcp.js');
 }

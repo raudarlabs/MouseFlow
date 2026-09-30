@@ -239,7 +239,7 @@ wired between them as written above.**
 | | Carries `procedure` | Can a case be built on it? |
 |---|---|---|
 | `kind: 'recorded'` — `skillFromRecording`, `extension/skills.js:186-203` | **yes** (`verification` always `[]` at derivation) | **no** — `api/cases.js` `skillFor` refuses it: *"that skill is a recording - it is replayed, not decided, so nothing in it can check anything"* |
-| `kind: 'created'` — `saveAsGoalSkill` / `saveDictatedAsGoalSkill`, `web/src/features/record/save-as-skill.ts:102,177` | **no** — it carries `goalTemplate`, `success`, `params`, `steps`, `fromRecording`/`fromRun` | yes, and it is the only kind that can |
+| `kind: 'created'` — `saveAsGoalSkill` / `saveDictatedAsGoalSkill`, `web/src/lib/save-as-skill.ts:102,177` | **no** — it carries `goalTemplate`, `success`, `params`, `steps`, `fromRecording`/`fromRun` | yes, and it is the only kind that can |
 
 So the only skills that *can* carry `procedure.verification` are exactly the skills a case *refuses*, and the
 only skills a case accepts have no `procedure` at all. Wiring a reader would have produced dead code that

@@ -38,7 +38,7 @@ import { CheckCheck, Keyboard, Loader2, X } from 'lucide-react';
 import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
-import { type GoalSkillSource, saveAsGoalSkill } from './save-as-skill';
+import { type GoalSkillSource, saveAsGoalSkill } from '@/lib/save-as-skill';
 /* Which typing runs are fields and which are somebody pressing Enter. Lives beside the API rather than here
  * because the suite runs it for real against measured recordings, and a .tsx cannot be imported by Node. */
 import { classifyTyping, type TypingVerdict } from './typing';

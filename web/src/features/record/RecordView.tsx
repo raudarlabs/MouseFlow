@@ -40,12 +40,12 @@ import {
 } from '@/lib/store';
 import { useAccount } from '@/shell/AccountProvider';
 import { Page } from '@/shell/Surface';
-import { hasSkillFor } from './save-as-skill';
+import { hasSkillFor } from '@/lib/save-as-skill';
 import { RecordingsTable, replayOf } from './RecordingsTable';
 import { CUT_AT_EVENTS, FIT_TARGET_BYTES, splitIntoRecordings } from './long-session';
 import { TranscriptPanel } from './TranscriptPanel';
 import { SkillWizard } from './SkillWizard';
-import type { GoalSkillSource } from './save-as-skill';
+import type { GoalSkillSource } from '@/lib/save-as-skill';
 import { WaitingForThisMac } from './WaitingForThisMac';
 import { flowFor } from './flow-for';
 import { claim, release } from './sending';

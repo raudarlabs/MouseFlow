@@ -30,7 +30,7 @@ import { ArmedButton } from '@/components/ArmedButton';
 import { StepLine } from '@/components/chat';
 import type { Flow, Run } from '@/lib/api';
 import { useAgent } from '@/lib/store';
-import { type DictatedRun, hasSkillForRun } from '@/features/record/save-as-skill';
+import { type DictatedRun, hasSkillForRun } from '@/lib/save-as-skill';
 import { asDid, describe } from './describe';
 import { Frames } from './Frames';
 import { dictatedFrom, provable, stepsOf, titleOf, took, when, wordsOf } from './run-history';

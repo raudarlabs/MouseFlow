@@ -35,7 +35,7 @@ import { askAgent, refreshAgent, useAgent, useConsole } from '@/lib/store';
  * Вынесено туда после того, как выяснилось, что установочная команда живёт на ДВУХ экранах, а про macOS
  * узнал только один. */
 import { Command, DownloadLink, PlatformPicker, needsRestart, usePlatform } from './platform';
-import { CONSENT_LINE, mcpUrl } from '@/features/mcp/facts';
+import { CONSENT_LINE, mcpUrl } from '@/lib/mcp-facts';
 
 interface Step {
   title: string;

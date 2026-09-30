@@ -18,6 +18,7 @@
 import { useEffect, useState } from 'react';
 import { useRouterState } from '@tanstack/react-router';
 import { DEFAULT_PRODUCT, PRODUCT_IDS, type Product, productAt } from '@/lib/product';
+import { productOfHost } from '../../../api/_product.mjs';
 
 const KEY = 'mouseflow.product';
 const CHANGED = 'mouseflow:product';
@@ -33,10 +34,15 @@ const CHANGED = 'mouseflow:product';
  * оболочку значило бы показать меню, которого в этой сборке нет. Открытый по ссылке чужой экран
  * отрисуется - маршруты объявлены все, - но меню останется своим. */
 declare const __PRODUCT__: string;
-const LOCKED: Product | null = typeof __PRODUCT__ === 'string'
+const BUILT: Product | null = typeof __PRODUCT__ === 'string'
   && PRODUCT_IDS.includes(__PRODUCT__ as Product)
   ? (__PRODUCT__ as Product)
   : null;
+/* И ЗАМОК ПО АДРЕСУ (SEPARATION-PLAN, шаг 0): одна сборка служит обоим адресам, поэтому запереть её может
+ * только адрес, на котором она открыта. Та же функция, что у сервера, - одна карта на обе стороны. Пока
+ * карта пуста, это null, и всё ниже работает как работало. */
+const LOCKED: Product | null = BUILT
+  ?? (typeof location === 'undefined' ? null : productOfHost(location.host));
 
 /** Заперта ли эта сборка на один продукт, и на какой. Читает переключатель, чтобы не рисоваться. */
 export const lockedProduct = (): Product | null => LOCKED;

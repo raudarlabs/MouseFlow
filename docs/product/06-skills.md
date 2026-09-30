@@ -111,7 +111,7 @@ sensitive by accident, ever.
 
 ### Saving as a skill
 
-One implementation for every page that offers it (`features/record/save-as-skill.ts`), because a payload
+One implementation for every page that offers it (`lib/save-as-skill.ts`), because a payload
 written in two places will eventually disagree — that already happened with `flowFor`, where a restored
 recording stopped matching the saved one.
 
