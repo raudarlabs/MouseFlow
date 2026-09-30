@@ -264,7 +264,8 @@ replacement for the baseline.
 ## Waiting on the owner
 
 - [x] **Which product leads — answered 2026-10-01: P1, "Do it for me", and the two split completely.**
-- [x] **Two accounts, not one — answered 2026-10-01**, following from the complete split. Needs its own
+- [x] **Two accounts, not one — answered 2026-10-01**, following from the complete split. The plan:
+      [`SEPARATION-PLAN.md`](SEPARATION-PLAN.md). Needs its own
       plan before any code: one deployment or two, one database or two, and which product each existing
       row belongs to (a migration, so it waits for approval). [§11.0, §11.4](SPLIT-PLAN.md)
 - [x] **The name — answered 2026-10-01: stays for now.** [§11.1](SPLIT-PLAN.md)
