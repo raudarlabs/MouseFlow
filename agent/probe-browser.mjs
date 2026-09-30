@@ -68,8 +68,11 @@ document.getElementById('b').addEventListener('click', (e) => {
  * запуск показывает, пережил ли вход перезапуск (cookies в профиле). */
 if (process.argv.includes('--login')) {
   await send('Target.createTarget', { url: 'https://accounts.google.com/' });
-  const wd = await send('Target.getTargets');
-  console.log(`Opened ${wd.targetInfos.length} tab(s). Sign in by hand, then close the window. Profile: ${profile}`);
+  /* Вкладки - только `page`: getTargets отдаёт и сервис-воркеры, и расширения Chrome, и «7 tabs» при одной
+   * открытой вкладке читалось как «открылось семь вкладок». */
+  const { targetInfos } = await send('Target.getTargets');
+  const tabs = targetInfos.filter((t) => t.type === 'page').length;
+  console.log(`${tabs} tab${tabs === 1 ? '' : 's'} open. Sign in by hand, then close the window. Profile: ${profile}`);
   await new Promise((done) => chrome.on('exit', done));
   process.exit(0);
 }
