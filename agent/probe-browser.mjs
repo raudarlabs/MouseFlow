@@ -63,6 +63,17 @@ document.getElementById('b').addEventListener('click', (e) => {
 });
 </script></body>`);
 
+/* --login: открыть вход Google в этом же профиле, с тем же pipe и теми же флагами, и ждать, пока окно не
+ * закроют. Входит ЧЕЛОВЕК, своими руками: это единственное, что пробник проверить не может. Потом повторный
+ * запуск показывает, пережил ли вход перезапуск (cookies в профиле). */
+if (process.argv.includes('--login')) {
+  await send('Target.createTarget', { url: 'https://accounts.google.com/' });
+  const wd = await send('Target.getTargets');
+  console.log(`Opened ${wd.targetInfos.length} tab(s). Sign in by hand, then close the window. Profile: ${profile}`);
+  await new Promise((done) => chrome.on('exit', done));
+  process.exit(0);
+}
+
 try {
   const { product } = await send('Browser.getVersion');
   results.started = product;
