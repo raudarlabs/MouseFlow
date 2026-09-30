@@ -1234,14 +1234,22 @@ capability rather than divide one.
 
 ## 11. Open questions only the owner can answer
 
-1. **The names.** "Do it for me" and "Make it reusable" are working titles for arguing with. The existing
+0. **Answered 2026-10-01 (owner): P1 leads, and the two products are split completely** — "Do it for me"
+   is the front page, and the split goes all the way to separate accounts (see 4). How far "completely"
+   goes in code — one deployment or two, one database or two — is the next plan, not a detail of this one.
+
+1. ~~**The names.**~~ **Answered 2026-10-01: stay as they are for now.** "Do it for me" and "Make it reusable" are working titles for arguing with. The existing
    name collision (mouseflow.com, behaviour analytics — STATUS.md §5.3) hits the *documentation* product
    hardest, which is P2, and P2 is the one whose name would be new.
 2. ~~**Does the Gallery belong to P1 or P2?**~~ **Answered 2026-09-18: P2's.** Both shelves are "what is
    already made and can I take it", which is a workshop question. The Dashboard and Teams went with it.
-3. **Do documents get published and shared like skills?** There is no gallery row type for a document today
+3. ~~**Do documents get published and shared like skills?**~~ **Answered 2026-10-01: the Gallery is not
+   touched for now.** Do documents get published and shared like skills? There is no gallery row type for a document today
    (§5.3), and adding one is a product decision, not a refactor.
-4. **One account or two?** This plan assumes one — one sign-in, one pairing, both products visible to a
+4. ~~**One account or two?**~~ **Answered 2026-10-01: two**, because the products are split completely.
+   This reverses the assumption below and is the largest consequence of 0: `whoIsCalling`, the team model,
+   the pairing of an agent and every row's owner change. Existing rows belong to whichever product made
+   them, which is a data migration and waits for explicit approval like every migration. One account or two? This plan assumes one — one sign-in, one pairing, both products visible to a
    person who has both. Two accounts would change `whoIsCalling` and the team model, and nothing in the code
    wants that today.
 5. **Does P2 ship a record-only agent by default?** §6.1 makes it possible; whether the documentation

@@ -222,6 +222,19 @@ Not in the sequence yet — these need shapes agreed before they are steps.
 - [ ] **Mobile** — a phone is one more thing that inserts a queue row, so this needs no new architecture.
       Start as a PWA or ride the messenger (step 14); native only for push, a lock-screen entry or
       background audio. [§7.1](SPLIT-PLAN.md)
+- [ ] **A browser of our own — probed 2026-10-01, and the answer is yes.** Owner: log in once inside the
+      product and let it work there *without disturbing the person's own work*. The desktop agent moves the
+      real mouse, so today a run and the person cannot share a machine. A dedicated Chrome profile driven
+      over `--remote-debugging-pipe` (a pipe, not a port: nothing else on the machine can reach it) was run
+      on Chrome 154 (`agent/probe-browser.mjs`): clicks arrive as **trusted** events, typing lands, frames
+      come back while another app is in front **and while the window is minimised**, and the person's
+      cursor and front app did not move. Two findings the reading did not predict: the pipe alone sets
+      `navigator.webdriver = true` — the flag sites use to refuse automation — and
+      `--disable-blink-features=AutomationControlled` clears it; and a fresh launch takes focus once,
+      so the agent must hand it back. **Not tested, and cannot be by us:** a real Google or Microsoft
+      sign-in in that window — the person does it. In the web app it is impossible (sites refuse iframes);
+      in a WebView Google refuses sign-in outright; a cloud browser is the later step for "while the laptop
+      sleeps".
 - [ ] **MCP *client* in the chat** — to pull test cases and data from other servers. **This is the one real
       gap**: MouseFlow is an MCP *server* today and has no client at all. New work, not a wiring job.
 - [ ] **Attachments with their own field** — *premise changed 2026-09-20*: the cap is 20 000 characters now
@@ -250,10 +263,12 @@ replacement for the baseline.
 
 ## Waiting on the owner
 
-- [ ] **Which product leads** — decides whose vocabulary gets the site's front page. [§11.2](SPLIT-PLAN.md)
-- [ ] **The name** — `MouseFlow` collides with mouseflow.com (behaviour analytics), and the collision hurts
-      the documentation product most. Cheap now, expensive later. [§11.1](SPLIT-PLAN.md)
-- [ ] **Does the Gallery belong to P1 or P2**, and do documents get published like skills. [§11.3](SPLIT-PLAN.md)
+- [x] **Which product leads — answered 2026-10-01: P1, "Do it for me", and the two split completely.**
+- [x] **Two accounts, not one — answered 2026-10-01**, following from the complete split. Needs its own
+      plan before any code: one deployment or two, one database or two, and which product each existing
+      row belongs to (a migration, so it waits for approval). [§11.0, §11.4](SPLIT-PLAN.md)
+- [x] **The name — answered 2026-10-01: stays for now.** [§11.1](SPLIT-PLAN.md)
+- [x] **The Gallery — answered 2026-10-01: not touched for now**; documents are not published. [§11.3](SPLIT-PLAN.md)
 - [ ] **Does P2 ship a record-only agent by default** — it changes what the install page may promise. [§11.5](SPLIT-PLAN.md)
 - [ ] **Does dictation keep an on-device fallback**, or does the product simply say audio goes to OpenAI. [§11.7](SPLIT-PLAN.md)
 
