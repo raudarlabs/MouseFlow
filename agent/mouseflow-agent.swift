@@ -5779,6 +5779,302 @@ enum PermissionWatch {
 
 // ================================================================ HTTP
 
+// ---------------------------------------------------------------- a browser of our own
+
+/* СВОЙ БРАУЗЕР (владелец, 2026-10-01: «работать там, не нарушая его основную работу»).
+ *
+ * Десктопный прогон двигает НАСТОЯЩУЮ мышь, и пока он идёт, человек за машиной работать не может. Этот
+ * Chrome - отдельный профиль, в который человек один раз входит на свои сайты, и управляется он не мышью,
+ * а протоколом отладки Chrome (CDP): клик приходит в страницу как настоящий (isTrusted), курсор человека и
+ * окно впереди не трогаются, а кадр снимается, даже когда окно свёрнуто. Всё это измерено пробником до
+ * того, как было написано здесь - agent/probe-browser.mjs, Chrome 154.
+ *
+ * PIPE, А НЕ ПОРТ. `--remote-debugging-port` открыл бы управление этим браузером - со всеми его куками -
+ * любому процессу на машине. Pipe - это два дескриптора, которые есть только у нас.
+ *
+ * ФЛАГ ПРОТИВ «ПОД АВТОМАТИКОЙ». Одного pipe хватает, чтобы navigator.webdriver стал true, а по нему сайты
+ * отказывают автоматике; --disable-blink-features=AutomationControlled это снимает (проверено). Вход через
+ * Google в этом профиле работает и переживает перезапуск - проверил владелец.
+ *
+ * ПРОФИЛЬ СВОЙ И НЕ ПО УМОЛЧАНИЮ - Chrome с 136 и не даст включить отладку на профиле по умолчанию, и
+ * правильно: чужие куки человека сюда не попадают, сюда попадает только то, во что он вошёл сам. */
+final class OwnBrowser {
+    static let shared = OwnBrowser()
+
+    static let candidates = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ]
+    static var executable: String? { candidates.first { FileManager.default.isExecutableFile(atPath: $0) } }
+    static var profile: String {
+        FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Application Support/MouseFlow/Browser"
+    }
+
+    private var pid: pid_t = 0
+    private var toChrome: Int32 = -1
+    private var fromChrome: Int32 = -1
+    private var session: String?
+    private var targetId: String?
+    private var nextId = 1
+    private var replies: [Int: [String: Any]] = [:]
+    private let lock = NSCondition()
+    private let serial = DispatchQueue(label: "mouseflow.ownbrowser")
+
+    var running: Bool { pid > 0 && kill(pid, 0) == 0 }
+
+    // ------------------------------------------------------------ start and stop
+
+    /// Поднять браузер (если не поднят) и держать одну рабочую вкладку. nil - получилось; иначе причина.
+    /// `visible` - для входа на сайты: окно впереди. Иначе фокус возвращается тому, кто был впереди до
+    /// запуска: свежий Chrome забирает его себе один раз, и это единственный момент, когда он мешает.
+    ///
+    /// ОКНО НЕ СВОРАЧИВАЕТСЯ - и это измерено, а не выбрано. Свёрнутое окно отдаёт кадр, пока в нём тот же
+    /// документ, но после перехода на новую страницу Page.captureScreenshot не отвечает вовсе: новый документ
+    /// ни разу не отрисован, а свёрнутому рисовать некуда. Окно, стоящее ПОЗАДИ других, отдаёт кадр после
+    /// любого перехода (Chrome 154, 2026-10-01). Позади - и есть «не мешать».
+    func start(visible: Bool) -> String? {
+        serial.sync { startLocked(visible: visible) }
+    }
+
+    private func startLocked(visible: Bool) -> String? {
+        if running, session != nil {
+            if visible { show() }
+            return nil
+        }
+        guard let exe = OwnBrowser.executable else {
+            return "Google Chrome is not installed in Applications, and this browser is a Chrome profile of its own"
+        }
+        try? FileManager.default.createDirectory(atPath: OwnBrowser.profile, withIntermediateDirectories: true)
+        let before = NSWorkspace.shared.frontmostApplication
+
+        var inbound: [Int32] = [0, 0]   // Chrome reads fd 3
+        var outbound: [Int32] = [0, 0]  // Chrome writes fd 4
+        guard pipe(&inbound) == 0, pipe(&outbound) == 0 else { return "could not make the pipe to Chrome" }
+        var actions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&actions)
+        posix_spawn_file_actions_adddup2(&actions, inbound[0], 3)
+        posix_spawn_file_actions_adddup2(&actions, outbound[1], 4)
+        posix_spawn_file_actions_addclose(&actions, inbound[1])
+        posix_spawn_file_actions_addclose(&actions, outbound[0])
+        let args = [exe, "--remote-debugging-pipe", "--disable-blink-features=AutomationControlled",
+                    "--user-data-dir=\(OwnBrowser.profile)", "--no-first-run", "--no-default-browser-check",
+                    "--window-size=1280,900", "about:blank"]
+        var argv: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) } + [nil]
+        var child: pid_t = 0
+        let spawned = posix_spawn(&child, exe, &actions, nil, &argv, environ)
+        argv.forEach { free($0) }
+        posix_spawn_file_actions_destroy(&actions)
+        close(inbound[0]); close(outbound[1])
+        guard spawned == 0 else {
+            close(inbound[1]); close(outbound[0])
+            return "Chrome did not start (\(spawned))"
+        }
+        pid = child
+        toChrome = inbound[1]
+        fromChrome = outbound[0]
+        session = nil
+        startReader(fd: fromChrome)
+
+        guard call("Browser.getVersion") != nil else {
+            stopLocked()
+            return "Chrome started but did not answer on the pipe"
+        }
+        /* Своя рабочая вкладка: та, что открылась с about:blank, - первая страница в списке. */
+        if let targets = call("Target.getTargets")?["targetInfos"] as? [[String: Any]],
+           let page = targets.first(where: { ($0["type"] as? String) == "page" }),
+           let id = page["targetId"] as? String {
+            targetId = id
+        } else if let made = call("Target.createTarget", ["url": "about:blank"]), let id = made["targetId"] as? String {
+            targetId = id
+        }
+        guard let target = targetId,
+              let attached = call("Target.attachToTarget", ["targetId": target, "flatten": true]),
+              let sid = attached["sessionId"] as? String else {
+            stopLocked()
+            return "Chrome started but its tab could not be attached"
+        }
+        session = sid
+        _ = call("Page.enable", [:], sid)
+
+        if visible {
+            show()
+        } else {
+            /* Не мешать: фокус - обратно тому, кто работал. Окно остаётся позади, не свёрнутым - см. выше. */
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { before?.activate() }
+        }
+        return nil
+    }
+
+    func show() {
+        if let target = targetId,
+           let win = call("Browser.getWindowForTarget", ["targetId": target])?["windowId"] as? Int {
+            _ = call("Browser.setWindowBounds", ["windowId": win, "bounds": ["windowState": "normal"]])
+        }
+        NSRunningApplication(processIdentifier: pid)?.activate()
+    }
+
+    func stop() { serial.sync { stopLocked() } }
+
+    private func stopLocked() {
+        if running { _ = call("Browser.close", [:], nil, timeout: 3) }
+        if running { kill(pid, SIGTERM) }
+        if toChrome >= 0 { close(toChrome) }
+        if fromChrome >= 0 { close(fromChrome) }
+        toChrome = -1; fromChrome = -1; pid = 0; session = nil; targetId = nil
+    }
+
+    // ------------------------------------------------------------ the protocol
+
+    private func startReader(fd: Int32) {
+        let thread = Thread { [weak self] in
+            var buffer = Data()
+            var chunk = [UInt8](repeating: 0, count: 65536)
+            while true {
+                let n = read(fd, &chunk, chunk.count)
+                if n <= 0 { break }
+                buffer.append(contentsOf: chunk[0..<n])
+                while let end = buffer.firstIndex(of: 0) {
+                    let message = buffer.subdata(in: buffer.startIndex..<end)
+                    buffer.removeSubrange(buffer.startIndex...end)
+                    guard let self,
+                          let json = (try? JSONSerialization.jsonObject(with: message)) as? [String: Any],
+                          let id = json["id"] as? Int else { continue }
+                    self.lock.lock()
+                    self.replies[id] = json
+                    self.lock.broadcast()
+                    self.lock.unlock()
+                }
+            }
+        }
+        thread.name = "MouseFlowOwnBrowser"
+        thread.start()
+    }
+
+    /// Один вызов CDP. nil - нет ответа или ошибка протокола; результат - поле `result` ответа.
+    @discardableResult
+    func call(_ method: String, _ params: [String: Any] = [:], _ sessionId: String? = nil,
+              timeout: TimeInterval = 20) -> [String: Any]? {
+        guard toChrome >= 0 else { return nil }
+        lock.lock()
+        let id = nextId
+        nextId += 1
+        lock.unlock()
+        var message: [String: Any] = ["id": id, "method": method, "params": params]
+        if let sessionId { message["sessionId"] = sessionId }
+        guard var data = try? JSONSerialization.data(withJSONObject: message) else { return nil }
+        data.append(0)
+        let wrote = data.withUnsafeBytes { write(toChrome, $0.baseAddress, data.count) }
+        guard wrote == data.count else { return nil }
+        let until = Date().addingTimeInterval(timeout)
+        lock.lock()
+        defer { lock.unlock() }
+        while replies[id] == nil {
+            if !lock.wait(until: until) { return nil }
+        }
+        let reply = replies.removeValue(forKey: id) ?? [:]
+        if reply["error"] != nil { return nil }
+        return reply["result"] as? [String: Any] ?? [:]
+    }
+
+    private func page(_ method: String, _ params: [String: Any] = [:]) -> [String: Any]? {
+        guard let session else { return nil }
+        return call(method, params, session)
+    }
+
+    private func evaluate(_ expression: String) -> Any? {
+        let got = page("Runtime.evaluate", ["expression": expression, "returnByValue": true])
+        return (got?["result"] as? [String: Any])?["value"]
+    }
+
+    // ------------------------------------------------------------ what the loop needs
+
+    var url: String { (evaluate("location.href") as? String) ?? "" }
+    var title: String { (evaluate("document.title") as? String) ?? "" }
+
+    /// Открыть адрес и дождаться, пока документ загрузится (до 20 секунд - потом отвечаем тем, что есть).
+    func open(_ address: String) -> String? {
+        guard let parsed = URL(string: address), let scheme = parsed.scheme?.lowercased(),
+              scheme == "https" || scheme == "http" else {
+            return "only http and https addresses open in this browser"
+        }
+        /* ЖДАТЬ НОВЫЙ ДОКУМЕНТ, А НЕ «complete». Сразу после navigate readyState ещё у СТАРОГО документа, а
+         * about:blank всегда complete - и первый прогон кликнул в страницу, которой ещё не было (найдено
+         * запуском). timeOrigin у каждого документа свой: сменился и загрузился - значит, это уже новый. */
+        let before = evaluate("performance.timeOrigin") as? Double
+        guard page("Page.navigate", ["url": address]) != nil else { return "the browser did not navigate" }
+        for _ in 0..<80 {
+            let now = evaluate("performance.timeOrigin") as? Double
+            if now != nil, now != before, (evaluate("document.readyState") as? String) == "complete" { return nil }
+            usleep(250_000)
+        }
+        return nil
+    }
+
+    /// Кадр страницы - в той же форме, что /shot у экрана, чтобы читающий не различал их по форме.
+    func shot() -> String {
+        guard let got = page("Page.captureScreenshot", ["format": "jpeg", "quality": 80]),
+              let b64 = got["data"] as? String, let bytes = Data(base64Encoded: b64),
+              let image = NSImage(data: bytes)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            return "{\"ok\":false,\"error\":\"the browser gave no picture\"}"
+        }
+        var json = "{\"ok\":true,\"format\":\"image/jpeg\",\"bytes\":\(bytes.count),\"png\":\"\(b64)\""
+        json += ",\"w\":\(image.width),\"h\":\(image.height),\"scale\":1.0000,\"originX\":0,\"originY\":0"
+        json += ",\"url\":\(jsonString(url)),\"title\":\(jsonString(title)),\"surface\":\"browser\"}"
+        return json
+    }
+
+    /// Клик в точку страницы, в пикселях кадра. Приходит как настоящий, курсор человека не двигается.
+    func click(x: Double, y: Double, count: Int = 1) -> String? {
+        let scale = (evaluate("window.devicePixelRatio") as? Double) ?? 1
+        let px = x / scale, py = y / scale
+        guard page("Input.dispatchMouseEvent", ["type": "mouseMoved", "x": px, "y": py]) != nil else {
+            return "the browser did not take the click"
+        }
+        for type in ["mousePressed", "mouseReleased"] {
+            _ = page("Input.dispatchMouseEvent",
+                     ["type": type, "x": px, "y": py, "button": "left", "clickCount": count])
+        }
+        return nil
+    }
+
+    func type(_ text: String) -> String? {
+        page("Input.insertText", ["text": text]) != nil ? nil : "the browser did not take the typing"
+    }
+
+    /// Клавиши, которые не текст. Имя - как у press_key в мозге: Enter, Tab, Escape, Backspace, стрелки.
+    func key(_ name: String) -> String? {
+        let codes: [String: (String, String, Int)] = [
+            "enter": ("Enter", "Enter", 13), "return": ("Enter", "Enter", 13), "tab": ("Tab", "Tab", 9),
+            "escape": ("Escape", "Escape", 27), "esc": ("Escape", "Escape", 27),
+            "backspace": ("Backspace", "Backspace", 8), "delete": ("Delete", "Delete", 46),
+            "up": ("ArrowUp", "ArrowUp", 38), "down": ("ArrowDown", "ArrowDown", 40),
+            "left": ("ArrowLeft", "ArrowLeft", 37), "right": ("ArrowRight", "ArrowRight", 39),
+            "pageup": ("PageUp", "PageUp", 33), "pagedown": ("PageDown", "PageDown", 34),
+            "home": ("Home", "Home", 36), "end": ("End", "End", 35), "space": (" ", "Space", 32),
+        ]
+        guard let (key, code, vk) = codes[name.lowercased()] else { return "no such key here: \(name)" }
+        for type in ["keyDown", "keyUp"] {
+            var params: [String: Any] = ["type": type, "key": key, "code": code,
+                                         "windowsVirtualKeyCode": vk, "nativeVirtualKeyCode": vk]
+            if type == "keyDown", key == "Enter" { params["text"] = "\r" }
+            _ = page("Input.dispatchKeyEvent", params)
+        }
+        return nil
+    }
+
+    func scroll(x: Double, y: Double, dy: Double) -> String? {
+        let got = page("Input.dispatchMouseEvent",
+                       ["type": "mouseWheel", "x": x, "y": y, "deltaX": 0, "deltaY": dy])
+        return got != nil ? nil : "the browser did not scroll"
+    }
+
+    var stateJSON: String {
+        "{\"ok\":true,\"available\":\(jsonBool(OwnBrowser.executable != nil)),\"running\":\(jsonBool(running))"
+            + (running && session != nil ? ",\"url\":\(jsonString(url)),\"title\":\(jsonString(title))" : "")
+            + ",\"profile\":\(jsonString(OwnBrowser.profile))}"
+    }
+}
+
 struct Response {
     var status = 200
     var contentType = "application/json"
@@ -6154,6 +6450,51 @@ func route(method: String, path: String, query: String, body: String) -> Respons
          * moment anybody is looking. */
         Permission.askForScreen()
         return Response(body: Screen.shot(want: queryInt(query, "w", 1280)))
+
+    /* СВОЙ БРАУЗЕР - см. OwnBrowser. Те же пороги, что у остальных дверей (origin, ключ), и режим «только
+     * смотрит» отказывает всему, что им управляет: открыть адрес или нажать в чужой странице - это
+     * действие, пусть и не мышью. */
+    case "/browser":
+        return Response(body: OwnBrowser.shared.stateJSON)
+
+    case "/browser/start", "/browser/open", "/browser/act", "/browser/stop", "/browser/shot":
+        if path != "/browser/shot" && method != "POST" {
+            return Response(status: 405, body: "{\"ok\":false,\"error\":\"POST\"}")
+        }
+        if path != "/browser/stop" && path != "/browser/shot", let refused = recordOnlyRefusal("browser") {
+            return Response(status: 409, body: "{\"ok\":false,\"error\":\(jsonString(refused))}")
+        }
+        let input = (try? JSONSerialization.jsonObject(with: Data(body.utf8))) as? [String: Any] ?? [:]
+        let browser = OwnBrowser.shared
+        let answer: (String?) -> Response = { bad in
+            bad == nil ? Response(body: browser.stateJSON)
+                : Response(status: 409, body: "{\"ok\":false,\"error\":\(jsonString(bad!))}")
+        }
+        switch path {
+        case "/browser/start":
+            return answer(browser.start(visible: (input["visible"] as? Bool) == true))
+        case "/browser/stop":
+            browser.stop()
+            return Response(body: browser.stateJSON)
+        default:
+            break
+        }
+        if !browser.running, let bad = browser.start(visible: false) { return answer(bad) }
+        switch path {
+        case "/browser/shot":
+            return Response(body: browser.shot())
+        case "/browser/open":
+            return answer(browser.open(String(describing: input["url"] ?? "")))
+        default:
+            let num = { (k: String) in (input[k] as? Double) ?? Double(input[k] as? Int ?? 0) }
+            switch String(describing: input["kind"] ?? "") {
+            case "click": return answer(browser.click(x: num("x"), y: num("y"), count: max(1, Int(num("count")))))
+            case "type": return answer(browser.type(String(describing: input["text"] ?? "")))
+            case "key": return answer(browser.key(String(describing: input["key"] ?? "")))
+            case "scroll": return answer(browser.scroll(x: num("x"), y: num("y"), dy: num("dy")))
+            default: return answer("kind is click, type, key or scroll")
+            }
+        }
 
     case "/pulse":
         if Replayer.shared.isPlaying {
@@ -7238,6 +7579,13 @@ final class MenuActions: NSObject, NSMenuDelegate {
     }
 
     /// Открыть панель мышью - для того, кто аккорд не включил или забыл его.
+    /* С фона: запуск Chrome и первый ответ по pipe - это секунды, и меню не должно их держать. */
+    @objc func openOwnBrowser() {
+        DispatchQueue.global().async {
+            if let bad = OwnBrowser.shared.start(visible: true) { print("own browser: \(bad)") }
+        }
+    }
+
     @objc func openPanel() {
         Panel.shared.show()
     }
@@ -7392,6 +7740,16 @@ hotkeyItem.target = menuActions
 menu.addItem(hotkeyItem)
 panelHotkeyItem = hotkeyItem
 menu.addItem(.separator())
+
+/* ВОЙТИ НА СВОИ САЙТЫ - один раз, руками, в том браузере, в котором потом работают прогоны. Не у сборки
+ * «только смотрит»: ей в этом браузере делать нечего. */
+if !recordOnly && OwnBrowser.executable != nil {
+    let browserItem = NSMenuItem(title: "Open MouseFlow Browser (Sign In to Sites)…",
+                                 action: #selector(MenuActions.openOwnBrowser), keyEquivalent: "")
+    browserItem.target = menuActions
+    menu.addItem(browserItem)
+    menu.addItem(.separator())
+}
 
 let stopItem = NSMenuItem(title: "Stop Until Next Login",
                           action: #selector(MenuActions.stopUntilLogin), keyEquivalent: "")

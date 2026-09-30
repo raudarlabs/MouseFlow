@@ -222,6 +222,16 @@ Not in the sequence yet — these need shapes agreed before they are steps.
 - [ ] **Mobile** — a phone is one more thing that inserts a queue row, so this needs no new architecture.
       Start as a PWA or ride the messenger (step 14); native only for push, a lock-screen entry or
       background audio. [§7.1](SPLIT-PLAN.md)
+- [ ] **A browser of our own — the engine is in the agent, 2026-10-01.** `OwnBrowser` in the macOS agent:
+      a Chrome profile of its own over a pipe, `/browser/{start,open,shot,act,stop}` on loopback, and a menu
+      item to sign in to sites. Run end to end through the built binary: click (trusted), typing, Enter,
+      frames after navigation, focus handed back. Two things only running found: a minimised window stops
+      giving frames after a navigation (so it stays *behind*, never minimised), and waiting for
+      `readyState` read the OLD document (`about:blank` is always complete) — it waits for a new
+      `timeOrigin` now. **Next, by the owner's picture (2026-10-01, "как у Клода"):** the browser is seen
+      and used INSIDE the app — a pane beside the chat, one tab per task, signed in right there — with the
+      picture streamed from the agent over loopback and the person's clicks and keys sent back the same way,
+      so a password never passes through our server. Then the cloud loop drives the same tab.
 - [ ] **A browser of our own — probed 2026-10-01, and the answer is yes.** Owner: log in once inside the
       product and let it work there *without disturbing the person's own work*. The desktop agent moves the
       real mouse, so today a run and the person cannot share a machine. A dedicated Chrome profile driven

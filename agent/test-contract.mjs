@@ -251,6 +251,30 @@ check('bash -n проходит', (() => {
 check('весь скрипт - функция, вызванная в конце',
   /\n\[ "\$\{MOUSEFLOW_INSTALLER_LIBRARY:-\}" = "1" \] \|\| main "\$@"\s*$/.test(installer));
 
+group('свой браузер в агенте: pipe, свой профиль, не мешает человеку');
+{
+  const code = read('agent/mouseflow-agent.swift').replace(/\/\*[\s\S]*?\*\//g, '');
+  const at = code.indexOf('final class OwnBrowser');
+  const cls = code.slice(at, code.indexOf('\nstruct Response', at));
+  check('управление - через pipe, а не через порт, который увидит любой процесс',
+    cls.includes('"--remote-debugging-pipe"') && !/remote-debugging-port/.test(cls)
+      && /posix_spawn_file_actions_adddup2\(&actions, inbound\[0\], 3\)/.test(cls)
+      && /posix_spawn_file_actions_adddup2\(&actions, outbound\[1\], 4\)/.test(cls));
+  check('флаг «под автоматикой» снят - иначе сайты отказывают', cls.includes('"--disable-blink-features=AutomationControlled"'));
+  check('профиль свой, а не профиль человека по умолчанию', /--user-data-dir=\\\(OwnBrowser\.profile\)/.test(cls)
+    && /Application Support\/MouseFlow\/Browser/.test(cls));
+  /* Измерено: свёрнутое окно не отдаёт кадр после перехода. Позади других - отдаёт. */
+  check('окно не сворачивается, а фокус возвращается тому, кто работал',
+    !/"minimized"/.test(cls) && /before\?\.activate\(\)/.test(cls));
+  check('переход ждёт НОВЫЙ документ, а не complete старого',
+    /performance\.timeOrigin/.test(cls) && /now != before/.test(cls));
+  check('открываются только http и https', /scheme == "https" \|\| scheme == "http"/.test(cls));
+  check('клик - в пикселях кадра, с поправкой на Retina', /window\.devicePixelRatio/.test(cls) && /x \/ scale/.test(cls));
+  check('сборка «только смотрит» этим браузером не управляет',
+    /let refused = recordOnlyRefusal\("browser"\)/.test(code) && /if !recordOnly && OwnBrowser\.executable != nil \{/.test(code));
+  check('меню запускает его с фона, а не держит главный поток', /@objc func openOwnBrowser\(\) \{\s*DispatchQueue\.global\(\)\.async/.test(code));
+}
+
 group('упакованное приложение для Mac: подписано, нотаризовано, режим запечатан');
 {
   const pack = read('agent/package-mac.sh');
