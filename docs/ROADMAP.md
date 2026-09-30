@@ -231,8 +231,8 @@ Not in the sequence yet — these need shapes agreed before they are steps.
       cursor and front app did not move. Two findings the reading did not predict: the pipe alone sets
       `navigator.webdriver = true` — the flag sites use to refuse automation — and
       `--disable-blink-features=AutomationControlled` clears it; and a fresh launch takes focus once,
-      so the agent must hand it back. **Not tested, and cannot be by us:** a real Google or Microsoft
-      sign-in in that window — the person does it. In the web app it is impossible (sites refuse iframes);
+      so the agent must hand it back. **Google sign-in: tried by the owner 2026-10-01 — it works, and it
+      survives a relaunch** (`--login`, then the probe again: still signed in). Microsoft is untried. In the web app it is impossible (sites refuse iframes);
       in a WebView Google refuses sign-in outright; a cloud browser is the later step for "while the laptop
       sleeps".
 - [ ] **MCP *client* in the chat** — to pull test cases and data from other servers. **This is the one real
@@ -270,7 +270,13 @@ replacement for the baseline.
 - [x] **The name — answered 2026-10-01: stays for now.** [§11.1](SPLIT-PLAN.md)
 - [x] **The Gallery — answered 2026-10-01: not touched for now**; documents are not published. [§11.3](SPLIT-PLAN.md)
 - [ ] **Does P2 ship a record-only agent by default** — it changes what the install page may promise. [§11.5](SPLIT-PLAN.md)
-- [ ] **Does dictation keep an on-device fallback**, or does the product simply say audio goes to OpenAI. [§11.7](SPLIT-PLAN.md)
+- [x] **Dictation keeps the on-device path — answered 2026-10-01.** Already how it ships: two recognisers,
+      one switch. The promise stays, so the browser recogniser is not to be deleted as dead weight. [§11.7](SPLIT-PLAN.md)
+- [x] **One deployment for the two products, for now — answered 2026-10-01**, with two accounts.
+- [x] **No "ask before every action" mode for now — answered 2026-10-01.**
+- [x] **Threads carry conversation state — answered 2026-10-01: yes** (§5.5-B). Its own plan first: it is a
+      second kind of memory.
+- [x] **Mobile: Telegram for now — answered 2026-10-01**; a PWA or native app is decided later.
 
 ## Parked, with the reason
 

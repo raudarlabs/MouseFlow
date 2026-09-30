@@ -1258,14 +1258,14 @@ capability rather than divide one.
 6. **When to pay for packaging** (§6.3). The technical answer is "Windows first, after the split". The
    commercial answer — whether a signed installer is what unblocks the first paying team — is the owner's,
    and it is worth asking one buyer before buying a certificate.
-7. **Does dictation keep an on-device fallback** (§7), or does the product simply say that audio goes to
+7. ~~**Does dictation keep an on-device fallback**~~ **Answered 2026-10-01: yes, it keeps it.** (§7), or does the product simply say that audio goes to
    OpenAI and leave it at that? Keeping both is one switch and one sentence; keeping neither is simpler to
    explain but reverses a promise the code currently makes.
 
 7a. **Which messenger first** (§7.2), and whether a chat account may drive a desktop at all. Telegram is
    proposed because a bot is a token and an HTTP call; the pairing rule is not negotiable either way.
 
-7b. **Do threads carry conversation state** (§5.5)? A is small and is on the list; B is a second kind of
+7b. ~~**Do threads carry conversation state** (§5.5)?~~ **Answered 2026-10-01: yes — B, with its own plan.** A is small and is on the list; B is a second kind of
    memory and needs its own plan.
 
 7c. **Does Connections stay in P1's menu forever, or only until the agent is installed** (§5.6)?
