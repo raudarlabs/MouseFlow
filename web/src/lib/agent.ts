@@ -181,6 +181,13 @@ const DEADLINE: Record<string, number> = {
   '/replay/abort': 4000,
   '/autostart/enable': 8000,
   '/account': 5000,
+  /* Свой браузер. Кадр - долгий опрос на полторы секунды; переход ждёт загрузки до двадцати; запуск -
+   * это запуск Chrome и первый ответ по pipe. */
+  '/browser/frame': 5000,
+  '/browser/nav': 25000,
+  '/browser/open': 25000,
+  '/browser/start': 20000,
+  '/browser/input': 8000,
 };
 
 export const agentBase = (port: number) => `http://127.0.0.1:${port}`;
@@ -867,3 +874,49 @@ export function localFileCommand(port: number): string {
   const portArg = port !== 8787 ? ` -Port ${port}` : '';
   return `& ([scriptblock]::Create((Get-Content "$env:USERPROFILE\\Downloads\\mouseflow-agent.ps1" -Raw)))${portArg} -AllowOrigin ${origin}`;
 }
+
+/* ------------------------------------------------------------------ свой браузер (агент macOS)
+ *
+ * Отдельный Chrome, которым агент управляет по pipe (OwnBrowser в agent/mouseflow-agent.swift). Страница
+ * видит его вкладку живой картинкой и отдаёт ему клики и клавиши - через loopback, как и всё остальное
+ * здесь: пароль, набранный в панели, идёт со страницы на эту машину и дальше в Chrome, и на наш сервер не
+ * попадает вовсе. Вкладка на задачу: `tab` - id разговора. */
+export interface BrowserState {
+  ok: true;
+  available: boolean;
+  running: boolean;
+  url?: string;
+  title?: string;
+  tabs?: number;
+}
+export interface BrowserFrame {
+  ok: true;
+  seq: number;
+  fresh: boolean;
+  png?: string;
+  /** Размер страницы в CSS-пикселях - по нему панель переводит свои координаты в координаты страницы. */
+  cssW?: number;
+  cssH?: number;
+  url?: string;
+  title?: string;
+  running?: boolean;
+}
+export type BrowserInput =
+  | { type: 'mouse'; kind: 'down' | 'up' | 'move' | 'click'; x: number; y: number; count?: number; buttons?: number }
+  | { type: 'wheel'; x: number; y: number; dx: number; dy: number }
+  | { type: 'key'; key: string; code?: string; text?: string; modifiers?: number }
+  | { type: 'text'; text: string };
+
+const browserPost = <T>(port: number, path: string, body: object) =>
+  agentCall<T>(port, path, { method: 'POST', body: JSON.stringify(body), contentType: 'application/json' });
+
+export const browserState = (port: number, tab: string) =>
+  agentCall<BrowserState>(port, `/browser?tab=${encodeURIComponent(tab)}`);
+export const browserFrame = (port: number, tab: string, since: number) =>
+  agentCall<BrowserFrame>(port, `/browser/frame?tab=${encodeURIComponent(tab)}&since=${since}`);
+export const browserNav = (port: number, tab: string, go: { url: string } | { move: 'back' | 'forward' | 'reload' }) =>
+  browserPost<BrowserState>(port, '/browser/nav', { tab, ...go });
+export const browserInput = (port: number, tab: string, input: BrowserInput) =>
+  browserPost<BrowserState>(port, '/browser/input', { tab, ...input });
+export const browserShow = (port: number, tab: string) => browserPost<BrowserState>(port, '/browser/show', { tab });
+export const browserClose = (port: number, tab: string) => browserPost<BrowserState>(port, '/browser/close', { tab });

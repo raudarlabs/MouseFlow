@@ -416,5 +416,26 @@ group('какой продукт спрашивает - по адресу, од�
   check('и MCP тоже', /profileAsked\(productOfRequest\(req\)\)/.test(readFileSync(join(here, '../api/mcp.js'), 'utf8')));
 }
 
+group('браузер рядом с разговором: картинка из агента, ввод обратно, пароль мимо сервера');
+{
+  const bare = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\s*\}/g, '');
+  const pane = bare(read('src/features/create/BrowserPane.tsx'));
+  const create = bare(read('src/features/create/CreateView.tsx'));
+  const agentLib = read('src/lib/agent.ts');
+  check('ввод и кадры идут на агента этой машины, а не на наш сервер',
+    /browserFrame\(port, tab, since\)/.test(pane) && /browserInput\(port, tab, input\)/.test(pane)
+      && !/fetch\(/.test(pane) && /agentCall<BrowserFrame>\(port, `\/browser\/frame/.test(agentLib));
+  check('вкладка - на разговор', /<BrowserPane port=\{state\.port\} tab=\{browserTab\}/.test(create)
+    && /openedId \? `run-\$\{openedId\}` : threadTab\(\)/.test(create));
+  check('только там, где есть свой браузер - агент macOS', /const ownBrowser = health\?\.platform === 'macos';/.test(create));
+  check('кадр без номера - пауза, а не новый запрос сразу',
+    /if \(typeof got\.seq !== 'number'\) \{[\s\S]{0,200}setTimeout\(done, 1500\)/.test(pane));
+  check('координаты пересчитываются в CSS-пиксели страницы по её размеру из кадра',
+    /\(\(e\.clientX - box\.left\) \/ box\.width\) \* page\.w/.test(pane));
+  check('колесо не прокручивает колонку вместе со страницей', /addEventListener\('wheel', wheel, \{ passive: false \}\)/.test(pane));
+  check('вставка - из буфера этой машины, текстом', /onPaste=/.test(pane) && /send\(\{ type: 'text', text \}\)/.test(pane));
+  check('и под панелью сказано, куда уходит набранное', /nowhere else/.test(read('src/features/create/BrowserPane.tsx')));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

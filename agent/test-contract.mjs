@@ -273,6 +273,16 @@ group('свой браузер в агенте: pipe, свой профиль, �
   check('сборка «только смотрит» этим браузером не управляет',
     /let refused = recordOnlyRefusal\("browser"\)/.test(code) && /if !recordOnly && OwnBrowser\.executable != nil \{/.test(code));
   check('меню запускает его с фона, а не держит главный поток', /@objc func openOwnBrowser\(\) \{\s*DispatchQueue\.global\(\)\.async/.test(code));
+  /* ПОТОК ДЛЯ ПАНЕЛИ. Оба флага измерены: без них окно позади других не присылает ни одного кадра. */
+  check('окно позади других продолжает рисовать', cls.includes('"--disable-backgrounding-occluded-windows"')
+    && cls.includes('"--disable-renderer-backgrounding"'));
+  check('у каждой задачи своё окно - фоновая вкладка не рисуется вовсе',
+    /"Target\.createTarget", \["url": "about:blank", "newWindow": true, "background": true\]/.test(cls));
+  check('кадры приходят из screencast и подтверждаются без ожидания ответа',
+    /"Page\.startScreencast"/.test(cls) && /self\.send\("Page\.screencastFrameAck"/.test(cls));
+  check('панель ждёт кадра долгим опросом, а не крутит запросы', /func frame\(_ key: String, since: Int, wait: TimeInterval\)/.test(cls)
+    && /frame\(key, since: queryInt\(query, "since", 0\), wait: 1\.5\)/.test(code));
+  check('записи в pipe из двух потоков не перемешиваются', /writeLock\.lock\(\)/.test(cls));
 }
 
 group('упакованное приложение для Mac: подписано, нотаризовано, режим запечатан');

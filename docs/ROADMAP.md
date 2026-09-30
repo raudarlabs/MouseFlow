@@ -228,10 +228,17 @@ Not in the sequence yet — these need shapes agreed before they are steps.
       frames after navigation, focus handed back. Two things only running found: a minimised window stops
       giving frames after a navigation (so it stays *behind*, never minimised), and waiting for
       `readyState` read the OLD document (`about:blank` is always complete) — it waits for a new
-      `timeOrigin` now. **Next, by the owner's picture (2026-10-01, "как у Клода"):** the browser is seen
-      and used INSIDE the app — a pane beside the chat, one tab per task, signed in right there — with the
-      picture streamed from the agent over loopback and the person's clicks and keys sent back the same way,
-      so a password never passes through our server. Then the cloud loop drives the same tab.
+      `timeOrigin` now.
+  - [x] **The pane beside the chat — done 2026-10-01** (owner: "как у Клода"). Create has a **Browser**
+        toggle; the pane shows the agent's Chrome live and sends clicks, wheel, keys and paste back — all
+        over loopback, so what is typed there never reaches our server. One window per task (`tab` = the
+        conversation). Checked in the browser against a real agent: a click through the pane lands trusted,
+        keys type into the page and Enter submits. Found by running: a background TAB never paints, so each
+        task has its own window; a window behind others sends no frames without
+        `--disable-backgrounding-occluded-windows` + `--disable-renderer-backgrounding` (0 frames → 9); and a
+        not-yet-running browser answered the pane at once, forever — the pane now starts it, and backs off.
+  - [ ] **Next: the cloud loop drives the same tab** — the step loop's shots and actions go to the task's
+        window instead of the screen, so a run happens where the person is watching and signed in.
 - [ ] **A browser of our own — probed 2026-10-01, and the answer is yes.** Owner: log in once inside the
       product and let it work there *without disturbing the person's own work*. The desktop agent moves the
       real mouse, so today a run and the person cannot share a machine. A dedicated Chrome profile driven

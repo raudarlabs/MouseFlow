@@ -17,7 +17,7 @@
  * Reloading the page clears the thread and loses nothing that matters.
  */
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { ChevronDown, CircleDot, Crosshair, FileText, Mic, MicOff, Monitor, Paperclip, Send, Sparkles, Square, X } from 'lucide-react';
+import { ChevronDown, CircleDot, Crosshair, FileText, Globe, Mic, MicOff, Monitor, Paperclip, Send, Sparkles, Square, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@insightis/ui/Button';
 import {
@@ -70,6 +70,22 @@ import { useAccount } from '@/shell/AccountProvider';
 import { usePageChrome } from '@/shell/Surface';
 import { type Plan, askForPlan } from '@/lib/plan';
 import { OpenedRun } from './OpenedRun';
+import { BrowserPane } from './BrowserPane';
+
+const BROWSER_OPEN_KEY = 'mouseflow.create.browser';
+/* Вкладка нового разговора: одна на вкладку приложения, в sessionStorage - перезагрузка страницы
+ * возвращает к той же странице в браузере, а новая вкладка приложения начинает свою. */
+const threadTab = () => {
+  try {
+    const have = sessionStorage.getItem('mouseflow.create.tab');
+    if (have) return have;
+    const made = `chat-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    sessionStorage.setItem('mouseflow.create.tab', made);
+    return made;
+  } catch (_) {
+    return 'chat';
+  }
+};
 import { describe } from './describe';
 /* Сказать о конце прогона тому, кто на эту вкладку не смотрит. Смысл прогона в том, что человек уходит
  * заниматься другим - вкладка позади других окон НАМЕРЕННО, - и результат, живущий только на экране, никто не
@@ -138,6 +154,9 @@ const SUGGESTIONS = [
 export const CreateView = () => {
   const [state] = useConsole();
   const { health, stale } = useAgent();
+  /* Свой браузер есть у агента macOS (OwnBrowser); у Windows его ещё нет. Старый агент ответит 404, и
+   * панель скажет обновить - это виднее, чем кнопка, которая молча не появляется. */
+  const ownBrowser = health?.platform === 'macos';
   const { reload, flows, runs } = useAccount();
   /* Открытый диалог сохранения, вместе с прогоном, который он сохраняет. Держится здесь, а не в самом
    * ходе: ход перерисовывается фидом, а диалог не должен закрываться оттого, что пришёл ещё один шаг. */
@@ -148,6 +167,7 @@ export const CreateView = () => {
   /* ОТКРЫТЫЙ ПРОШЛЫЙ ПРОГОН - из адреса (`/create/$runId`), а не из состояния страницы: ссылка из сайдбара,
    * назад и вперёд в браузере и перезагрузка должны открывать одно и то же. */
   const { runId: openedId } = useParams({ strict: false }) as { runId?: string };
+  const browserTab = useMemo(() => (openedId ? `run-${openedId}` : threadTab()), [openedId]);
   const opened = useMemo(() => (openedId ? runs.find((r) => r.id === openedId) ?? null : null),
     [openedId, runs]);
 
@@ -259,6 +279,16 @@ export const CreateView = () => {
   /* Ограничить работу тем окном, что впереди сейчас. Только для desktop: расширение целится в элементы
    * страницы, и «текущий экран» для него ничего не значит. */
   const [pinScreen, setPinScreen] = useState(false);
+  /* БРАУЗЕР РЯДОМ С РАЗГОВОРОМ (владелец, 2026-10-01, «как у Клода»). Открыт ли - предпочтение этого окна,
+   * как ширина сайдбара. Вкладка - на разговор: у открытого прошлого прогона его id, у нового - id, который
+   * живёт, пока открыта эта вкладка приложения. Только там, где есть свой браузер: агент macOS. */
+  const [browserOpen, setBrowserOpen] = useState(() => {
+    try { return localStorage.getItem(BROWSER_OPEN_KEY) === '1'; } catch (_) { return false; }
+  });
+  const toggleBrowser = useCallback((on: boolean) => {
+    setBrowserOpen(on);
+    try { localStorage.setItem(BROWSER_OPEN_KEY, on ? '1' : '0'); } catch (_) { /* private mode */ }
+  }, []);
   /* Открытый шлюз: цикл стоит и ждёт, пока `answer` не будет вызван. `null`, когда никто не ждёт. */
   const [gate, setGate] = useState<
     { n: number; title: string; said: string; answer: (a: GateAnswer) => void } | null
@@ -1494,6 +1524,24 @@ export const CreateView = () => {
                 *
                 * Только для desktop: расширение целится в элементы страницы, и «это окно» для него не та
                 * единица, в которой оно работает. */}
+            {ownBrowser && (
+              <button
+                type="button"
+                aria-pressed={browserOpen}
+                title="A browser beside this chat: sign in to what the task needs, and it works there without taking your mouse"
+                onClick={() => toggleBrowser(!browserOpen)}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md border px-2 py-1 text-[0.76rem] transition-colors duration-base',
+                  browserOpen
+                    ? 'border-brand-primary/50 bg-brand-primary/12 font-semibold text-brand-primary'
+                    : 'border-stroke text-ink-secondary hover:bg-state-hover',
+                )}
+              >
+                <Globe className="size-3.5" />
+                Browser
+              </button>
+            )}
+
             {target === 'desktop' && (
               <button
                 type="button"
@@ -1656,6 +1704,14 @@ export const CreateView = () => {
         )}
       </Composer>
       </div>
+
+      {/* Панель браузера справа - столько места, сколько разговору: страница, в которой работают, читается
+        * не хуже, чем просьба о ней. */}
+      {ownBrowser && browserOpen && (
+        <div className="hidden w-[48%] min-w-[26rem] shrink-0 py-4 pe-5 lg:block">
+          <BrowserPane port={state.port} tab={browserTab} onClose={() => toggleBrowser(false)} />
+        </div>
+      )}
 
       {saving && (
         <SaveDictatedSkill

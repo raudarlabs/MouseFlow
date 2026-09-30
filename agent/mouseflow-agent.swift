@@ -352,6 +352,17 @@ func queryInt(_ query: String, _ name: String, _ fallback: Int) -> Int {
     return fallback
 }
 
+/// Строковый параметр адреса, раскодированный, или nil. Для `tab=` - id разговора, который выбрала страница.
+func queryString(_ query: String, _ name: String) -> String? {
+    for pair in query.split(separator: "&") {
+        let parts = pair.split(separator: "=", maxSplits: 1)
+        if parts.count == 2, parts[0] == Substring(name) {
+            return String(parts[1]).removingPercentEncoding ?? String(parts[1])
+        }
+    }
+    return nil
+}
+
 // ================================================================ recording
 
 /* One recorded event.
@@ -5809,36 +5820,56 @@ final class OwnBrowser {
     static var profile: String {
         FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Application Support/MouseFlow/Browser"
     }
+    /// Вкладка по умолчанию - для того, кто не назвал свою (облачный цикл до панели, ручной вызов).
+    static let workTab = "work"
+
+    /* ВКЛАДКА НА ЗАДАЧУ (владелец, 2026-10-01: «отдельный чат под каждую задачу»). Ключ - то, что назвала
+     * страница (id разговора); у каждой своя страница Chrome, своя сессия CDP и свой поток кадров. Вход на
+     * сайт при этом общий: куки у профиля одни, и войти в Gmail один раз - значит войти для всех задач. */
+    private struct Tab { let target: String; let session: String }
+    private var tabs: [String: Tab] = [:]
+
+    /* ПОСЛЕДНИЙ КАДР КАЖДОЙ СЕССИИ - из Page.screencastFrame. Chrome присылает кадр только когда страница
+     * изменилась, так что поток дешёвый: неподвижная страница не стоит ничего. */
+    private struct Frame { var seq: Int; var data: String; var width: Double; var height: Double }
+    private var frames: [String: Frame] = [:]
+    private var frameSeq = 0
 
     private var pid: pid_t = 0
     private var toChrome: Int32 = -1
     private var fromChrome: Int32 = -1
-    private var session: String?
-    private var targetId: String?
     private var nextId = 1
     private var replies: [Int: [String: Any]] = [:]
     private let lock = NSCondition()
+    private let writeLock = NSLock()
     private let serial = DispatchQueue(label: "mouseflow.ownbrowser")
 
     var running: Bool { pid > 0 && kill(pid, 0) == 0 }
 
     // ------------------------------------------------------------ start and stop
 
-    /// Поднять браузер (если не поднят) и держать одну рабочую вкладку. nil - получилось; иначе причина.
-    /// `visible` - для входа на сайты: окно впереди. Иначе фокус возвращается тому, кто был впереди до
-    /// запуска: свежий Chrome забирает его себе один раз, и это единственный момент, когда он мешает.
+    /// Поднять браузер, если не поднят. nil - получилось; иначе причина.
+    ///
+    /// `visible` - для входа на сайты в настоящем окне: окно впереди. Иначе фокус возвращается тому, кто
+    /// был впереди до запуска: свежий Chrome забирает его себе один раз, и это единственный момент, когда
+    /// он мешает.
     ///
     /// ОКНО НЕ СВОРАЧИВАЕТСЯ - и это измерено, а не выбрано. Свёрнутое окно отдаёт кадр, пока в нём тот же
     /// документ, но после перехода на новую страницу Page.captureScreenshot не отвечает вовсе: новый документ
     /// ни разу не отрисован, а свёрнутому рисовать некуда. Окно, стоящее ПОЗАДИ других, отдаёт кадр после
     /// любого перехода (Chrome 154, 2026-10-01). Позади - и есть «не мешать».
+    ///
+    /// И ДВА ФЛАГА ПРОТИВ «ЗАСЫПАНИЯ». Окно позади других Chrome считает скрытым и перестаёт рисовать: поток
+    /// кадров за пять изменений страницы дал ноль. С --disable-backgrounding-occluded-windows и
+    /// --disable-renderer-backgrounding - девять (измерено тогда же). Без них панель в чате стояла бы
+    /// картинкой.
     func start(visible: Bool) -> String? {
         serial.sync { startLocked(visible: visible) }
     }
 
     private func startLocked(visible: Bool) -> String? {
-        if running, session != nil {
-            if visible { show() }
+        if running {
+            if visible { show(OwnBrowser.workTab) }
             return nil
         }
         guard let exe = OwnBrowser.executable else {
@@ -5857,6 +5888,7 @@ final class OwnBrowser {
         posix_spawn_file_actions_addclose(&actions, inbound[1])
         posix_spawn_file_actions_addclose(&actions, outbound[0])
         let args = [exe, "--remote-debugging-pipe", "--disable-blink-features=AutomationControlled",
+                    "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding",
                     "--user-data-dir=\(OwnBrowser.profile)", "--no-first-run", "--no-default-browser-check",
                     "--window-size=1280,900", "about:blank"]
         var argv: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) } + [nil]
@@ -5864,53 +5896,75 @@ final class OwnBrowser {
         let spawned = posix_spawn(&child, exe, &actions, nil, &argv, environ)
         argv.forEach { free($0) }
         posix_spawn_file_actions_destroy(&actions)
-        close(inbound[0]); close(outbound[1])
+        Darwin.close(inbound[0]); Darwin.close(outbound[1])
         guard spawned == 0 else {
-            close(inbound[1]); close(outbound[0])
+            Darwin.close(inbound[1]); Darwin.close(outbound[0])
             return "Chrome did not start (\(spawned))"
         }
         pid = child
         toChrome = inbound[1]
         fromChrome = outbound[0]
-        session = nil
+        tabs = [:]
+        frames = [:]
         startReader(fd: fromChrome)
 
         guard call("Browser.getVersion") != nil else {
             stopLocked()
             return "Chrome started but did not answer on the pipe"
         }
-        /* Своя рабочая вкладка: та, что открылась с about:blank, - первая страница в списке. */
+        /* Первая страница, открытая с about:blank, становится вкладкой по умолчанию. */
         if let targets = call("Target.getTargets")?["targetInfos"] as? [[String: Any]],
            let page = targets.first(where: { ($0["type"] as? String) == "page" }),
            let id = page["targetId"] as? String {
-            targetId = id
-        } else if let made = call("Target.createTarget", ["url": "about:blank"]), let id = made["targetId"] as? String {
-            targetId = id
+            _ = attach(OwnBrowser.workTab, target: id)
         }
-        guard let target = targetId,
-              let attached = call("Target.attachToTarget", ["targetId": target, "flatten": true]),
-              let sid = attached["sessionId"] as? String else {
-            stopLocked()
-            return "Chrome started but its tab could not be attached"
-        }
-        session = sid
-        _ = call("Page.enable", [:], sid)
-
         if visible {
-            show()
+            show(OwnBrowser.workTab)
         } else {
-            /* Не мешать: фокус - обратно тому, кто работал. Окно остаётся позади, не свёрнутым - см. выше. */
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { before?.activate() }
         }
         return nil
     }
 
-    func show() {
-        if let target = targetId,
-           let win = call("Browser.getWindowForTarget", ["targetId": target])?["windowId"] as? Int {
-            _ = call("Browser.setWindowBounds", ["windowId": win, "bounds": ["windowState": "normal"]])
+    private func attach(_ key: String, target: String) -> Tab? {
+        guard let attached = call("Target.attachToTarget", ["targetId": target, "flatten": true]),
+              let sid = attached["sessionId"] as? String else { return nil }
+        let tab = Tab(target: target, session: sid)
+        tabs[key] = tab
+        _ = call("Page.enable", [:], sid)
+        _ = call("Page.startScreencast", ["format": "jpeg", "quality": 70, "maxWidth": 1600, "everyNthFrame": 1], sid)
+        return tab
+    }
+
+    /// Вкладка этой задачи - существующая или новая. Браузер поднимается, если ещё не поднят.
+    private func tab(_ key: String) -> Tab? {
+        if !running, start(visible: false) != nil { return nil }
+        return serial.sync {
+            if let have = tabs[key] { return have }
+            /* СВОЁ ОКНО НА ЗАДАЧУ, а не вкладка в общем: Chrome рисует только АКТИВНУЮ вкладку окна, и у
+             * фоновой поток кадров молчит вовсе (найдено запуском). Окно открывается позади - `background`
+             * не отдаёт ему фокус, и человек его не видит, пока не попросит настоящее окно. */
+            guard let made = call("Target.createTarget", ["url": "about:blank", "newWindow": true, "background": true]),
+                  let id = made["targetId"] as? String else { return nil }
+            return attach(key, target: id)
+        }
+    }
+
+    func show(_ key: String) {
+        if let tab = tabs[key] {
+            _ = call("Target.activateTarget", ["targetId": tab.target])
+            if let win = call("Browser.getWindowForTarget", ["targetId": tab.target])?["windowId"] as? Int {
+                _ = call("Browser.setWindowBounds", ["windowId": win, "bounds": ["windowState": "normal"]])
+            }
         }
         NSRunningApplication(processIdentifier: pid)?.activate()
+    }
+
+    /// Закрыть вкладку задачи (разговор удалён или закрыт). Браузер и вход на сайты остаются.
+    func close(_ key: String) {
+        guard let tab = serial.sync(execute: { tabs.removeValue(forKey: key) }) else { return }
+        _ = call("Target.closeTarget", ["targetId": tab.target])
+        lock.lock(); frames.removeValue(forKey: tab.session); lock.unlock()
     }
 
     func stop() { serial.sync { stopLocked() } }
@@ -5918,9 +5972,10 @@ final class OwnBrowser {
     private func stopLocked() {
         if running { _ = call("Browser.close", [:], nil, timeout: 3) }
         if running { kill(pid, SIGTERM) }
-        if toChrome >= 0 { close(toChrome) }
-        if fromChrome >= 0 { close(fromChrome) }
-        toChrome = -1; fromChrome = -1; pid = 0; session = nil; targetId = nil
+        if toChrome >= 0 { Darwin.close(toChrome) }
+        if fromChrome >= 0 { Darwin.close(fromChrome) }
+        toChrome = -1; fromChrome = -1; pid = 0; tabs = [:]
+        lock.lock(); frames = [:]; lock.broadcast(); lock.unlock()
     }
 
     // ------------------------------------------------------------ the protocol
@@ -5928,7 +5983,7 @@ final class OwnBrowser {
     private func startReader(fd: Int32) {
         let thread = Thread { [weak self] in
             var buffer = Data()
-            var chunk = [UInt8](repeating: 0, count: 65536)
+            var chunk = [UInt8](repeating: 0, count: 262_144)
             while true {
                 let n = read(fd, &chunk, chunk.count)
                 if n <= 0 { break }
@@ -5937,12 +5992,28 @@ final class OwnBrowser {
                     let message = buffer.subdata(in: buffer.startIndex..<end)
                     buffer.removeSubrange(buffer.startIndex...end)
                     guard let self,
-                          let json = (try? JSONSerialization.jsonObject(with: message)) as? [String: Any],
-                          let id = json["id"] as? Int else { continue }
-                    self.lock.lock()
-                    self.replies[id] = json
-                    self.lock.broadcast()
-                    self.lock.unlock()
+                          let json = (try? JSONSerialization.jsonObject(with: message)) as? [String: Any] else { continue }
+                    if let id = json["id"] as? Int {
+                        self.lock.lock()
+                        self.replies[id] = json
+                        self.lock.broadcast()
+                        self.lock.unlock()
+                    } else if (json["method"] as? String) == "Page.screencastFrame",
+                              let session = json["sessionId"] as? String,
+                              let params = json["params"] as? [String: Any],
+                              let data = params["data"] as? String {
+                        let meta = params["metadata"] as? [String: Any] ?? [:]
+                        self.lock.lock()
+                        self.frameSeq += 1
+                        self.frames[session] = Frame(
+                            seq: self.frameSeq, data: data,
+                            width: (meta["deviceWidth"] as? Double) ?? 0, height: (meta["deviceHeight"] as? Double) ?? 0)
+                        self.lock.broadcast()
+                        self.lock.unlock()
+                        /* Подтверждение - без ожидания ответа: следующий кадр Chrome пришлёт только после
+                         * него, а ждать ответа из потока, который эти ответы и читает, значит ждать вечно. */
+                        if let ack = params["sessionId"] { self.send("Page.screencastFrameAck", ["sessionId": ack], session) }
+                    }
                 }
             }
         }
@@ -5950,10 +6021,8 @@ final class OwnBrowser {
         thread.start()
     }
 
-    /// Один вызов CDP. nil - нет ответа или ошибка протокола; результат - поле `result` ответа.
     @discardableResult
-    func call(_ method: String, _ params: [String: Any] = [:], _ sessionId: String? = nil,
-              timeout: TimeInterval = 20) -> [String: Any]? {
+    private func send(_ method: String, _ params: [String: Any], _ sessionId: String?) -> Int? {
         guard toChrome >= 0 else { return nil }
         lock.lock()
         let id = nextId
@@ -5963,8 +6032,17 @@ final class OwnBrowser {
         if let sessionId { message["sessionId"] = sessionId }
         guard var data = try? JSONSerialization.data(withJSONObject: message) else { return nil }
         data.append(0)
+        writeLock.lock()
+        defer { writeLock.unlock() }
         let wrote = data.withUnsafeBytes { write(toChrome, $0.baseAddress, data.count) }
-        guard wrote == data.count else { return nil }
+        return wrote == data.count ? id : nil
+    }
+
+    /// Один вызов CDP. nil - нет ответа или ошибка протокола; результат - поле `result` ответа.
+    @discardableResult
+    func call(_ method: String, _ params: [String: Any] = [:], _ sessionId: String? = nil,
+              timeout: TimeInterval = 20) -> [String: Any]? {
+        guard let id = send(method, params, sessionId) else { return nil }
         let until = Date().addingTimeInterval(timeout)
         lock.lock()
         defer { lock.unlock() }
@@ -5976,23 +6054,23 @@ final class OwnBrowser {
         return reply["result"] as? [String: Any] ?? [:]
     }
 
-    private func page(_ method: String, _ params: [String: Any] = [:]) -> [String: Any]? {
-        guard let session else { return nil }
-        return call(method, params, session)
+    private func page(_ key: String, _ method: String, _ params: [String: Any] = [:]) -> [String: Any]? {
+        guard let tab = tab(key) else { return nil }
+        return call(method, params, tab.session)
     }
 
-    private func evaluate(_ expression: String) -> Any? {
-        let got = page("Runtime.evaluate", ["expression": expression, "returnByValue": true])
+    private func evaluate(_ key: String, _ expression: String) -> Any? {
+        let got = page(key, "Runtime.evaluate", ["expression": expression, "returnByValue": true])
         return (got?["result"] as? [String: Any])?["value"]
     }
 
-    // ------------------------------------------------------------ what the loop needs
+    // ------------------------------------------------------------ what the loop and the pane need
 
-    var url: String { (evaluate("location.href") as? String) ?? "" }
-    var title: String { (evaluate("document.title") as? String) ?? "" }
+    func url(_ key: String) -> String { (evaluate(key, "location.href") as? String) ?? "" }
+    func title(_ key: String) -> String { (evaluate(key, "document.title") as? String) ?? "" }
 
-    /// Открыть адрес и дождаться, пока документ загрузится (до 20 секунд - потом отвечаем тем, что есть).
-    func open(_ address: String) -> String? {
+    /// Открыть адрес и дождаться НОВОГО документа (до 20 секунд - потом отвечаем тем, что есть).
+    func open(_ key: String, _ address: String) -> String? {
         guard let parsed = URL(string: address), let scheme = parsed.scheme?.lowercased(),
               scheme == "https" || scheme == "http" else {
             return "only http and https addresses open in this browser"
@@ -6000,78 +6078,136 @@ final class OwnBrowser {
         /* ЖДАТЬ НОВЫЙ ДОКУМЕНТ, А НЕ «complete». Сразу после navigate readyState ещё у СТАРОГО документа, а
          * about:blank всегда complete - и первый прогон кликнул в страницу, которой ещё не было (найдено
          * запуском). timeOrigin у каждого документа свой: сменился и загрузился - значит, это уже новый. */
-        let before = evaluate("performance.timeOrigin") as? Double
-        guard page("Page.navigate", ["url": address]) != nil else { return "the browser did not navigate" }
+        let before = evaluate(key, "performance.timeOrigin") as? Double
+        guard page(key, "Page.navigate", ["url": address]) != nil else { return "the browser did not navigate" }
         for _ in 0..<80 {
-            let now = evaluate("performance.timeOrigin") as? Double
-            if now != nil, now != before, (evaluate("document.readyState") as? String) == "complete" { return nil }
+            let now = evaluate(key, "performance.timeOrigin") as? Double
+            if now != nil, now != before, (evaluate(key, "document.readyState") as? String) == "complete" { return nil }
             usleep(250_000)
         }
         return nil
     }
 
+    /// Назад, вперёд, обновить - для адресной строки панели.
+    func history(_ key: String, _ move: String) -> String? {
+        switch move {
+        case "back": _ = evaluate(key, "history.back()")
+        case "forward": _ = evaluate(key, "history.forward()")
+        case "reload": _ = page(key, "Page.reload")
+        default: return "move is back, forward or reload"
+        }
+        return nil
+    }
+
     /// Кадр страницы - в той же форме, что /shot у экрана, чтобы читающий не различал их по форме.
-    func shot() -> String {
-        guard let got = page("Page.captureScreenshot", ["format": "jpeg", "quality": 80]),
+    func shot(_ key: String) -> String {
+        guard let got = page(key, "Page.captureScreenshot", ["format": "jpeg", "quality": 80]),
               let b64 = got["data"] as? String, let bytes = Data(base64Encoded: b64),
               let image = NSImage(data: bytes)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return "{\"ok\":false,\"error\":\"the browser gave no picture\"}"
         }
         var json = "{\"ok\":true,\"format\":\"image/jpeg\",\"bytes\":\(bytes.count),\"png\":\"\(b64)\""
         json += ",\"w\":\(image.width),\"h\":\(image.height),\"scale\":1.0000,\"originX\":0,\"originY\":0"
-        json += ",\"url\":\(jsonString(url)),\"title\":\(jsonString(title)),\"surface\":\"browser\"}"
+        json += ",\"url\":\(jsonString(url(key))),\"title\":\(jsonString(title(key))),\"surface\":\"browser\"}"
         return json
     }
 
-    /// Клик в точку страницы, в пикселях кадра. Приходит как настоящий, курсор человека не двигается.
-    func click(x: Double, y: Double, count: Int = 1) -> String? {
-        let scale = (evaluate("window.devicePixelRatio") as? Double) ?? 1
-        let px = x / scale, py = y / scale
-        guard page("Input.dispatchMouseEvent", ["type": "mouseMoved", "x": px, "y": py]) != nil else {
-            return "the browser did not take the click"
+    /// Кадр для панели: ждёт до `wait` секунд кадра новее `since`. Нет нового - отвечает без картинки, и
+    /// панель спрашивает снова; так поток идёт обычными запросами, без сокета, которого у агента нет.
+    func frame(_ key: String, since: Int, wait: TimeInterval) -> String {
+        guard let tab = tab(key) else { return "{\"ok\":false,\"error\":\"the browser is not running\"}" }
+        let until = Date().addingTimeInterval(wait)
+        lock.lock()
+        while (frames[tab.session]?.seq ?? 0) <= since {
+            if !lock.wait(until: until) { break }
         }
-        for type in ["mousePressed", "mouseReleased"] {
-            _ = page("Input.dispatchMouseEvent",
-                     ["type": type, "x": px, "y": py, "button": "left", "clickCount": count])
+        let got = frames[tab.session]
+        lock.unlock()
+        guard let got, got.seq > since else { return "{\"ok\":true,\"seq\":\(since),\"fresh\":false}" }
+        return "{\"ok\":true,\"seq\":\(got.seq),\"fresh\":true,\"format\":\"image/jpeg\",\"png\":\"\(got.data)\""
+            + ",\"cssW\":\(got.width),\"cssH\":\(got.height)"
+            + ",\"url\":\(jsonString(url(key))),\"title\":\(jsonString(title(key)))}"
+    }
+
+    /// Клик в точку страницы, в пикселях кадра. Приходит как настоящий, курсор человека не двигается.
+    func click(_ key: String, x: Double, y: Double, count: Int = 1) -> String? {
+        let scale = (evaluate(key, "window.devicePixelRatio") as? Double) ?? 1
+        return mouse(key, cssX: x / scale, cssY: y / scale, kind: "click", count: count)
+    }
+
+    /// Мышь в CSS-пикселях страницы. `kind`: move, down, up, click.
+    func mouse(_ key: String, cssX: Double, cssY: Double, kind: String, count: Int = 1, buttons: Int = 0) -> String? {
+        let base: [String: Any] = ["x": cssX, "y": cssY]
+        switch kind {
+        case "move":
+            _ = page(key, "Input.dispatchMouseEvent", base.merging(["type": "mouseMoved", "buttons": buttons]) { $1 })
+        case "down", "up":
+            _ = page(key, "Input.dispatchMouseEvent", base.merging([
+                "type": kind == "down" ? "mousePressed" : "mouseReleased", "button": "left", "clickCount": count,
+                "buttons": kind == "down" ? 1 : 0]) { $1 })
+        default:
+            guard page(key, "Input.dispatchMouseEvent", base.merging(["type": "mouseMoved"]) { $1 }) != nil else {
+                return "the browser did not take the click"
+            }
+            for type in ["mousePressed", "mouseReleased"] {
+                _ = page(key, "Input.dispatchMouseEvent",
+                         base.merging(["type": type, "button": "left", "clickCount": count]) { $1 })
+            }
         }
         return nil
     }
 
-    func type(_ text: String) -> String? {
-        page("Input.insertText", ["text": text]) != nil ? nil : "the browser did not take the typing"
+    func type(_ key: String, _ text: String) -> String? {
+        page(key, "Input.insertText", ["text": text]) != nil ? nil : "the browser did not take the typing"
     }
 
-    /// Клавиши, которые не текст. Имя - как у press_key в мозге: Enter, Tab, Escape, Backspace, стрелки.
-    func key(_ name: String) -> String? {
-        let codes: [String: (String, String, Int)] = [
+    /// Клавиша, как её прислала панель (KeyboardEvent.key/code) или назвал мозг (Enter, Tab, стрелки).
+    /// Печатаемый символ едет с `text` - иначе страница получит нажатие без буквы.
+    func key(_ key: String, name: String, code: String? = nil, text: String? = nil, modifiers: Int = 0,
+             down: Bool? = nil) -> String? {
+        let named: [String: (String, String, Int)] = [
             "enter": ("Enter", "Enter", 13), "return": ("Enter", "Enter", 13), "tab": ("Tab", "Tab", 9),
             "escape": ("Escape", "Escape", 27), "esc": ("Escape", "Escape", 27),
             "backspace": ("Backspace", "Backspace", 8), "delete": ("Delete", "Delete", 46),
             "up": ("ArrowUp", "ArrowUp", 38), "down": ("ArrowDown", "ArrowDown", 40),
             "left": ("ArrowLeft", "ArrowLeft", 37), "right": ("ArrowRight", "ArrowRight", 39),
+            "arrowup": ("ArrowUp", "ArrowUp", 38), "arrowdown": ("ArrowDown", "ArrowDown", 40),
+            "arrowleft": ("ArrowLeft", "ArrowLeft", 37), "arrowright": ("ArrowRight", "ArrowRight", 39),
             "pageup": ("PageUp", "PageUp", 33), "pagedown": ("PageDown", "PageDown", 34),
             "home": ("Home", "Home", 36), "end": ("End", "End", 35), "space": (" ", "Space", 32),
         ]
-        guard let (key, code, vk) = codes[name.lowercased()] else { return "no such key here: \(name)" }
-        for type in ["keyDown", "keyUp"] {
-            var params: [String: Any] = ["type": type, "key": key, "code": code,
-                                         "windowsVirtualKeyCode": vk, "nativeVirtualKeyCode": vk]
-            if type == "keyDown", key == "Enter" { params["text"] = "\r" }
-            _ = page("Input.dispatchKeyEvent", params)
+        let known = named[name.lowercased()]
+        let keyName = known?.0 ?? name
+        let keyCode = code ?? known?.1 ?? ""
+        let vk = known?.2 ?? (name.count == 1 ? Int(name.uppercased().unicodeScalars.first!.value) : 0)
+        guard known != nil || name.count == 1 || text != nil else { return "no such key here: \(name)" }
+        let phases = down == nil ? ["keyDown", "keyUp"] : [down! ? "keyDown" : "keyUp"]
+        for type in phases {
+            var params: [String: Any] = ["type": type, "key": keyName, "code": keyCode,
+                                         "windowsVirtualKeyCode": vk, "nativeVirtualKeyCode": vk, "modifiers": modifiers]
+            if type == "keyDown" {
+                if let text, !text.isEmpty, modifiers & ~8 == 0 { params["text"] = text }
+                else if keyName == "Enter" { params["text"] = "\r" }
+                else if name.count == 1, modifiers & ~8 == 0 { params["text"] = name }
+            }
+            _ = page(key, "Input.dispatchKeyEvent", params)
         }
         return nil
     }
 
-    func scroll(x: Double, y: Double, dy: Double) -> String? {
-        let got = page("Input.dispatchMouseEvent",
-                       ["type": "mouseWheel", "x": x, "y": y, "deltaX": 0, "deltaY": dy])
+    func scroll(_ key: String, x: Double, y: Double, dy: Double, dx: Double = 0) -> String? {
+        let got = page(key, "Input.dispatchMouseEvent",
+                       ["type": "mouseWheel", "x": x, "y": y, "deltaX": dx, "deltaY": dy])
         return got != nil ? nil : "the browser did not scroll"
     }
 
-    var stateJSON: String {
-        "{\"ok\":true,\"available\":\(jsonBool(OwnBrowser.executable != nil)),\"running\":\(jsonBool(running))"
-            + (running && session != nil ? ",\"url\":\(jsonString(url)),\"title\":\(jsonString(title))" : "")
-            + ",\"profile\":\(jsonString(OwnBrowser.profile))}"
+    /// Состояние без побочных эффектов: не поднимает браузер и не заводит вкладок.
+    func stateJSON(_ key: String? = nil) -> String {
+        var json = "{\"ok\":true,\"available\":\(jsonBool(OwnBrowser.executable != nil)),\"running\":\(jsonBool(running))"
+        if running, let key, tabs[key] != nil {
+            json += ",\"url\":\(jsonString(url(key))),\"title\":\(jsonString(title(key)))"
+        }
+        return json + ",\"tabs\":\(tabs.count),\"profile\":\(jsonString(OwnBrowser.profile))}"
     }
 }
 
@@ -6455,43 +6591,80 @@ func route(method: String, path: String, query: String, body: String) -> Respons
      * смотрит» отказывает всему, что им управляет: открыть адрес или нажать в чужой странице - это
      * действие, пусть и не мышью. */
     case "/browser":
-        return Response(body: OwnBrowser.shared.stateJSON)
+        return Response(body: OwnBrowser.shared.stateJSON(queryString(query, "tab")))
 
-    case "/browser/start", "/browser/open", "/browser/act", "/browser/stop", "/browser/shot":
+    /* КАДР ДЛЯ ПАНЕЛИ - долгим опросом: ждёт до полутора секунд кадра новее `since`. Сервер агента
+     * обслуживает запросы параллельно, так что ожидающий кадр никому не мешает. */
+    case "/browser/frame":
+        let key = queryString(query, "tab") ?? OwnBrowser.workTab
+        /* Панель, которую открыл человек, поднимает браузер сама - иначе она стояла бы «запускается» вечно.
+         * Кроме сборки «только смотрит»: ей этот браузер не принадлежит. */
+        if !OwnBrowser.shared.running, recordOnly { return Response(body: OwnBrowser.shared.stateJSON()) }
+        return Response(body: OwnBrowser.shared.frame(key, since: queryInt(query, "since", 0), wait: 1.5))
+
+    case "/browser/start", "/browser/open", "/browser/act", "/browser/stop", "/browser/shot",
+         "/browser/input", "/browser/nav", "/browser/close", "/browser/show":
         if path != "/browser/shot" && method != "POST" {
             return Response(status: 405, body: "{\"ok\":false,\"error\":\"POST\"}")
         }
-        if path != "/browser/stop" && path != "/browser/shot", let refused = recordOnlyRefusal("browser") {
+        if !["/browser/stop", "/browser/shot", "/browser/close"].contains(path),
+           let refused = recordOnlyRefusal("browser") {
             return Response(status: 409, body: "{\"ok\":false,\"error\":\(jsonString(refused))}")
         }
         let input = (try? JSONSerialization.jsonObject(with: Data(body.utf8))) as? [String: Any] ?? [:]
         let browser = OwnBrowser.shared
+        let key = (input["tab"] as? String) ?? queryString(query, "tab") ?? OwnBrowser.workTab
         let answer: (String?) -> Response = { bad in
-            bad == nil ? Response(body: browser.stateJSON)
+            bad == nil ? Response(body: browser.stateJSON(key))
                 : Response(status: 409, body: "{\"ok\":false,\"error\":\(jsonString(bad!))}")
         }
+        let num = { (k: String) in (input[k] as? Double) ?? Double(input[k] as? Int ?? 0) }
+        let text = { (k: String) in input[k].map { String(describing: $0) } }
         switch path {
         case "/browser/start":
             return answer(browser.start(visible: (input["visible"] as? Bool) == true))
         case "/browser/stop":
             browser.stop()
-            return Response(body: browser.stateJSON)
-        default:
-            break
-        }
-        if !browser.running, let bad = browser.start(visible: false) { return answer(bad) }
-        switch path {
+            return Response(body: browser.stateJSON())
+        case "/browser/close":
+            browser.close(key)
+            return Response(body: browser.stateJSON())
+        case "/browser/show":
+            if let bad = browser.start(visible: false) { return answer(bad) }
+            DispatchQueue.main.async { browser.show(key) }
+            return answer(nil)
         case "/browser/shot":
-            return Response(body: browser.shot())
+            return Response(body: browser.shot(key))
         case "/browser/open":
-            return answer(browser.open(String(describing: input["url"] ?? "")))
+            return answer(browser.open(key, text("url") ?? ""))
+        case "/browser/nav":
+            if let url = text("url") { return answer(browser.open(key, url)) }
+            return answer(browser.history(key, text("move") ?? ""))
+        /* ВВОД ИЗ ПАНЕЛИ - в CSS-пикселях страницы: панель знает размер страницы из кадра (cssW/cssH) и
+         * пересчитывает сама, поэтому здесь нет догадок о масштабе картинки. */
+        case "/browser/input":
+            let mods = Int(num("modifiers"))
+            switch text("type") ?? "" {
+            case "mouse":
+                return answer(browser.mouse(key, cssX: num("x"), cssY: num("y"), kind: text("kind") ?? "click",
+                                            count: max(1, Int(num("count"))), buttons: Int(num("buttons"))))
+            case "wheel":
+                return answer(browser.scroll(key, x: num("x"), y: num("y"), dy: num("dy"), dx: num("dx")))
+            case "key":
+                let down: Bool? = text("phase") == "down" ? true : text("phase") == "up" ? false : nil
+                return answer(browser.key(key, name: text("key") ?? "", code: text("code"), text: text("text"),
+                                          modifiers: mods, down: down))
+            case "text":
+                return answer(browser.type(key, text("text") ?? ""))
+            default:
+                return answer("type is mouse, wheel, key or text")
+            }
         default:
-            let num = { (k: String) in (input[k] as? Double) ?? Double(input[k] as? Int ?? 0) }
-            switch String(describing: input["kind"] ?? "") {
-            case "click": return answer(browser.click(x: num("x"), y: num("y"), count: max(1, Int(num("count")))))
-            case "type": return answer(browser.type(String(describing: input["text"] ?? "")))
-            case "key": return answer(browser.key(String(describing: input["key"] ?? "")))
-            case "scroll": return answer(browser.scroll(x: num("x"), y: num("y"), dy: num("dy")))
+            switch text("kind") ?? "" {
+            case "click": return answer(browser.click(key, x: num("x"), y: num("y"), count: max(1, Int(num("count")))))
+            case "type": return answer(browser.type(key, text("text") ?? ""))
+            case "key": return answer(browser.key(key, name: text("key") ?? ""))
+            case "scroll": return answer(browser.scroll(key, x: num("x"), y: num("y"), dy: num("dy")))
             default: return answer("kind is click, type, key or scroll")
             }
         }
