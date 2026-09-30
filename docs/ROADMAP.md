@@ -215,7 +215,7 @@ Not in the sequence yet — these need shapes agreed before they are steps.
         with Screen Recording on** — so the "screen MISSING" seen in step 12's live run was the temporary
         binary, not a lost grant: TCC follows the signature, not the name.
 
-- [ ] **A packaged desktop app, Windows first** — the macOS half is already a compiled Swift binary with a
+- [ ] **A packaged desktop app — owner 2026-10-01: macOS first, Windows later** (reverses "Windows first": the Mac already has a Developer ID, `Developer ID Application: Victor Horlenko (9A74Y57WK9)`, and the installer already signs with it when present) — the macOS half is already a compiled Swift binary with a
       menu-bar item; the Windows half is PowerShell hosting C# compiled at startup. Technical answer settled
       (.NET 10, Windows first, after the split). **Commercial answer is not**: nothing measured says the
       installer is what loses people. Ask one buyer before buying a certificate. [§6.3](SPLIT-PLAN.md)
