@@ -171,6 +171,23 @@ do {
     }
 }
 
+/* УПАКОВАННОЕ ПРИЛОЖЕНИЕ (.dmg, 2026-10-01) НЕ ПОЛУЧАЕТ АРГУМЕНТОВ: его открывают из Finder. Поэтому то, что
+ * установщик передаёт строкой запуска, у него записано в Info.plist - а Info.plist запечатан подписью
+ * Developer ID и нотаризацией: поправить ключ, не сломав подпись, нельзя, и Gatekeeper такое не откроет.
+ *
+ *   MFRecordOnly  - сборка второго продукта, «только смотрит» (владелец, 2026-10-01). Включает режим и НЕ
+ *                   может быть выключена аргументом: у сборки, которую продают фразой «никогда не управляет
+ *                   компьютером», выключателя нет. Это сильнее флага установщика, и сказано так же честно:
+ *                   правило этой сборки, не macOS.
+ *   MFAllowOrigin - страница, которой агент отвечает и ради которой может прописаться в автозапуск. Аргумент
+ *                   сильнее: человек, запустивший бинарник руками с --allow-origin, сказал, чего хочет.
+ *   MFPackaged    - что это сборка из .dmg, а не с установщика: от неё зависит первый запуск (см. ниже). */
+let packagedBuild = (Bundle.main.object(forInfoDictionaryKey: "MFPackaged") as? Bool) == true
+if (Bundle.main.object(forInfoDictionaryKey: "MFRecordOnly") as? Bool) == true { recordOnly = true }
+if allowOrigin.isEmpty, let baked = Bundle.main.object(forInfoDictionaryKey: "MFAllowOrigin") as? String {
+    allowOrigin = baked
+}
+
 /* КЛЮЧ - ДО ТОГО, как поднимется сокет: агент, успевший принять хоть один запрос без ключа, - это окно,
  * и на медленной машине оно шире. Делается всегда, даже без --require-key: тогда он просто есть и ничего
  * не сторожит, а человек, решивший включить флаг, уже знает, где ключ. */
@@ -5530,7 +5547,7 @@ enum Autostart {
           <array>
             <string>\(binary)</string>
             <string>--port</string><string>\(port)</string>
-            <string>--allow-origin</string><string>\(allowOrigin)</string>
+            <string>--allow-origin</string><string>\(allowOrigin)</string>\(recordOnly ? "\n    <string>--record-only</string>" : "")
           </array>
           <key>RunAtLoad</key><true/>
           <key>KeepAlive</key><true/>
@@ -6295,6 +6312,35 @@ if CommandLine.arguments.count == 1 {
         }
         if served { exit(0) }
         print("the login item did not come up - carrying on in this process")
+    }
+}
+
+/* ПЕРВЫЙ ЗАПУСК УПАКОВАННОГО ПРИЛОЖЕНИЯ: перетащил в «Программы», открыл - и больше ничего. Установщик
+ * прописывает автозапуск сам (по умолчанию), и у .dmg то же самое делает первый запуск: пишет login item и
+ * уходит, а launchd поднимает агента уже как свой процесс - тот, которому принадлежат разрешения. ДО сокета,
+ * чтобы порт достался launchd'у, а не держался этим процессом.
+ *
+ * НЕ ИЗ ОБРАЗА ДИСКА И НЕ ИЗ КАРАНТИНА. Открытое прямо в смонтированном .dmg живёт по пути, который исчезнет
+ * при извлечении, а скачанное и не перенесённое macOS запускает из случайной папки App Translocation - login
+ * item, указывающий туда, после перезагрузки указывал бы в пустоту. Такому запуску говорится, что сделать. */
+if packagedBuild, CommandLine.arguments.count == 1 {
+    let here = Bundle.main.bundlePath
+    if here.hasPrefix("/Volumes/") || here.contains("/AppTranslocation/") {
+        let alert = NSAlert()
+        alert.messageText = "Move MouseFlow Agent to Applications first"
+        alert.informativeText = "Drag it from this window into Applications, then open it from there. "
+            + "It starts itself at login after that, so it has to live somewhere that stays put."
+        _ = NSApplication.shared
+        alert.runModal()
+        exit(0)
+    }
+    if !Autostart.enabled {
+        if let bad = Autostart.enable() {
+            print("could not set up the login item: \(bad) - carrying on in this process")
+        } else {
+            print("first run: the login item is set up, and launchd starts the agent from here on")
+            exit(0)
+        }
     }
 }
 

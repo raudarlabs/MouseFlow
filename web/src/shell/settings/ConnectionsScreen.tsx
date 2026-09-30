@@ -24,7 +24,7 @@ import { useAgent, useConsole } from '@/lib/store';
 import { agentKey, linkAccount, setAgentKey, unlinkAccount } from '@/lib/agent';
 import { mintDeviceToken } from '@/lib/api';
 import {
-  Command, DownloadLink, PlatformPicker, needsRestart, usePlatform,
+  Command, DownloadLink, MacDownload, PlatformPicker, needsRestart, usePlatform,
 } from '@/features/connect/platform';
 import { CONSENT_LINE, mcpUrl } from '@/lib/mcp-facts';
 import { Row, type Say } from '../SettingsDialog';
@@ -151,6 +151,7 @@ export const ConnectionsScreen = ({ say, onClose }: { say: Say; onClose: () => v
         <PlatformPicker platform={platform} onPick={() => setShowLocal(false)} />
       </Row>
 
+      {mac && <div className="mb-2"><MacDownload /></div>}
       <Command text={mac ? macInstallCommand(console_.port) : startCommand(console_.port)} onCopy={copy} />
 
       {mac && (

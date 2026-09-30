@@ -246,7 +246,39 @@ check('bash -n проходит', (() => {
   try { execFileSync('bash', ['-n', ROOT + 'agent/install-mac.sh']); return true; } catch { return false; }
 })());
 /* Пайп в bash исполняет то, что успело прийти: обрыв на середине иначе запустит половину установщика. */
-check('весь скрипт - функция, вызванная в конце', /^main "\$@"\s*$/m.test(installer));
+/* ПОСЛЕДНЯЯ СТРОКА ЗОВЁТ main - так обрыв закачки не запускает половину. С 2026-10-01 вызов обусловлен:
+ * agent/package-mac.sh берёт отсюда Info.plist и entitlements как из библиотеки. */
+check('весь скрипт - функция, вызванная в конце',
+  /\n\[ "\$\{MOUSEFLOW_INSTALLER_LIBRARY:-\}" = "1" \] \|\| main "\$@"\s*$/.test(installer));
+
+group('упакованное приложение для Mac: подписано, нотаризовано, режим запечатан');
+{
+  const pack = read('agent/package-mac.sh');
+  const agentSrc = read('agent/mouseflow-agent.swift').replace(/\/\*[\s\S]*?\*\//g, '');
+  const copyAgent = read('web/scripts/copy-agent.mjs');
+  const platform = read('web/src/features/connect/platform.tsx');
+  check('plist и entitlements - из установщика, а не вторая копия',
+    /MOUSEFLOW_INSTALLER_LIBRARY=1 source "\$\{here\}\/install-mac\.sh"/.test(pack)
+      && /write_plist_info "\$app" "\$source_file" "\$extra"/.test(pack) && !/<key>NSMicrophoneUsageDescription/.test(pack));
+  check('подпись - то, чего требует нотаризация', /codesign --force --options runtime --timestamp --entitlements/.test(pack));
+  check('нотаризация - профилем из связки ключей, а не паролем в скрипте',
+    /xcrun notarytool submit "\$dmg" --keychain-profile "\$profile" --wait/.test(pack)
+      && /xcrun stapler staple "\$dmg"/.test(pack) && !/--password|--apple-id "/.test(pack));
+  check('один бинарник на оба процессора', /lipo -create/.test(pack) && /arm64-apple-macos13/.test(pack)
+    && /x86_64-apple-macos13/.test(pack));
+  check('образ второго продукта несёт MFRecordOnly', /MouseFlow-Agent-RecordOnly" "\$\{packaged\}\s*\n\s*<key>MFRecordOnly<\/key><true\/>/.test(pack));
+  check('агент читает режим из запечатанного plist', /forInfoDictionaryKey: "MFRecordOnly"\) as\? Bool\) == true \{ recordOnly = true \}/.test(agentSrc));
+  /* Выключателя у сборки «только смотрит» нет: ни один путь не ставит recordOnly обратно в false. */
+  check('и выключить его нечем', !/recordOnly = false\s*$/m.test(agentSrc.slice(agentSrc.indexOf('var recordOnly = false') + 25)));
+  check('автозапуск сохраняет режим', /\(recordOnly \? "\\n    <string>--record-only<\/string>" : ""\)/.test(agentSrc));
+  check('первый запуск из образа или карантина не прописывает автозапуск в пустоту',
+    /here\.hasPrefix\("\/Volumes\/"\) \|\| here\.contains\("\/AppTranslocation\/"\)/.test(agentSrc));
+  check('сборка сайта раздаёт оба образа, а их отсутствие - ошибка',
+    copyAgent.includes("'dist/MouseFlow-Agent.dmg'") && copyAgent.includes("'dist/MouseFlow-Agent-RecordOnly.dmg'")
+      && /process\.exit\(1\)/.test(copyAgent));
+  check('второй продукт скачивает сборку «только смотрит»',
+    /make: '\/agent\/MouseFlow-Agent-RecordOnly\.dmg'/.test(platform) && /MAC_IMAGE\[product === 'make' \? 'make' : 'do'\]/.test(platform));
+}
 check('качает и агента, и себя из origin', installer.includes('/agent/mouseflow-agent.swift'));
 check('компилирует, а не скачивает бинарь', installer.includes('swiftc'));
 check('и говорит, что делать без инструментов', installer.includes('xcode-select --install'));

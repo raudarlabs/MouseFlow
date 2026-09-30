@@ -11,6 +11,10 @@
       ]
     },
     {
+      "source": "/agent/(.*)\\.dmg",
+      "headers": [{ "key": "Content-Type", "value": "application/x-apple-diskimage" }]
+    },
+    {
       "source": "/sw.js",
       "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
     },

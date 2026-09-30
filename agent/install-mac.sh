@@ -357,7 +357,9 @@ PLIST
 }
 
 write_plist_info() {
-  local app="$1" source="$2"
+  # Третий аргумент - готовые строки <key>…</key> для УПАКОВАННОЙ сборки (agent/package-mac.sh): MFPackaged,
+  # MFAllowOrigin, MFRecordOnly. Установщик его не передаёт - у него те же вещи едут аргументами запуска.
+  local app="$1" source="$2" extra="${3:-}"
   # The plist is what makes this a bundle rather than a folder, and the bundle is what gives the agent an
   # identity of its own in System Settings. LSUIElement keeps it out of the Dock and the app switcher: it has
   # no window and nothing to switch to.
@@ -393,6 +395,7 @@ write_plist_info() {
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Dictating a task. The recording is sent to OpenAI to be recognised and the text comes back; nothing is kept on this Mac.</string>
+${extra}
 </dict>
 </plist>
 PLIST
@@ -565,4 +568,8 @@ wait_for_health() {
   return 1
 }
 
-main "$@"
+# КАК БИБЛИОТЕКА: agent/package-mac.sh берёт отсюда Info.plist и entitlements, а не держит вторую их
+# редакцию - две копии plist'а однажды разошлись бы в ключе, который решает, откроется ли микрофон. Без
+# переменной это установщик, как всегда; обрыв закачки по-прежнему не запускает половину, потому что эта
+# строка - последняя.
+[ "${MOUSEFLOW_INSTALLER_LIBRARY:-}" = "1" ] || main "$@"

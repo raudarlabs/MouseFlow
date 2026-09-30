@@ -13,6 +13,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { Button, buttonVariants } from '@insightis/ui/Button';
 import { cn } from '@insightis/ui/cn';
 import { type AgentHealth, type HostOS, hostOS } from '@/lib/agent';
+import { useProduct } from '@/shell/useProduct';
 
 export interface Platform {
   os: HostOS;
@@ -115,3 +116,33 @@ export const DownloadLink = ({ href, name, children }: {
     <span className="align-text-top">{children}</span>
   </a>
 );
+
+/* ГОТОВОЕ ПРИЛОЖЕНИЕ ДЛЯ MAC - подписанный и нотаризованный .dmg (agent/package-mac.sh, 2026-10-01).
+ *
+ * КАКОЙ ОБРАЗ - РЕШАЕТ ПРОДУКТ, а не человек: второй продукт продаётся фразой «никогда не управляет вашим
+ * компьютером», и его образ несёт MFRecordOnly в запечатанном Info.plist - выключателя у такой сборки нет
+ * (владелец, 2026-10-01). Команда установщика остаётся рядом: это путь для того, кто читает код прежде, чем
+ * запустить, и для Mac, на который нельзя скачать приложение. */
+export const MAC_IMAGE = { do: '/agent/MouseFlow-Agent.dmg', make: '/agent/MouseFlow-Agent-RecordOnly.dmg' } as const;
+
+export const MacDownload = () => {
+  const { product } = useProduct();
+  const href = MAC_IMAGE[product === 'make' ? 'make' : 'do'];
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <a
+        href={href}
+        download
+        className={cn(buttonVariants({ variant: 'primary', size: 'sm' }), 'no-underline')}
+      >
+        <Download className="size-4" />
+        <span className="align-text-top">Download for Mac</span>
+      </a>
+      <span className="text-ink-inactive text-[0.8rem]">
+        {product === 'make'
+          ? 'Open it, drag it into Applications, open it from there. This build only watches — it cannot click or type.'
+          : 'Open it, drag it into Applications, open it from there. It starts itself at login after that.'}
+      </span>
+    </div>
+  );
+};

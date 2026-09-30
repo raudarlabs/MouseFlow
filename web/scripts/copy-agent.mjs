@@ -19,11 +19,15 @@ const files = [
   'mouseflow-agent.ps1',   // Windows: fetched and run in memory by the one-liner
   'mouseflow-agent.swift', // macOS: fetched and compiled on the machine by the installer
   'install-mac.sh',        // macOS: the installer itself
+  /* Готовые приложения для Mac, собранные и нотаризованные agent/package-mac.sh. Лежат в agent/dist, а не
+   * рядом, потому что это сборка, а не исходник; отсутствие - та же ошибка: кнопка Download ответила бы 404. */
+  'dist/MouseFlow-Agent.dmg',
+  'dist/MouseFlow-Agent-RecordOnly.dmg',
 ];
 
 for (const name of files) {
   const from = resolve(here, '../../agent/', name);
-  const to = resolve(here, '../public/agent/', name);
+  const to = resolve(here, '../public/agent/', name.replace(/^dist\//, ''));
   if (!existsSync(from)) {
     console.error(`agent/${name} is missing - the install command for that platform would 404`);
     process.exit(1);
