@@ -294,6 +294,9 @@ function resultBlocks(pending, said, loop, proven) {
      * ломается, - а ей надо решить, что означает несошедшееся утверждение для цели. */
     if (p.name === 'expect') {
       const verdict = judge(p.input || {}, got.output, got.isError === true);
+      /* ВО ВКЛАДКЕ ДОКАЗАТЕЛЬСТВО - ДОКУМЕНТ, а не дерево доступности (TIERS: dom сильнее tree): ответ на find
+       * там собран из самой страницы. Слова ответа те же, поэтому разбор один; уровень называется честно. */
+      if (loop.surface === 'browser' && verdict.how === 'tree') verdict.how = 'dom';
       const step = loop.steps[p.at];
       if (step) step.outcome = verdict;
       if (Array.isArray(proven)) proven.push({ at: p.at, verdict });
@@ -458,6 +461,9 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
    * бывший в ходе один, получает время от раздачи действий до их результатов. Несколько шагов в одном ходе
    * без tookMs остаются без числа: делить общее время на части было бы выдумкой. */
   stampActs(loop, results);
+  /* Где идёт прогон - со слов машины на каждом шаге (caps), а не замороженным при старте: это факт о том,
+   * кто исполняет, и он едет вместе с остальными возможностями. */
+  if (caps && typeof caps === 'object') loop.surface = caps.surface === 'browser' ? 'browser' : null;
   const proven = [];
   const answered = (loop.mine || []).concat(resultBlocks(loop.pending || [], results, loop, proven));
   /* Один кадр на ход, названный тем, что этот ход доказал. Пишется и при PASS: зелёная строка, к которой

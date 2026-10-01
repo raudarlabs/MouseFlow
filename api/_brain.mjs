@@ -671,14 +671,15 @@ const ONE_WAY_SAID = 'Call this BEFORE anything that cannot be undone - sending 
  * что в вкладке имеет смысл; остальное (окна, приложения, дерево доступности чужих программ, буфер) агент
  * там отвергнет, и показать модели инструмент, который гарантированно откажет, - значит потратить на это ход.
  * Набор, а не второй список: порядок TOOLS сохраняется, на нём держится кеш (см. ниже). */
-export const BROWSER_TOOLS = new Set(['click', 'hover', 'type_text', 'press_key', 'note', 'read_window', 'scroll',
-  'open_url', 'refresh_page', 'wait', 'reached_checkpoint', 'defer_until', 'finish']);
+export const BROWSER_TOOLS = new Set(['click', 'click_named', 'hover', 'type_text', 'press_key', 'note', 'read_window',
+  'find_element', 'scroll', 'open_url', 'refresh_page', 'wait', 'reached_checkpoint', 'defer_until', 'expect', 'finish']);
 
 /* Что сказать модели о месте работы - перед целью, одними словами на оба драйвера. */
 export const BROWSER_NOTE = 'You are working inside ONE tab of a browser that the user has already signed in '
   + 'to their sites with. The screenshot is that page and nothing else - there are no other windows or '
   + 'applications here. Go somewhere with open_url, read the page with read_window, and click at points in '
-  + 'the picture. If a site asks to sign in, stop and say so: the user signs in themselves.\n\n';
+  + 'the picture or by name with click_named. expect checks the page itself, not the picture. If a site asks '
+  + 'to sign in, stop and say so: the user signs in themselves.\n\n';
 
 export const toolsFor = (gated, success = null, caps = null, gate = null) => {
   const list = (gated ? TOOLS : TOOLS.filter((t) => t.name !== 'reached_checkpoint'))

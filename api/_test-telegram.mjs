@@ -16,7 +16,7 @@ import {
   tagFor, tagIn,
   CHANNEL, DRAFT_TTL_MS, SAY, commandOf, draftId, expired, keyboardFor, looksLikeDeviceToken,
   outcomeMessage, planMessage, refusedDocument, routeOf, updateOf, verdictOf, modeWanted,
-  feedLine, feedSource, feedWanted, feedWorthy,
+  feedLine, feedSource, feedWanted, feedWorthy, whereWanted, TELEGRAM_TAB,
 } from './_telegram.mjs';
 
 let pass = 0;
@@ -465,6 +465,23 @@ group('лента: телеграм как журнал всего, что де�
   check('расписание: запуск, пропуск и пауза - в ленте', /event: 'started', title: row\.label/.test(worker)
     && /event: 'missed', title: row\.label/.test(worker) && (worker.match(/event: 'paused'/g) || []).length >= 2);
   check('и сторож на машине, поднявший агента, тоже', /if \(action === 'event'\)/.test(worker) && /event: 'revived'/.test(worker));
+}
+
+group('/where: задачи из чата - во вкладке своего браузера или на экране');
+{
+  const route = (text, row = allowed) => routeOf({ row, update: updateOf(dm(text)) });
+  check('/where - спросить, /where browser|screen - выбрать', route('/where').where === null
+    && route('/where browser').where === 'browser' && route('/where screen').where === 'screen');
+  check('мусор - названный отказ', route('/where moon').act === 'refuse' && route('/where moon').say === SAY.whereBad);
+  check('незнакомец не выбирает', route('/where browser', null).act === 'greet');
+  check('и помощь о ней говорит', /\/where/.test(SAY.help));
+  check('по умолчанию - ничего не включено: только явные слова', whereWanted('maybe') === false && whereWanted('') === null);
+  check('план говорит, где пойдёт, - до кнопки', /Runs in: the MouseFlow browser/.test(planMessage({ plan: { title: 't', checkpoints: [] }, where: 'browser' }))
+    && !/Runs in/.test(planMessage({ plan: { title: 't', checkpoints: [] } })));
+  const door = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  check('выбранное едет в работу вкладкой чата', /\.\.\.\(where === 'browser' \? \{ surface: 'browser', tab: TELEGRAM_TAB \} : \{\}\)/.test(door)
+    && TELEGRAM_TAB === 'telegram');
+  check('агент без своего браузера - сказано сразу, а не тишина', /if \(where === 'browser' && !\(await agentHasBrowser\(sql, userId\)\)\)/.test(door));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

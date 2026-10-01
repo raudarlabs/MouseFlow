@@ -61,6 +61,7 @@ export const SAY = {
     + '/stop - stop whatever is running\n'
     + '/mode - run straight through, or ask before anything that cannot be undone\n'
     + '/feed - this chat as a running log of everything your machines do (on by default)\n'
+    + '/where - run tasks in the MouseFlow browser (your mouse stays yours) or on the screen\n'
     + '/pair mf_... - pair this chat with an account',
   empty: 'There is nothing in that message to do. Say what you want done, in a sentence.',
   /* РЕЖИМ - тот же выбор, что в панели агента, и слова о нём те же по смыслу: «Auto» и «Ask first». */
@@ -74,6 +75,14 @@ export const SAY = {
     + 'whether it was asked from here, from the app, from a chat or by a schedule. Send /feed off to stop.',
   feedOff: 'Feed: off. Only the tasks you send from here are reported here. Send /feed on to see everything.',
   feedBad: 'Send /feed on or /feed off.',
+  whereBrowser: 'Where: the MouseFlow browser. Tasks from this chat run in its own window, behind your other '
+    + 'windows - your mouse and keyboard stay yours, and it is already signed in to the sites you signed in '
+    + 'to there. Send /where screen to run on the screen instead.',
+  whereScreen: 'Where: the screen. Tasks from this chat move the real mouse, in any app. Send /where browser '
+    + 'to run them in the MouseFlow browser instead, without taking your mouse.',
+  whereBad: 'Send /where browser or /where screen.',
+  whereNoBrowser: 'Note: the agent on your Mac has not said it has the MouseFlow browser yet, so a task sent '
+    + 'here would wait. Update the agent (Connections in MouseFlow has the command), then try again.',
   declined: 'Cancelled. Nothing was run.',
   expired: 'That plan is older than half an hour, so I did not run it. Send the task again and you will '
     + 'get a fresh plan.',
@@ -227,6 +236,11 @@ export function routeOf({ row, update }) {
   if (command) {
     if (command.name === 'status') return { act: 'status' };
     if (command.name === 'stop') return { act: 'stop' };
+    if (command.name === 'where') {
+      const wanted = whereWanted(command.rest);
+      if (wanted === false) return { act: 'refuse', say: SAY.whereBad };
+      return { act: 'where', where: wanted };
+    }
     if (command.name === 'feed') {
       const wanted = feedWanted(command.rest);
       if (wanted === false) return { act: 'refuse', say: SAY.feedBad };
@@ -275,7 +289,7 @@ export function refusedDocument(doc) {
  * Цикл реактивный: плана он не получает и о нём не узнаёт (см. api/_plan.mjs). Чекпоинты с номерами,
  * притворяющиеся программой, - худший вид полировки, потому что выглядят как гарантия. В чате это опаснее,
  * чем на странице: человек не видит экрана и у него нет ничего, кроме этих строк. */
-export function planMessage({ plan, files = [], heard = null, id = null }) {
+export function planMessage({ plan, files = [], heard = null, id = null, where = null }) {
   const lines = [];
   /* ЧТО УСЛЫШАНО - ПЕРВОЙ СТРОКОЙ, ВЫШЕ ПЛАНА. У продиктованной задачи появился новый способ пойти не
    * туда, которого у напечатанной нет: распознавание. План, построенный по неверно услышанной фразе,
@@ -290,6 +304,8 @@ export function planMessage({ plan, files = [], heard = null, id = null }) {
   if (files.length) {
     lines.push('', `Attached: ${files.map((f) => `${f.name}${f.clipped ? ' (clipped)' : ''}`).join(', ')}`);
   }
+  /* ГДЕ ПОЙДЁТ - до кнопки, потому что от этого зависит, можно ли в это время работать за машиной. */
+  if (where === 'browser') lines.push('', 'Runs in: the MouseFlow browser - your mouse stays yours.');
   lines.push(
     '',
     'This is what I intend, not a script - the run decides each step from what is on screen, and it may '
@@ -444,4 +460,22 @@ export function feedLine({ event, title, said, source, when }) {
   const tail = [source, when].filter(Boolean).join(' · ');
   if (tail) lines.push(tail);
   return lines.join('\n');
+}
+
+/* ------------------------------------------------------------------ где идут задачи из чата
+ *
+ * Владелец, 2026-10-01: выбор «во вкладке своего браузера или на экране» - и из телеграма тоже. Хранится на
+ * аккаунте, рядом с режимом: человек решает это один раз, а не в каждом сообщении. По умолчанию - экран:
+ * так было, и задача, которой нужен Excel, во вкладке не сделается. */
+export const WHERE_KEY = 'telegram.surface';
+/** Вкладка своего браузера для задач из телеграма - одна на чат: вход на сайты общий, а окна не копятся. */
+export const TELEGRAM_TAB = 'telegram';
+
+/** Что просят командой /where: null - спросить, 'browser' | 'screen' - выбрать, false - мусор. */
+export function whereWanted(rest) {
+  const said = String(rest || '').trim().toLowerCase();
+  if (!said) return null;
+  if (['browser', 'tab', 'chrome', 'mouseflow'].includes(said)) return 'browser';
+  if (['screen', 'desktop', 'mac', 'mouse'].includes(said)) return 'screen';
+  return false;
 }

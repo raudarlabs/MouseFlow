@@ -294,12 +294,19 @@ group('цель во вкладке своего браузера: та же с�
     /browserTab\.map \{ OwnBrowser\.shared\.shot\(\$0, width: width\) \} \?\? Screen\.shot\(want: width\)/.test(code)
       && /let did = OwnBrowser\.shared\.perform\(tab, line: line\)/.test(code)
       && /browserTab != nil \? OwnBrowser\.shared\.grid\(browserTab!\) : Screen\.grid\(\)/.test(code));
-  check('и облаку сказано, что это браузер', /"\{\\"canClickName\\":false,\\"surface\\":\\"browser\\"\}"/.test(code));
+  check('и облаку сказано, что это браузер', /"\{\\"canClickName\\":true,\\"surface\\":\\"browser\\"\}"/.test(code));
   check('строки шага: click, move, scroll, type, key, open, refresh, read',
     ['"click":', '"move":', '"scroll":', '"type":', '"key":', '"open":', '"refresh":', '"read":']
       .every((c) => code.includes(`case ${c}`)));
   check('окна и приложения - отказ с причиной, а не тихое «готово»', /not available in the browser: this run works inside one browser tab/.test(code));
   check('масштаб снимка - с поправкой на Retina и фактический', /size\.w \* dpr/.test(code) && /let scale = Double\(image\.width\) \/ size\.w/.test(code));
+  /* expect едет на find - и во вкладке отвечает ТЕМИ ЖЕ СЛОВАМИ, что readFound в api/_expect.mjs. */
+  check('find во вкладке говорит словами разбора', /return "found \\\(line\(h\)\), centre/.test(code)
+    && /things match \\"\\\(name\)\\", so the name alone does not say which: /.test(code)
+    && /nothing on that window is called \\"\\\(name\)\\"/.test(code));
+  check('пароль не читается, выключенное помечено', /= \(password, not read\)/.test(code) && /out \+= " \(disabled\)"/.test(code));
+  check('подпись и её поле - одно совпадение', /x\.el\.tagName === 'LABEL' && x\.el\.control/.test(code));
+  check('нажатие по имени - только если найдено одно', /guard hits\.count == 1, let one = hits\.first else/.test(code));
 }
 
 group('ночь 2026-10-01: метки времени, тесты не трогают аккаунт, сторож поднимает агента');
@@ -2936,7 +2943,7 @@ group('нажатие по имени - одно действие вместо �
   check('и едет с каждым шагом облачного пути, у обеих',
     /\\"caps\\":\{\\"canClickName\\":true\}/.test(ps)
       /* С 2026-10-01 у macOS выбор: во вкладке своего браузера - false и surface, на экране - по Accessibility. */
-      && /caps = browserTab != nil \? "\{\\"canClickName\\":false,\\"surface\\":\\"browser\\"\}"\s*: "\{\\"canClickName\\":\\\(jsonBool\(Permission\.accessibility\)\)\}"/.test(swift));
+      && /caps = browserTab != nil \? "\{\\"canClickName\\":true,\\"surface\\":\\"browser\\"\}"\s*: "\{\\"canClickName\\":\\\(jsonBool\(Permission\.accessibility\)\)\}"/.test(swift));
 
   /* И ДОКУМЕНТ - в том же коммите, что агент: это правило дома. */
   check('протокол описывает действие и его поле',

@@ -336,6 +336,8 @@ export async function workerRoute(action, req, res, sql, who) {
     const browserDoesGoals = claimerIsBrowser;
     if (claimerIsBrowser) await stampWorker(sql, who.id, 'extension.claim.seen');
     if (claimerSaysSteps && !claimerIsWorker) await stampWorker(sql, who.id, 'agent.steps.seen');
+    /* И ЧТО У НЕГО ЕСТЬ СВОЙ БРАУЗЕР - чтобы телеграм мог сказать «задача подождёт», а не молча держать её. */
+    if (req.body && req.body.ownBrowser === true) await stampWorker(sql, who.id, 'agent.browser.seen');
 
     /* WHEN BOTH ARE LISTENING, THE AGENT WINS - and this is a reversal, so it is worth the paragraph.
      *

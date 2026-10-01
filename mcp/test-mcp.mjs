@@ -5930,7 +5930,7 @@ group('ход снимается целиком: нажатие по имени 
    * на странице, ни в цикле - решает один toolsFor. */
   check('и страница Create отдаёт то, что уже держит от /health',
     /* С 2026-10-01 - целиком и во вкладке тоже, только с пометкой, где идёт прогон. */
-    /caps: inBrowser \? \{ \.\.\.\(health \?\? \{\}\), canClickName: false, surface: 'browser' \} : health \?\? null,/
+    /caps: inBrowser \? \{ \.\.\.\(health \?\? \{\}\), canClickName: true, surface: 'browser' \} : health \?\? null,/
       .test(read('../web/src/features/create/CreateView.tsx')));
 
   /* ПРАВИЛО ПАЧКИ ИЗМЕНЕНО ОДНИМ ЭЛЕМЕНТОМ, и это решение владельца от 2026-09-11, а не попутная правка.

@@ -274,7 +274,16 @@ Not in the sequence yet — these need shapes agreed before they are steps.
         built agent (trusted click, typing with newlines, Enter, scroll, read, refusal for windows); found by
         running: Chrome multiplies a screenshot's scale by the Retina factor (800 asked, 1600 came back).
         **Not yet:** a full run with the model through the pane (needs a signed-in page and the new agent),
-        `expect` in a tab (it rides on the accessibility tree), the panel and Telegram choosing the tab, Windows.
+        the panel choosing the tab, Windows.
+  - [x] **`expect` in a tab and Telegram choosing it — 2026-10-01.** In a tab, `find` is answered from the
+        document in the same words the screen's agent uses (`readFound`), so one judge decides both and the
+        proof is named `dom`; `click_named` is the same search plus a click. Driven through the built agent
+        and judged by the real `judge`: a field by its label with its value, a disabled button, absence, a
+        password not read. Found by running: a label and its field counted as two matches, so `value_is`
+        could not decide — a label whose control also matched is now dropped. Telegram: `/where browser` |
+        `/where screen` (remembered on the account, default screen), the plan says where it will run, the
+        job carries one tab per chat, and the bot says at once when the agent has not declared its browser
+        (`agent.browser.seen`) instead of letting the task sit.
 - [ ] **A browser of our own — probed 2026-10-01, and the answer is yes.** Owner: log in once inside the
       product and let it work there *without disturbing the person's own work*. The desktop agent moves the
       real mouse, so today a run and the person cannot share a machine. A dedicated Chrome profile driven

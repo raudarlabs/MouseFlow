@@ -5340,7 +5340,8 @@ enum Courier {
              * следует Accessibility: без дерева имя не разрешить, и нажимать было бы нечего. */
             /* В своём браузере - и сказать это: облако по `surface` показывает модели только то, что во
              * вкладке имеет смысл (BROWSER_TOOLS в api/_brain.mjs). */
-            let caps = browserTab != nil ? "{\"canClickName\":false,\"surface\":\"browser\"}"
+            /* Во вкладке нажать по имени можно всегда: имя находит документ, а не Accessibility. */
+            let caps = browserTab != nil ? "{\"canClickName\":true,\"surface\":\"browser\"}"
                 : "{\"canClickName\":\(jsonBool(Permission.accessibility))}"
             let body = "{\"id\":\(jsonString(id)),\"shot\":\(shot),\"windows\":[\(windows)]"
                 + ",\"caps\":\(caps)"
@@ -6554,13 +6555,107 @@ final class OwnBrowser {
             })()
             """) as? String
             return said == nil ? ("the page could not be read", nil) : (nil, said)
-        case "waitwindow", "activate", "launch", "app", "capture", "find", "clickname", "scrollto", "drag",
+        /* FIND - ДОКУМЕНТОМ, а не деревом доступности, но ТЕМИ ЖЕ СЛОВАМИ (см. readFound в api/_expect.mjs):
+         * на нём стоит expect, и вердикт выносит тот же разбор, что для экрана. Координаты - в пикселях
+         * снимка модели (scale из строки), как у экрана. */
+        case "find":
+            return (nil, find(key, wanted: f["title"] ?? "", scale: Double(f["scale"] ?? "") ?? 1))
+        /* НАЖАТЬ ПО ИМЕНИ - тот же поиск и клик в середину найденного, если оно одно. */
+        case "clickname":
+            let hits = matches(key, wanted: f["title"] ?? f["name"] ?? "")
+            guard hits.count == 1, let one = hits.first else {
+                return (nil, find(key, wanted: f["title"] ?? f["name"] ?? "", scale: Double(f["scale"] ?? "") ?? 1))
+            }
+            let scale = Double(f["scale"] ?? "") ?? 1
+            if let bad = click(key, x: one.cx, y: one.cy, count: f["double"] == "1" ? 2 : 1) { return (bad, nil) }
+            return (nil, "clicked \(one.kind) \"\(one.name)\" at \(Int((one.cx * scale).rounded())),\(Int((one.cy * scale).rounded()))")
+        case "waitwindow", "activate", "launch", "app", "capture", "scrollto", "drag",
              "clipread", "clipwrite":
             return ("not available in the browser: this run works inside one browser tab. Click at points in "
                 + "the picture, type, press keys, scroll, open_url to go somewhere, read_window to read the page.", nil)
         default:
             return ("no such action here: \(f["action"] ?? "(none)")", nil)
         }
+    }
+
+    /// Найденное в документе: вид, имя, рамка и середина в CSS-пикселях, значение, выключено ли.
+    struct Hit { let kind: String; let name: String; let x, y, w, h, cx, cy: Double; let value: String?; let secret, disabled: Bool }
+
+    /* ИМЯ ЭЛЕМЕНТА - так, как его назвал бы человек: aria-label, подпись поля, текст кнопки, placeholder, alt.
+     * Сначала точные совпадения (без регистра), иначе - содержащие. Из совпадений по тексту берутся самые
+     * глубокие: у «Invoice paid» в абзаце совпадает и абзац, и весь body, а назван этим только абзац. */
+    func matches(_ key: String, wanted: String) -> [Hit] {
+        let needle = wanted.trimmingCharacters(in: .whitespaces)
+        guard !needle.isEmpty,
+              let js = try? JSONSerialization.data(withJSONObject: [needle]),
+              let lit = String(data: js, encoding: .utf8) else { return [] }
+        let raw = evaluate(key, """
+        (() => {
+          const want = \(lit)[0].toLowerCase();
+          const nameOf = (el) => {
+            const label = el.id && document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+            return (el.getAttribute('aria-label') || (label && label.innerText) || el.getAttribute('title')
+              || el.getAttribute('alt') || (['INPUT','TEXTAREA','SELECT'].includes(el.tagName) ? el.placeholder || el.name
+              : el.innerText) || '').replace(/\\s+/g, ' ').trim();
+          };
+          const kindOf = (el) => {
+            const role = el.getAttribute('role'); if (role) return role;
+            const t = el.tagName;
+            if (t === 'A') return 'link'; if (t === 'BUTTON') return 'button';
+            if (t === 'INPUT') return ['checkbox','radio','button','submit'].includes(el.type) ? (el.type === 'submit' ? 'button' : el.type) : 'textbox';
+            if (t === 'TEXTAREA') return 'textbox'; if (t === 'SELECT') return 'combobox';
+            if (/^H[1-6]$/.test(t)) return 'heading'; if (el.isContentEditable) return 'textbox';
+            return 'text';
+          };
+          const all = [...document.querySelectorAll('body *')].filter((el) => {
+            const r = el.getBoundingClientRect(); const st = getComputedStyle(el);
+            return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+          });
+          const named = all.map((el) => ({ el, name: nameOf(el) })).filter((x) => x.name);
+          let hits = named.filter((x) => x.name.toLowerCase() === want);
+          if (!hits.length) hits = named.filter((x) => x.name.toLowerCase().includes(want));
+          hits = hits.filter((x) => !hits.some((y) => y !== x && x.el.contains(y.el)));
+          /* Подпись и её поле - одно и то же: найдено поле, значит подпись не второе совпадение. */
+          hits = hits.filter((x) => !(x.el.tagName === 'LABEL' && x.el.control && hits.some((y) => y.el === x.el.control)));
+          return hits.slice(0, 12).map(({ el, name }) => {
+            const r = el.getBoundingClientRect();
+            const field = ['INPUT','TEXTAREA','SELECT'].includes(el.tagName) || el.isContentEditable;
+            return { kind: kindOf(el), name: name.slice(0, 120), x: r.x, y: r.y, w: r.width, h: r.height,
+              value: field ? (el.isContentEditable ? el.innerText : el.value) : null,
+              secret: el.type === 'password', disabled: !!el.disabled || el.getAttribute('aria-disabled') === 'true' };
+          });
+        })()
+        """) as? [[String: Any]] ?? []
+        return raw.map { one in
+            let x = (one["x"] as? Double) ?? 0, y = (one["y"] as? Double) ?? 0
+            let w = (one["w"] as? Double) ?? 0, h = (one["h"] as? Double) ?? 0
+            return Hit(kind: (one["kind"] as? String) ?? "element", name: (one["name"] as? String) ?? "",
+                       x: x, y: y, w: w, h: h, cx: x + w / 2, cy: y + h / 2, value: one["value"] as? String,
+                       secret: (one["secret"] as? Bool) ?? false, disabled: (one["disabled"] as? Bool) ?? false)
+        }
+    }
+
+    /// Ответ find словами агента: found / N things match / nothing on that window is called.
+    func find(_ key: String, wanted: String, scale: Double) -> String {
+        let name = wanted.trimmingCharacters(in: .whitespaces)
+        if name.isEmpty { return "find needs a name to look for" }
+        let hits = matches(key, wanted: name)
+        let px = { (v: Double) in Int((v * scale).rounded()) }
+        let line = { (h: Hit) -> String in
+            var out = "\(h.kind) \"\(h.name.replacingOccurrences(of: "\"", with: "'"))\" at \(px(h.x)),\(px(h.y)) \(px(h.w))x\(px(h.h))"
+            if h.secret { out += " = (password, not read)" }
+            else if let v = h.value { out += " = \"\(v.replacingOccurrences(of: "\"", with: "'").prefix(200))\"" }
+            if h.disabled { out += " (disabled)" }
+            return out
+        }
+        if hits.isEmpty {
+            return "nothing on that window is called \"\(name)\". Read the window to see what it does call things"
+        }
+        if hits.count == 1, let h = hits.first {
+            return "found \(line(h)), centre \(px(h.cx)),\(px(h.cy)) - click the centre"
+        }
+        return "\(hits.count) things match \"\(name)\", so the name alone does not say which: "
+            + hits.map(line).joined(separator: "; ") + ". Pick by position, or use a longer name"
     }
 
     /// Состояние без побочных эффектов: не поднимает браузер и не заводит вкладок.

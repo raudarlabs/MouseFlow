@@ -35,7 +35,8 @@ import { recognise, refusedAudio } from './_transcribe.mjs';
 import { callModel } from './_vision.mjs';
 import { callTelegram, fileUrl, sendChat, tellFeed } from './_telegram-out.mjs';
 import {
-  CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, SAY, draftId, expired, feedLine, feedSource, holdAnswerOf, keyboardFor,
+  CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, SAY, TELEGRAM_TAB, WHERE_KEY, draftId, expired, feedLine, feedSource,
+  holdAnswerOf, keyboardFor,
   outcomeMessage, planMessage, refusedDocument, routeOf, tagFor, updateOf, verdictOf,
 } from './_telegram.mjs';
 
@@ -141,6 +142,41 @@ async function mode(sql, update, userId, wanted) {
     ? await modeOf(sql, userId)
     : await setMode(sql, userId, wanted === 'ask' ? ONE_WAY : 'auto');
   return say(update.chatId, now === ONE_WAY ? SAY.modeAsk : SAY.modeAuto);
+}
+
+/* ГДЕ ИДУТ ЗАДАЧИ ИЗ ЧАТА - /where. Пустое значение и есть «экран», так было до этой команды. */
+async function whereOf(sql, userId) {
+  try {
+    const [pref] = await sql`select value from user_pref where user_id = ${userId} and key = ${WHERE_KEY}`;
+    return pref && pref.value === 'browser' ? 'browser' : 'screen';
+  } catch (_) {
+    return 'screen';
+  }
+}
+
+/** Объявлял ли агент этого аккаунта свой браузер за последние десять минут. */
+async function agentHasBrowser(sql, userId) {
+  try {
+    const [pref] = await sql`select value from user_pref where user_id = ${userId} and key = 'agent.browser.seen'`;
+    return !!pref && Date.now() - new Date(pref.value).getTime() < 10 * 60_000;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function where(sql, update, userId, wanted) {
+  if (wanted !== null) {
+    await sql`
+      insert into user_pref (user_id, key, value) values (${userId}, ${WHERE_KEY}, ${wanted === 'browser' ? 'browser' : ''})
+      on conflict (user_id, key) do update set value = excluded.value
+    `;
+  }
+  const now = await whereOf(sql, userId);
+  if (now === 'browser') {
+    return say(update.chatId, (await agentHasBrowser(sql, userId))
+      ? SAY.whereBrowser : `${SAY.whereBrowser}\n\n${SAY.whereNoBrowser}`);
+  }
+  return say(update.chatId, SAY.whereScreen);
 }
 
 /* ЛЕНТА - на аккаунте, а не на чате: вопрос «сообщать ли мне обо всём» - про человека. По умолчанию
@@ -273,7 +309,8 @@ async function offer(sql, update, userId, { carry = null } = {}) {
     insert into chat_draft (id, channel, sender_id, user_id, chat_id, goal, plan)
     values (${id}, ${CHANNEL}, ${update.senderId}, ${userId}, ${update.chatId}, ${goal}, ${JSON.stringify(plan)})
   `;
-  return say(update.chatId, planMessage({ plan, files, heard, id }), { reply_markup: keyboardFor(id) });
+  const where = await whereOf(sql, userId);
+  return say(update.chatId, planMessage({ plan, files, heard, id, where }), { reply_markup: keyboardFor(id) });
 }
 
 /* ОТВЕТ ОСТАНОВЛЕННОМУ ПРОГОНУ (SPLIT-PLAN §7.2, шаг 14b).
@@ -375,15 +412,25 @@ async function decide(sql, update, userId) {
   /* ЗАПОМНЕННЫЙ РЕЖИМ - и здесь, а не только в панели. Вопрос на остановке сюда и приедет: askChat шлёт его
    * в чат, из которого пришла работа. Режим замирает в аргументах работы, как у панели. */
   const gate = (await modeOf(sql, userId)) === ONE_WAY ? ONE_WAY : null;
+  /* ГДЕ - выбранное командой /where: во вкладке своего браузера агента (одна вкладка на чат) или на экране.
+   * Замирает в аргументах работы, как режим: переключённое посреди прогона не должно менять, где он идёт. */
+  const where = await whereOf(sql, userId);
   const put = await queueOne(sql, userId, {
     flowId: DESKTOP_GOAL,
     toolName: 'mouseflow_do',
-    args: { goal: draft.goal, telegram: { chatId: draft.chat_id }, ...(gate ? { gate } : {}) },
+    args: { goal: draft.goal, telegram: { chatId: draft.chat_id }, ...(gate ? { gate } : {}),
+      ...(where === 'browser' ? { surface: 'browser', tab: TELEGRAM_TAB } : {}) },
   });
   if (put.why) return say(update.chatId, put.why);
 
   await sql`update chat_draft set job_id = ${put.id} where id = ${draft.id}`;
-  return say(update.chatId, 'Started. I will say how it went.');
+  /* Агент без своего браузера такую работу не возьмёт (см. claim) - сказать сразу, а не молчать. */
+  if (where === 'browser' && !(await agentHasBrowser(sql, userId))) {
+    return say(update.chatId, `Queued. ${SAY.whereNoBrowser}`);
+  }
+  return say(update.chatId, where === 'browser'
+    ? 'Started in the MouseFlow browser. I will say how it went.'
+    : 'Started. I will say how it went.');
 }
 
 /* --------------------------------------------------------------------------------------------- вебхук */
@@ -443,6 +490,7 @@ async function handler(req, res) {
     if (route.act === 'stop') { await stop(sql, update, userId); return ok(res, 'stopped'); }
     if (route.act === 'mode') { await mode(sql, update, userId, route.mode); return ok(res, 'mode'); }
     if (route.act === 'feed') { await feed(sql, update, userId, route.on); return ok(res, 'feed'); }
+    if (route.act === 'where') { await where(sql, update, userId, route.where); return ok(res, 'where'); }
     if (route.act === 'decide') { await decide(sql, update, userId); return ok(res, 'decided'); }
     if (route.act === 'goal') { await offer(sql, update, userId); return ok(res, 'offered'); }
     if (route.act === 'amend') { await amend(sql, update, userId, route.draftId); return ok(res, 'amended'); }

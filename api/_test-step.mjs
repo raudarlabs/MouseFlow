@@ -1643,6 +1643,13 @@ group('прогон во вкладке своего браузера: моде�
     /and \(\$\{claimerOwnBrowser\} or q\.flow_id <> \$\{DESKTOP_GOAL\} or coalesce\(q\.args ->> 'surface', ''\) <> 'browser'\)/.test(worker)
       && /req\.body\.ownBrowser === true/.test(worker));
   check('и ответ на claim называет вкладку', /\{ surface: 'browser', tab: String\(job\.args\.tab \|\| 'work'\)/.test(worker));
+  /* Агент во вкладке шлёт canClickName: true - имя находит документ, а не Accessibility. */
+  const tabTools = names({ surface: 'browser', canClickName: true });
+  check('во вкладке есть проверки и нажатие по имени', ['expect', 'find_element', 'click_named'].every((n) => tabTools.includes(n)));
+  const stepSrc = readFileSync(new URL('./_step.mjs', import.meta.url), 'utf8');
+  check('и доказательство вкладки называется dom, а не tree',
+    /if \(loop\.surface === 'browser' && verdict\.how === 'tree'\) verdict\.how = 'dom';/.test(stepSrc)
+      && /loop\.surface = caps\.surface === 'browser' \? 'browser' : null;/.test(stepSrc));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

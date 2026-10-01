@@ -816,6 +816,8 @@ async function runWave(o: {
         if (use.name === 'expect') {
           const want = (use.input ?? {}) as { check: string; name: string; text?: string; why?: string };
           const verdict = judge(want, output, false);
+          /* Во вкладке своего браузера ответ собран документом - и уровень доказательства так и называется. */
+          if (o.caps?.surface === 'browser' && verdict.how === 'tree') verdict.how = 'dom';
           trace.outcome = verdict;
           proven.push({ at: stepNo, verdict });
           const said = expectSaid(want, verdict);
