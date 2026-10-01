@@ -449,5 +449,19 @@ group('у каждого шага - время начала и время вып
     /q\.args && typeof q\.args\.goal === 'string' && q\.args\.goal/.test(readFileSync(join(here, '../api/mcp.js'), 'utf8')));
 }
 
+group('прогон в Create идёт во вкладке, когда браузер рядом открыт');
+{
+  const create = read('src/features/create/CreateView.tsx');
+  const lib = read('src/lib/agent.ts');
+  check('открыта панель - машина-браузер, закрыта - экран',
+    /machine: inBrowser \? browserMachine\(state\.port, browserTab\) : localMachine\(state\.port\)/.test(create)
+      && /const inBrowser = ownBrowser && browserOpen;/.test(create));
+  check('и модели сказано, где она, и показан её набор',
+    /goal: inBrowser\s*\? BROWSER_NOTE \+ text/.test(create) && /surface: 'browser'/.test(create));
+  check('своему браузеру не нужно разрешение на запись экрана', /health\.canSee === false && !inBrowser/.test(create));
+  check('машина-браузер ходит в /browser/*, а окон у неё нет',
+    /\/browser\/shot\?\$\{at\}&w=/.test(lib) && /'\/browser\/do', \{ tab, body \}/.test(lib) && /windows: async \(\) => \(\{ ok: true as const, windows: \[\] \}\)/.test(lib));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

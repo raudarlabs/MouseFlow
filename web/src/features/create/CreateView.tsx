@@ -40,7 +40,8 @@ import {
   Thread,
   UserTurn,
 } from '@/components/chat';
-import { AGENT_WANTS, localMachine, shot, windows } from '@/lib/agent';
+import { AGENT_WANTS, browserMachine, localMachine, shot, windows } from '@/lib/agent';
+import { BROWSER_NOTE } from '../../../../api/_brain.mjs';
 import { askExtension, watchBridge } from '@/lib/bridge';
 import {
   type LiveJob, keepArtifact, liveEnd, liveJobs, liveStart, liveStep, push, scheduleAdd, scheduleRemove,
@@ -290,6 +291,9 @@ export const CreateView = () => {
     setBrowserOpen(on);
     try { localStorage.setItem(BROWSER_OPEN_KEY, on ? '1' : '0'); } catch (_) { /* private mode */ }
   }, []);
+  /* ПРОГОН - ВО ВКЛАДКЕ, когда браузер рядом с разговором открыт (2026-10-01): человек видит его там же, где
+   * вошёл на сайты, а мышь и клавиатура остаются ему. Закрыл панель - прогон снова идёт по экрану. */
+  const inBrowser = ownBrowser && browserOpen;
   /* Открытый шлюз: цикл стоит и ждёт, пока `answer` не будет вызван. `null`, когда никто не ждёт. */
   const [gate, setGate] = useState<
     { n: number; title: string; said: string; answer: (a: GateAnswer) => void } | null
@@ -355,7 +359,8 @@ export const CreateView = () => {
           'the half that can act outside the browser.');
         return;
       }
-      if (health.canSee === false) {
+      /* Своему браузеру разрешение на запись экрана не нужно: кадр даёт сам Chrome. */
+      if (health.canSee === false && !inBrowser) {
         setBlocked(`The agent answering is version ${health.version}, which has no /shot or /do — the eyes ` +
           `and hands this needs. Connections has the command that starts ${AGENT_WANTS}.`);
         return;
@@ -368,7 +373,7 @@ export const CreateView = () => {
       ? null
       : 'This needs the MouseFlow extension, in this browser. Install it and reload this tab, or switch to ' +
         'On this computer and use the local agent instead.');
-  }, [target, health]);
+  }, [target, health, inBrowser]);
 
   useEffect(() => { void check(); }, [check]);
 
@@ -601,7 +606,7 @@ export const CreateView = () => {
       void liveStart(runId, text).catch(() => {});
       /* Шаги - в очередь по ходу, не чаще раза в три секунды: Activity рисует их живьём, а состояние в ответе
        * (cancelled?) - второй путь узнать об остановке, короче пятисекундного опроса. */
-      const stepsSoFar: { tool: string; input: Record<string, unknown> }[] = [];
+      const stepsSoFar: { tool: string; input: Record<string, unknown>; at?: number; ms?: { model: number; shot: number } }[] = [];
       let lastTold = 0;
       const tell = () => {
         const now = Date.now();
@@ -628,19 +633,21 @@ export const CreateView = () => {
         /* Ограничение области, а не картинка: снимок цикл делает каждый шаг и без просьбы. Смысл в том, чтобы
          * НЕ уходить с этого окна - и окно названо, чтобы прогон мог отказаться, а не молча взяться за
          * соседнее. */
-        goal: pinned
-          ? `${text}\n\nWork on the window that is in front right now — "${pinned}". Do not launch, `
-            + 'activate or switch to anything else. If what this needs is not on that window, call finish '
-            + 'and say so rather than going to look for it.'
-          : text,
-        machine: localMachine(state.port),
+        goal: inBrowser
+          ? BROWSER_NOTE + text
+          : pinned
+            ? `${text}\n\nWork on the window that is in front right now — "${pinned}". Do not launch, `
+              + 'activate or switch to anything else. If what this needs is not on that window, call finish '
+              + 'and say so rather than going to look for it.'
+            : text,
+        machine: inBrowser ? browserMachine(state.port, browserTab) : localMachine(state.port),
         /* И ЧТО ЭТА МАШИНА УМЕЕТ - тем же объектом, каким его отдал /health, без пересборки по полям.
          *
          * Целиком, а не выбранным флагом: следующая возможность тогда не потребует правки ни здесь, ни в
          * цикле - решает, что с ней делать, один toolsFor в мозге. `health` тут уже есть, его держит
          * useAgent опросом, так что нового запроса это не стоит. null, пока агент не ответил: отсутствие
          * флага читается как «слишком старый, чтобы сказать», и инструмент просто не предлагается. */
-        caps: health ?? null,
+        caps: inBrowser ? { ...(health ?? {}), canClickName: false, surface: 'browser' } : health ?? null,
         /* Что этот аккаунт делал прямо перед этим - фон, не задание. Только прогоны цели, только с этого
          * аккаунта, и уже отсортированы новыми вперёд. Формулируется в мозге (earlierRuns), потому что
          * облачный драйвер отдаёт модели то же самое теми же словами. */
@@ -655,7 +662,8 @@ export const CreateView = () => {
            * уходит в `summary`, и дублировать её значило бы напечатать её дважды подряд. */
           if (event.type === 'text' && event.text) commentary.push(event.text);
           if (event.type === 'tool' && event.name) {
-            stepsSoFar.push({ tool: event.name, input: event.input ?? {} });
+            stepsSoFar.push({ tool: event.name, input: event.input ?? {}, at: event.at,
+              ms: event.spent ? { model: event.spent.model, shot: event.spent.shot } : undefined });
             tell();
           }
           updateLive((t) => ({ ...t, feed: [...t.feed, event] }));

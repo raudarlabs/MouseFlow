@@ -31,7 +31,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { HOLD_MAX_MS, HOLD_POLL_MS, MAX_STEPS, MIN_SHOT_W, advance, stampActs, startLoop } from './_step.mjs';
-import { BATCH_MAX, ONE_WAY, SETTLE_MAX_MS, TOOLS, WAVE_TURNS } from './_brain.mjs';
+import { BATCH_MAX, BROWSER_NOTE, BROWSER_TOOLS, ONE_WAY, SETTLE_MAX_MS, TOOLS, WAVE_TURNS, toolsFor } from './_brain.mjs';
 
 let pass = 0;
 let fail = 0;
@@ -1620,6 +1620,29 @@ group('время шага: когда начался и сколько выпо
   const src = readFileSync(new URL('./_step.mjs', import.meta.url), 'utf8');
   check('начало шага записано при решении', /at: decidedAt - modelMs,/.test(src));
   check('и у ожидания есть номер шага, чтобы получить время', /name: 'wait', at: loop\.steps\.length - 1/.test(src));
+}
+
+group('прогон во вкладке своего браузера: модели - только то, что там работает');
+{
+  const names = (caps) => toolsFor(false, null, caps).map((t) => t.name);
+  const browser = names({ surface: 'browser' });
+  check('в браузере нет окон, приложений и дерева чужих программ',
+    !['open_app', 'activate_window', 'wait_for_window', 'click_named', 'capture_window', 'clipboard_read', 'drag']
+      .some((n) => browser.includes(n)), browser.join(','));
+  check('и есть всё, чем работают в странице', ['click', 'type_text', 'press_key', 'scroll', 'open_url', 'read_window', 'finish']
+    .every((n) => browser.includes(n)));
+  check('порядок TOOLS сохранён - на нём держится кеш, и finish последним', browser[browser.length - 1] === 'finish'
+    && browser.every((n, i) => i === 0 || TOOLS.findIndex((t) => t.name === n) > TOOLS.findIndex((t) => t.name === browser[i - 1])));
+  check('на экране набор прежний', names({ canClickName: true }).length === TOOLS.filter((t) => t.name !== 'reached_checkpoint').length);
+  check('каждый инструмент набора существует', [...BROWSER_TOOLS].every((n) => TOOLS.some((t) => t.name === n)));
+  check('модели сказано, где она - одна вкладка, вход делает человек', /ONE tab/.test(BROWSER_NOTE) && /sign in/.test(BROWSER_NOTE));
+  const worker = readFileSync(new URL('./_mcp-worker.mjs', import.meta.url), 'utf8');
+  check('облачный цикл ставит эти слова перед целью', /if \(job\.args && job\.args\.surface === 'browser'\) goal = BROWSER_NOTE \+ goal;/.test(worker));
+  /* Старый агент про surface не знает и выполнил бы такую цель настоящей мышью. */
+  check('браузерную цель берёт только агент, объявивший свой браузер',
+    /and \(\$\{claimerOwnBrowser\} or q\.flow_id <> \$\{DESKTOP_GOAL\} or coalesce\(q\.args ->> 'surface', ''\) <> 'browser'\)/.test(worker)
+      && /req\.body\.ownBrowser === true/.test(worker));
+  check('и ответ на claim называет вкладку', /\{ surface: 'browser', tab: String\(job\.args\.tab \|\| 'work'\)/.test(worker));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

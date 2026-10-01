@@ -436,7 +436,7 @@ export const liveStart = (id: string, goal: string) =>
   call<{ ok: true }>('/api/mcp?live=start', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, goal }),
   });
-export const liveStep = (id: string, steps: { tool: string; input: Record<string, unknown> }[]) =>
+export const liveStep = (id: string, steps: { tool: string; input: Record<string, unknown>; at?: number; ms?: { model: number; shot: number } }[]) =>
   call<{ ok: true; state: string }>('/api/mcp?live=step', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, steps }),
   });

@@ -2733,7 +2733,12 @@ enum Screen {
     static func grid() -> [UInt8]? {
         guard #available(macOS 14.0, *) else { return nil }
         guard let got = grab(width: 128, height: 72) else { return nil }
-        guard let ctx = resize(got.image, 64, 36, gray: false), let data = ctx.data else { return nil }
+        return greyGrid(got.image)
+    }
+
+    /// Тот же отпечаток 64x36 из любой картинки - свой браузер считает его со своего кадра.
+    static func greyGrid(_ image: CGImage) -> [UInt8]? {
+        guard let ctx = resize(image, 64, 36, gray: false), let data = ctx.data else { return nil }
         let bytes = data.bindMemory(to: UInt8.self, capacity: 64 * 36 * 4)
         var grey = [UInt8](repeating: 0, count: 64 * 36)
         for i in 0..<(64 * 36) {
@@ -5086,6 +5091,9 @@ enum Courier {
          * a goal, and a goal is decided one action at a time by something that is not on this machine. */
         var goal: Bool
         var moveMs: Int
+        /* ГДЕ ИДЁТ ЦЕЛЬ: nil - на экране, настоящей мышью; иначе - во вкладке своего браузера с этим ключом
+         * (2026-10-01: «прогон идёт там, где человек смотрит и где он уже вошёл»). */
+        var browserTab: String? = nil
     }
 
     static func begin() {
@@ -5150,7 +5158,7 @@ enum Courier {
                  * end does them. It also closes the job itself, at the step that finishes - so there is
                  * nothing to report here, and reporting would only overwrite what it said. */
                 if job.goal {
-                    drive(link, id: job.id)
+                    drive(link, id: job.id, tab: job.browserTab)
                 } else {
                     let done = carry(job)
                     report(link, id: job.id, done: done)
@@ -5198,6 +5206,8 @@ enum Courier {
         let ask: [String: Any] = ["worker": Host.current().localizedName ?? "this Mac",
                                   "kind": "agent",
                                   "steps": true,
+                                  /* Свой браузер есть - значит, цель «во вкладке» можно отдать сюда. */
+                                  "ownBrowser": OwnBrowser.executable != nil && !recordOnly,
                                   "wait": claimWaitSeconds]
         guard let body = try? JSONSerialization.data(withJSONObject: ask),
               let (status, data) = request(url, token: link.token, body: body) else {
@@ -5225,7 +5235,9 @@ enum Courier {
                         body: job["body"] as? String,
                         activate: job["activate"] as? String,
                         goal: job["goal"] as? Bool == true,
-                        moveMs: (args["moveMs"] as? Int) ?? 0))
+                        moveMs: (args["moveMs"] as? Int) ?? 0,
+                        browserTab: job["surface"] as? String == "browser"
+                            ? ((job["tab"] as? String) ?? OwnBrowser.workTab) : nil))
     }
 
     private static func report(_ link: Account.Link, id: String, done: Done) {
@@ -5278,7 +5290,13 @@ enum Courier {
      * run for two minutes. Anything asked for while this end sits still is worth one small request. */
     private static let stopEveryPolls = 3
 
-    private static func drive(_ link: Account.Link, id: String) {
+    /* Вкладка, в которой идёт эта цель, или nil - экран. Читается perform'ом; одна цель за раз (одна мышь -
+     * и один курьер), так что поле, а не параметр через пять уровней. */
+    private static var browserTab: String?
+
+    private static func drive(_ link: Account.Link, id: String, tab: String? = nil) {
+        browserTab = tab
+        defer { browserTab = nil }
         guard let url = URL(string: link.base + "/api/mcp?worker=step") else { return }
         /* ЕДИНСТВЕННЫЙ ПУТЬ, У КОТОРОГО ЕСТЬ ТОЧНЫЕ ГРАНИЦЫ, и поэтому единственный, где рамка горит
          * ровно весь прогон. Курьер знает и начало (работа взята), и конец (эта функция вернулась) - а
@@ -5298,8 +5316,14 @@ enum Courier {
             }
             guard Account.link != nil else { return }   // unpaired mid-run: there is nowhere to report to
 
-            let shot = Screen.shot(want: width)
-            let windows = Windows.list().prefix(24).map { w in
+            /* В СВОЁМ БРАУЗЕРЕ - его кадр и ни одного окна: модель работает в одной вкладке, и список окон
+             * экрана звал бы её туда, где ей нечего делать. */
+            if let tab = browserTab, !OwnBrowser.shared.running, let bad = OwnBrowser.shared.start(visible: false) {
+                report(link, id: id, done: Done(ok: false, said: "The MouseFlow browser could not start: \(bad)", body: nil))
+                return
+            }
+            let shot = browserTab.map { OwnBrowser.shared.shot($0, width: width) } ?? Screen.shot(want: width)
+            let windows = browserTab != nil ? "" : Windows.list().prefix(24).map { w in
                 "{\"title\":\(jsonString(w.title)),\"process\":\(jsonString(w.process))"
                     + ",\"active\":\(jsonBool(w.active)),\"minimized\":\(jsonBool(w.minimized))}"
             }.joined(separator: ",")
@@ -5314,7 +5338,10 @@ enum Courier {
              * шагами, а агент - нет, и объявление, сделанное при старте, пережило бы факт, который
              * описывает. Те же флаги и то же написание, что в /health - включая то, что здесь этот флаг
              * следует Accessibility: без дерева имя не разрешить, и нажимать было бы нечего. */
-            let caps = "{\"canClickName\":\(jsonBool(Permission.accessibility))}"
+            /* В своём браузере - и сказать это: облако по `surface` показывает модели только то, что во
+             * вкладке имеет смысл (BROWSER_TOOLS в api/_brain.mjs). */
+            let caps = browserTab != nil ? "{\"canClickName\":false,\"surface\":\"browser\"}"
+                : "{\"canClickName\":\(jsonBool(Permission.accessibility))}"
             let body = "{\"id\":\(jsonString(id)),\"shot\":\(shot),\"windows\":[\(windows)]"
                 + ",\"caps\":\(caps)"
                 + ",\"results\":[\(results.joined(separator: ","))]}"
@@ -5405,6 +5432,21 @@ enum Courier {
         if line.isEmpty {
             return "{\"id\":\(jsonString(id)),\"isError\":true,\"output\":\"nothing to do\"}"
         }
+        /* В СВОЁМ БРАУЗЕРЕ - та же строка, исполненная во вкладке задачи, и тот же факт «сдвинулось ли»,
+         * посчитанный по её кадру. */
+        if let tab = browserTab {
+            let before = OwnBrowser.shared.grid(tab)
+            let did = OwnBrowser.shared.perform(tab, line: line)
+            if let bad = did.error {
+                return "{\"id\":\(jsonString(id)),\"isError\":true,\"output\":\(jsonString(bad))}"
+            }
+            /* Та же пауза в 350 мс, что у экрана ниже, и по той же причине: сравнивать до того, как страница
+             * успела ответить, значит считать неподвижным всё. */
+            Thread.sleep(forTimeInterval: 0.35)
+            var moved = "null"
+            if let a = before, let b = OwnBrowser.shared.grid(tab) { moved = jsonBool(self.stirred(a, b)) }
+            return "{\"id\":\(jsonString(id)),\"output\":\(jsonString(did.output ?? "done")),\"moved\":\(moved)}"
+        }
         /* The screen BEFORE, so the answer can say whether the action did anything.
            The fingerprint is the same 64x36 the wait uses and costs about thirty milliseconds. */
         let before = Screen.grid()
@@ -5453,7 +5495,7 @@ enum Courier {
                 stopSeen = true
                 return (false, since(started), 0)
             }
-            guard let now = Screen.grid() else { break }   // no screen to watch; the next picture reports it
+            guard let now = (browserTab != nil ? OwnBrowser.shared.grid(browserTab!) : Screen.grid()) else { break }   // no screen to watch; the next picture reports it
             if let was = last, quiet(was, now) {
                 if quietSince == nil { quietSince = Date() }
                 let frames = Int((Double(since(quietSince!)) / Double(settlePollMs)).rounded()) + 1
@@ -6275,17 +6317,57 @@ final class OwnBrowser {
         return nil
     }
 
-    /// Кадр страницы - в той же форме, что /shot у экрана, чтобы читающий не различал их по форме.
-    func shot(_ key: String) -> String {
-        guard let got = page(key, "Page.captureScreenshot", ["format": "jpeg", "quality": 80]),
+    /// Размер страницы в CSS-пикселях - система координат, в которой этот браузер принимает клики.
+    func cssSize(_ key: String) -> (w: Double, h: Double) {
+        let got = evaluate(key, "[window.innerWidth, window.innerHeight]") as? [Any]
+        let w = (got?.first as? Double) ?? Double(got?.first as? Int ?? 1280)
+        let h = (got?.last as? Double) ?? Double(got?.last as? Int ?? 800)
+        return (max(1, w), max(1, h))
+    }
+
+    /* КАДР СТРАНИЦЫ - В ТОЙ ЖЕ ФОРМЕ, ЧТО /shot У ЭКРАНА, чтобы цикл не различал их по форме. Координаты -
+     * CSS-пиксели страницы: `scale` - пикселей картинки на один CSS-пиксель, origin нулевой. Тогда
+     * actionBody (api/_brain.mjs) переводит точку снимка обратно ровно тем же делением, что и для экрана, и
+     * клик приходит сюда уже в CSS-пикселях. Ширина - та, что просил цикл: картинка в 2560 на Retina стоила
+     * бы модели вчетверо дороже, ничего не прибавив. */
+    func shot(_ key: String, width: Int = 1280) -> String {
+        let size = cssSize(key)
+        /* МАСШТАБ СНИМКА CHROME УМНОЖАЕТ НА ПЛОТНОСТЬ ЭКРАНА (измерено: просили 800 - пришло 1600 на Retina),
+         * поэтому просится с поправкой на неё, а в ответе - масштаб ФАКТИЧЕСКИЙ, по самой картинке. */
+        let dpr = max(1, (evaluate(key, "window.devicePixelRatio") as? Double) ?? 1)
+        let asked = max(0.1, min(2, Double(width) / (size.w * dpr)))
+        guard let got = page(key, "Page.captureScreenshot", ["format": "jpeg", "quality": 80,
+            "clip": ["x": 0, "y": 0, "width": size.w, "height": size.h, "scale": asked]]),
               let b64 = got["data"] as? String, let bytes = Data(base64Encoded: b64),
               let image = NSImage(data: bytes)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
             return "{\"ok\":false,\"error\":\"the browser gave no picture\"}"
         }
         var json = "{\"ok\":true,\"format\":\"image/jpeg\",\"bytes\":\(bytes.count),\"png\":\"\(b64)\""
-        json += ",\"w\":\(image.width),\"h\":\(image.height),\"scale\":1.0000,\"originX\":0,\"originY\":0"
+        let scale = Double(image.width) / size.w
+        json += ",\"w\":\(image.width),\"h\":\(image.height),\"scale\":\(String(format: "%.4f", scale)),\"originX\":0,\"originY\":0"
         json += ",\"url\":\(jsonString(url(key))),\"title\":\(jsonString(title(key))),\"surface\":\"browser\"}"
         return json
+    }
+
+    /// Отпечаток страницы 64x36 - для «дождаться, пока успокоится», как Screen.grid у экрана.
+    func grid(_ key: String) -> [UInt8]? {
+        let size = cssSize(key)
+        let dpr = max(1, (evaluate(key, "window.devicePixelRatio") as? Double) ?? 1)
+        guard let got = page(key, "Page.captureScreenshot", ["format": "jpeg", "quality": 50,
+            "clip": ["x": 0, "y": 0, "width": size.w, "height": size.h, "scale": 128 / (size.w * dpr)]]),
+              let b64 = got["data"] as? String, let bytes = Data(base64Encoded: b64),
+              let image = NSImage(data: bytes)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+        return Screen.greyGrid(image)
+    }
+
+    func pulse(_ key: String) -> String {
+        guard let grey = grid(key) else { return "{\"ok\":false,\"error\":\"the browser gave no picture\"}" }
+        return "{\"ok\":true,\"grid\":\"\(Data(grey).base64EncodedString())\"}"
+    }
+
+    /// Клик в CSS-пикселях страницы (см. shot). Приходит как настоящий, курсор человека не двигается.
+    func click(_ key: String, x: Double, y: Double, count: Int = 1, button: String = "left", modifiers: Int = 0) -> String? {
+        mouse(key, cssX: x, cssY: y, kind: "click", count: count, button: button, modifiers: modifiers)
     }
 
     /// Кадр для панели: ждёт до `wait` секунд кадра новее `since`. Нет нового - отвечает без картинки, и
@@ -6312,14 +6394,15 @@ final class OwnBrowser {
     }
 
     /// Мышь в CSS-пикселях страницы. `kind`: move, down, up, click.
-    func mouse(_ key: String, cssX: Double, cssY: Double, kind: String, count: Int = 1, buttons: Int = 0) -> String? {
-        let base: [String: Any] = ["x": cssX, "y": cssY]
+    func mouse(_ key: String, cssX: Double, cssY: Double, kind: String, count: Int = 1, buttons: Int = 0,
+               button: String = "left", modifiers: Int = 0) -> String? {
+        let base: [String: Any] = ["x": cssX, "y": cssY, "modifiers": modifiers]
         switch kind {
         case "move":
             _ = page(key, "Input.dispatchMouseEvent", base.merging(["type": "mouseMoved", "buttons": buttons]) { $1 })
         case "down", "up":
             _ = page(key, "Input.dispatchMouseEvent", base.merging([
-                "type": kind == "down" ? "mousePressed" : "mouseReleased", "button": "left", "clickCount": count,
+                "type": kind == "down" ? "mousePressed" : "mouseReleased", "button": button, "clickCount": count,
                 "buttons": kind == "down" ? 1 : 0]) { $1 })
         default:
             guard page(key, "Input.dispatchMouseEvent", base.merging(["type": "mouseMoved"]) { $1 }) != nil else {
@@ -6327,7 +6410,7 @@ final class OwnBrowser {
             }
             for type in ["mousePressed", "mouseReleased"] {
                 _ = page(key, "Input.dispatchMouseEvent",
-                         base.merging(["type": type, "button": "left", "clickCount": count]) { $1 })
+                         base.merging(["type": type, "button": button, "clickCount": count]) { $1 })
             }
         }
         return nil
@@ -6375,6 +6458,109 @@ final class OwnBrowser {
         let got = page(key, "Input.dispatchMouseEvent",
                        ["type": "mouseWheel", "x": x, "y": y, "deltaX": dx, "deltaY": dy])
         return got != nil ? nil : "the browser did not scroll"
+    }
+
+    /* ------------------------------------------------------------ the loop's own lines, in this browser
+     *
+     * ТА ЖЕ СТРОКА ШАГА, ЧТО У ЭКРАНА (actionBody в api/_brain.mjs), исполненная в окне задачи, а не мышью.
+     * Поэтому облачному циклу и циклу страницы не нужно второго языка действий: меняется только тот, кто
+     * исполняет. Что в браузере не имеет смысла - окна, приложения, дерево доступности чужих программ, -
+     * отвечает отказом с причиной, а не тихим «готово»: модель учится по ответу.
+     *
+     * Поле, которое забирает остаток строки (name=, title=, app=), - как в разборе агента: в нём бывают пробелы. */
+    static func fields(_ line: String) -> [String: String] {
+        var out: [String: String] = [:]
+        var rest = Substring(line)
+        while !rest.isEmpty {
+            rest = rest.drop(while: { $0 == " " })
+            guard let eq = rest.firstIndex(of: "=") else { break }
+            let key = String(rest[rest.startIndex..<eq])
+            let after = rest[rest.index(after: eq)...]
+            if ["name", "title", "app"].contains(key) {
+                out[key] = String(after)
+                break
+            }
+            let end = after.firstIndex(of: " ") ?? after.endIndex
+            out[key] = String(after[after.startIndex..<end])
+            rest = after[end...]
+        }
+        return out
+    }
+
+    /// Модификаторы провода (`mods=Cmd+Shift`, `ctrl=1 shift=1 ...`) - в маску CDP: Alt=1, Ctrl=2, Meta=4, Shift=8.
+    static func modifiers(_ f: [String: String]) -> Int {
+        var m = 0
+        let mods = (f["mods"] ?? "").lowercased()
+        if f["alt"] == "1" || mods.contains("alt") { m |= 1 }
+        if f["ctrl"] == "1" || mods.contains("ctrl") { m |= 2 }
+        if f["win"] == "1" || f["cmd"] == "1" || mods.contains("cmd") { m |= 4 }
+        if f["shift"] == "1" || mods.contains("shift") { m |= 8 }
+        return m
+    }
+
+    /// Одна строка шага. nil - сделано; иначе - что сказать модели. `output` - что действие вернуло.
+    func perform(_ key: String, line: String) -> (error: String?, output: String?) {
+        let f = OwnBrowser.fields(line)
+        let num = { (k: String) in Double(f[k] ?? "") ?? 0 }
+        switch f["action"] ?? "" {
+        case "click":
+            let button = ["right", "middle"].contains(f["button"] ?? "") ? f["button"]! : "left"
+            return (click(key, x: num("x"), y: num("y"), count: f["double"] == "1" ? 2 : 1,
+                          button: button, modifiers: OwnBrowser.modifiers(f)), nil)
+        case "move":
+            return (mouse(key, cssX: num("x"), cssY: num("y"), kind: "move"), nil)
+        case "scroll":
+            /* Знак - как у колеса на экране: отрицательное количество - вниз. CDP считает вниз положительным. */
+            let amount = num("amount") == 0 ? -3 : num("amount")
+            var dx = 0.0, dy = -amount * 100
+            switch f["dir"] ?? "" {
+            case "down": dy = abs(amount) * 100
+            case "up": dy = -abs(amount) * 100
+            case "right": dx = abs(amount) * 100; dy = 0
+            case "left": dx = -abs(amount) * 100; dy = 0
+            default: break
+            }
+            return (scroll(key, x: num("x"), y: num("y"), dy: dy, dx: dx), nil)
+        case "type":
+            guard let raw = f["text"], let data = Data(base64Encoded: raw), let text = String(data: data, encoding: .utf8)
+            else { return ("nothing to type", nil) }
+            /* Перевод строки - нажатием, как у экрана: Enter или Shift+Enter, смотря что просили. */
+            let parts = text.components(separatedBy: "\n")
+            for (i, part) in parts.enumerated() {
+                if !part.isEmpty, let bad = type(key, part) { return (bad, nil) }
+                if i < parts.count - 1 { _ = self.key(key, name: "Enter", modifiers: f["nl"] == "shift" ? 8 : 0) }
+            }
+            return (nil, nil)
+        case "key":
+            return (self.key(key, name: f["key"] ?? "", modifiers: OwnBrowser.modifiers(f)), nil)
+        case "open":
+            return (open(key, f["url"] ?? ""), nil)
+        case "refresh":
+            return (history(key, "reload"), nil)
+        case "read":
+            /* ЧТО НА СТРАНИЦЕ - СЛОВАМИ: заголовок, адрес, видимый текст и то, на что можно нажать. Дерева
+             * доступности чужого приложения здесь нет, зато есть документ - и он говорит больше. */
+            let said = evaluate(key, """
+            (() => {
+              const seen = [...document.querySelectorAll('a,button,input,select,textarea,[role=button],[role=link]')]
+                .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0
+                  && r.bottom > 0 && r.top < innerHeight; })
+                .slice(0, 60)
+                .map((el) => { const r = el.getBoundingClientRect();
+                  const name = (el.getAttribute('aria-label') || el.innerText || el.value || el.placeholder || '').trim().slice(0, 60);
+                  return `${el.tagName.toLowerCase()} "${name}" at ${Math.round(r.x + r.width / 2)},${Math.round(r.y + r.height / 2)}`; });
+              const text = (document.body ? document.body.innerText : '').replace(/\\s+/g, ' ').trim().slice(0, 3000);
+              return `page "${document.title}" at ${location.href}\\n${seen.join('\\n')}\\n---\\n${text}`;
+            })()
+            """) as? String
+            return said == nil ? ("the page could not be read", nil) : (nil, said)
+        case "waitwindow", "activate", "launch", "app", "capture", "find", "clickname", "scrollto", "drag",
+             "clipread", "clipwrite":
+            return ("not available in the browser: this run works inside one browser tab. Click at points in "
+                + "the picture, type, press keys, scroll, open_url to go somewhere, read_window to read the page.", nil)
+        default:
+            return ("no such action here: \(f["action"] ?? "(none)")", nil)
+        }
     }
 
     /// Состояние без побочных эффектов: не поднимает браузер и не заводит вкладок.
@@ -6779,8 +6965,8 @@ func route(method: String, path: String, query: String, body: String) -> Respons
         return Response(body: OwnBrowser.shared.frame(key, since: queryInt(query, "since", 0), wait: 1.5))
 
     case "/browser/start", "/browser/open", "/browser/act", "/browser/stop", "/browser/shot",
-         "/browser/input", "/browser/nav", "/browser/close", "/browser/show":
-        if path != "/browser/shot" && method != "POST" {
+         "/browser/input", "/browser/nav", "/browser/close", "/browser/show", "/browser/pulse", "/browser/do":
+        if !["/browser/shot", "/browser/pulse"].contains(path) && method != "POST" {
             return Response(status: 405, body: "{\"ok\":false,\"error\":\"POST\"}")
         }
         if !["/browser/stop", "/browser/shot", "/browser/close"].contains(path),
@@ -6810,7 +6996,17 @@ func route(method: String, path: String, query: String, body: String) -> Respons
             DispatchQueue.main.async { browser.show(key) }
             return answer(nil)
         case "/browser/shot":
-            return Response(body: browser.shot(key))
+            return Response(body: browser.shot(key, width: queryInt(query, "w", 1280)))
+        case "/browser/pulse":
+            return Response(body: browser.pulse(key))
+        /* СТРОКА ШАГА - ТА ЖЕ, ЧТО /do ДЛЯ ЭКРАНА, только исполняется в окне задачи (см. perform). Её шлёт
+         * цикл страницы, когда в Create открыт браузер; облачный цикл зовёт perform напрямую. */
+        case "/browser/do":
+            let did = browser.perform(key, line: text("body") ?? "")
+            if let bad = did.error {
+                return Response(status: 409, body: "{\"ok\":false,\"error\":\(jsonString(bad))}")
+            }
+            return Response(body: "{\"ok\":true" + (did.output.map { ",\"output\":\(jsonString($0))" } ?? "") + "}")
         case "/browser/open":
             return answer(browser.open(key, text("url") ?? ""))
         case "/browser/nav":

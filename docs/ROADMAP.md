@@ -263,8 +263,18 @@ Not in the sequence yet — these need shapes agreed before they are steps.
         task has its own window; a window behind others sends no frames without
         `--disable-backgrounding-occluded-windows` + `--disable-renderer-backgrounding` (0 frames → 9); and a
         not-yet-running browser answered the pane at once, forever — the pane now starts it, and backs off.
-  - [ ] **Next: the cloud loop drives the same tab** — the step loop's shots and actions go to the task's
-        window instead of the screen, so a run happens where the person is watching and signed in.
+  - [x] **Runs happen in the tab — 2026-10-01.** The same step line the screen gets (`actionBody`) is
+        carried out by the task's window: `OwnBrowser.perform` (click, move, scroll, type, key, open,
+        refresh, read), with `/browser/{do,shot,pulse}`. Shots are in the page's CSS pixels so the existing
+        `scale` arithmetic needs no second rule. **Create**: with the Browser pane open, the run goes through
+        `browserMachine` into that pane's tab. **Cloud loop**: a job with `surface: 'browser'` (and `tab`) is
+        driven there; `caps.surface` gives the model only the tools that work in a tab (`BROWSER_TOOLS`) and
+        `BROWSER_NOTE` tells it where it is. An agent that has not declared `ownBrowser` is never given such a
+        job — an older one would have done it with the real mouse. Checked by driving step lines through the
+        built agent (trusted click, typing with newlines, Enter, scroll, read, refusal for windows); found by
+        running: Chrome multiplies a screenshot's scale by the Retina factor (800 asked, 1600 came back).
+        **Not yet:** a full run with the model through the pane (needs a signed-in page and the new agent),
+        `expect` in a tab (it rides on the accessibility tree), the panel and Telegram choosing the tab, Windows.
 - [ ] **A browser of our own — probed 2026-10-01, and the answer is yes.** Owner: log in once inside the
       product and let it work there *without disturbing the person's own work*. The desktop agent moves the
       real mouse, so today a run and the person cannot share a machine. A dedicated Chrome profile driven

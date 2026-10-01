@@ -10,7 +10,7 @@
 import { flowBody, parseMacro, summarize } from './_macro.mjs';
 import { flowFor } from './_flow-for.mjs';
 import { advance, startLoop } from './_step.mjs';
-import { EARLIER_RUNS, GOAL_MAX, ONE_WAY, earlierRuns } from './_brain.mjs';
+import { BROWSER_NOTE, EARLIER_RUNS, GOAL_MAX, ONE_WAY, earlierRuns } from './_brain.mjs';
 import { ALLOWED_MODELS } from './_vision.mjs';
 import { readSettings } from './admin.js';
 import { fillGoal, missingParams } from '../extension/skills.js';
@@ -354,6 +354,10 @@ export async function workerRoute(action, req, res, sql, who) {
     /* И третий забирающий, отдельной строкой, чтобы правило старшинства между воркером и агентом выше
      * осталось ровно тем, чем было: браузер в нём не участвует - он на своей поверхности один. */
     const goalCapable = claimerSteps || browserDoesGoals;
+    /* ЦЕЛЬ ВО ВКЛАДКЕ СВОЕГО БРАУЗЕРА - только тому, кто сказал, что он у него есть (2026-10-01). Агент
+     * постарше про `surface` не знает и выполнил бы такую цель НАСТОЯЩЕЙ мышью по экрану - ровно то, от чего
+     * свой браузер и спасает. Объявление на забирающем, как и `steps`: отсутствие - «не умею». */
+    const claimerOwnBrowser = !!(req.body && req.body.ownBrowser === true);
     const wait = Math.min(CLAIM_WAIT_MAX_MS, Math.max(0, Number((req.body && req.body.wait) || 0) * 1000));
     const until = Date.now() + wait;
 
@@ -376,6 +380,7 @@ export async function workerRoute(action, req, res, sql, who) {
              * есть цель, то есть модель, решающая по одному шагу, и курьеру агента её брать нечем.
              * Взятая им, она возвращается словами «asked to do something it does not understand» -
              * наблюдалось на первом же прогоне из телеграма. */
+            and (${claimerOwnBrowser} or q.flow_id <> ${DESKTOP_GOAL} or coalesce(q.args ->> 'surface', '') <> 'browser')
             and (
               ${goalCapable}
               or (
@@ -451,6 +456,10 @@ export async function workerRoute(action, req, res, sql, who) {
                * что оба уже умеют всё, что для неё нужно, и объявляют это как `steps: true`. Ни одной
                * правки в установленных двоичниках, потому что правка была не там. */
               goal: job.flow_id === DESKTOP_GOAL,
+              /* ГДЕ ИДЁТ ЦЕЛЬ - во вкладке своего браузера агента, если так просили (2026-10-01). Ключ вкладки -
+               * разговор, из которого пришла просьба: прогон идёт там, где человек его видит в панели. */
+              ...(job.flow_id === DESKTOP_GOAL && job.args && job.args.surface === 'browser'
+                ? { surface: 'browser', tab: String(job.args.tab || 'work').slice(0, 80) } : {}),
               /* РАЗОВЫЙ ПРОГОН С ПРОВЕРКАМИ В БРАУЗЕРЕ (mouseflow_do с `expect`) - цель с проверками
                * составляется ЗДЕСЬ и едет готовой, тем же полем, что у кейса. Слова «проверь это тулом, а не
                * глазом» одни на все драйверы (caseGoal); расширение их только исполняет. Старое расширение
@@ -725,6 +734,8 @@ export async function workerRoute(action, req, res, sql, who) {
         goal = String((job.args && job.args.goal) || '').trim();
         if (!goal) return fail('This job carries no goal text to carry out.');
         goal = caseGoal(goal, expectsOf(job.args));
+        /* Во вкладке своего браузера - сказать модели, где она: одна вкладка, никаких окон и приложений. */
+        if (job.args && job.args.surface === 'browser') goal = BROWSER_NOTE + goal;
       } else {
         const flow = await sql`
           select client_id, kind, name, payload from user_flow

@@ -5925,11 +5925,13 @@ group('ход снимается целиком: нажатие по имени 
     /caps: body[.]caps && typeof body[.]caps === 'object' \? body[.]caps : null,/.test(route));
   check('браузерный драйвер тоже передаёт - иначе рычаг работал бы только в облаке',
     /toolsFor\(!!o[.]gate, o[.]success \?\? null, o[.]caps \?\? null\)/.test(engine)
-      && /caps\?: \{ canClickName\?: boolean \} \| null;/.test(engine));
+      && /caps\?: \{ canClickName\?: boolean; surface\?: string \} \| null;/.test(engine));
   /* И СТРАНИЦА ДАЁТ ИХ ЦЕЛИКОМ, а не выбранным полем: следующая возможность тогда не потребует правки ни
    * на странице, ни в цикле - решает один toolsFor. */
   check('и страница Create отдаёт то, что уже держит от /health',
-    /caps: health \?\? null,/.test(read('../web/src/features/create/CreateView.tsx')));
+    /* С 2026-10-01 - целиком и во вкладке тоже, только с пометкой, где идёт прогон. */
+    /caps: inBrowser \? \{ \.\.\.\(health \?\? \{\}\), canClickName: false, surface: 'browser' \} : health \?\? null,/
+      .test(read('../web/src/features/create/CreateView.tsx')));
 
   /* ПРАВИЛО ПАЧКИ ИЗМЕНЕНО ОДНИМ ЭЛЕМЕНТОМ, и это решение владельца от 2026-09-11, а не попутная правка.
    *

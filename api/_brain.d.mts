@@ -66,7 +66,7 @@ export const HANDOFF_SYSTEM: string;
 export function toolsFor(
   gated: boolean,
   success?: string | null,
-  caps?: { canClickName?: boolean } | null,
+  caps?: { canClickName?: boolean; surface?: string } | null,
 ): Tool[];
 export function mediaType(said: string | undefined | null): string;
 export function actionBody(
@@ -128,3 +128,8 @@ export function openingMessage(
   /** Что аккаунт делал прямо перед этим - фон, а не задание. См. earlierRuns. */
   earlier?: string | null,
 ): Message;
+
+/** Tools that make sense inside one tab of the agent's own browser (2026-10-01). */
+export const BROWSER_TOOLS: Set<string>;
+/** What the model is told about working inside that tab - before the goal, one wording for both drivers. */
+export const BROWSER_NOTE: string;

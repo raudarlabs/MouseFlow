@@ -174,8 +174,13 @@ async function handler(req, res) {
      * может быть переключатель «на этот раз», и он обязан значить «на этот раз». */
     const asked = body.gate === undefined ? await modeOf(sql, who.id) : body.gate;
     const gate = asked === ONE_WAY ? ONE_WAY : null;
+    /* ВО ВКЛАДКЕ СВОЕГО БРАУЗЕРА АГЕНТА, если так просят (2026-10-01): `surface: 'browser'` и ключ вкладки -
+     * разговор. Иначе - экран, как всегда. */
+    const browser = body.surface === 'browser'
+      ? { surface: 'browser', tab: String(body.tab || 'work').replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 80) || 'work' }
+      : {};
     const put = await queueOne(sql, who.id, {
-      flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}) },
+      flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}), ...browser },
     });
     if (put.why) return res.status(409).json({ ok: false, error: { type: 'queue_error', message: put.why } });
     return res.status(200).json({ ok: true, id: put.id });

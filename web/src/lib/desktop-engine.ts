@@ -274,7 +274,7 @@ interface Options {
    * какие инструменты предложить модели.
    *
    * Не передали - модель не получит инструментов, зависящих от флага, и прогон пойдёт как до 0.28.0. */
-  caps?: { canClickName?: boolean } | null;
+  caps?: { canClickName?: boolean; surface?: string } | null;
   onEvent: (event: RunEvent) => void;
   isAborted: () => boolean;
   /** Чекпоинты, которые модель обещала пройти. Передаются - значит цикл о них знает и объявляет их; не

@@ -188,6 +188,10 @@ const DEADLINE: Record<string, number> = {
   '/browser/open': 25000,
   '/browser/start': 20000,
   '/browser/input': 8000,
+  /* Строка шага во вкладке: open_url ждёт загрузки до двадцати секунд. */
+  '/browser/do': 30000,
+  '/browser/shot': 12000,
+  '/browser/pulse': 5000,
 };
 
 export const agentBase = (port: number) => `http://127.0.0.1:${port}`;
@@ -920,3 +924,16 @@ export const browserInput = (port: number, tab: string, input: BrowserInput) =>
   browserPost<BrowserState>(port, '/browser/input', { tab, ...input });
 export const browserShow = (port: number, tab: string) => browserPost<BrowserState>(port, '/browser/show', { tab });
 export const browserClose = (port: number, tab: string) => browserPost<BrowserState>(port, '/browser/close', { tab });
+
+/* ВКЛАДКА СВОЕГО БРАУЗЕРА КАК «МАШИНА» для движка страницы (desktop-engine.ts). Тот же интерфейс, что у
+ * экрана: снимок, отпечаток для ожидания, строка шага - только исполняет их окно задачи, а не мышь. Окон нет:
+ * модель работает в одной вкладке, и список окон экрана звал бы её туда, где ей делать нечего. */
+export function browserMachine(port: number, tab: string): Machine {
+  const at = `tab=${encodeURIComponent(tab)}`;
+  return {
+    windows: async () => ({ ok: true as const, windows: [] }),
+    pulse: () => agentCall<{ ok: true; grid: string }>(port, `/browser/pulse?${at}`),
+    shot: (width) => agentCall<Shot>(port, `/browser/shot?${at}&w=${Math.round(width ?? 1280)}`),
+    do: (body) => browserPost<{ ok: true; output?: string }>(port, '/browser/do', { tab, body }),
+  };
+}

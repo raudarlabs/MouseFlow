@@ -667,8 +667,22 @@ const ONE_WAY_SAID = 'Call this BEFORE anything that cannot be undone - sending 
   + 'steps: opening, clicking about, typing into a field and checking things are what nobody needs to '
   + 'confirm. Say in one sentence what you are about to do that cannot be taken back.';
 
+/* СВОЙ БРАУЗЕР (2026-10-01): прогон идёт в одной вкладке отдельного Chrome, а не на экране. Здесь - то,
+ * что в вкладке имеет смысл; остальное (окна, приложения, дерево доступности чужих программ, буфер) агент
+ * там отвергнет, и показать модели инструмент, который гарантированно откажет, - значит потратить на это ход.
+ * Набор, а не второй список: порядок TOOLS сохраняется, на нём держится кеш (см. ниже). */
+export const BROWSER_TOOLS = new Set(['click', 'hover', 'type_text', 'press_key', 'note', 'read_window', 'scroll',
+  'open_url', 'refresh_page', 'wait', 'reached_checkpoint', 'defer_until', 'finish']);
+
+/* Что сказать модели о месте работы - перед целью, одними словами на оба драйвера. */
+export const BROWSER_NOTE = 'You are working inside ONE tab of a browser that the user has already signed in '
+  + 'to their sites with. The screenshot is that page and nothing else - there are no other windows or '
+  + 'applications here. Go somewhere with open_url, read the page with read_window, and click at points in '
+  + 'the picture. If a site asks to sign in, stop and say so: the user signs in themselves.\n\n';
+
 export const toolsFor = (gated, success = null, caps = null, gate = null) => {
   const list = (gated ? TOOLS : TOOLS.filter((t) => t.name !== 'reached_checkpoint'))
+    .filter((t) => !(caps && caps.surface === 'browser') || BROWSER_TOOLS.has(t.name))
     /* ПО ФЛАГУ, А НЕ ПО ВЕРСИИ, и отсутствие флага - это ответ: «слишком старый, чтобы сказать», а не
      * «нет». Инструмент, которого агент не умеет, стоит РОВНО ТОГО, что этот пункт снимает: модель зовёт
      * его, агент отказывает, ход потрачен - пять секунд за то, чтобы узнать про свою же машину.
