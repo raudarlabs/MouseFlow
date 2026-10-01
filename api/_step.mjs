@@ -218,6 +218,28 @@ async function defaultAsk(body) {
  * A pending action with no result is an error rather than an omission: the model has to know its click did
  * not happen, and a missing tool_result is not a thing the API will accept in any case. */
 /* @param {{still: number}} loop  counted across turns, so a streak spanning two of them is still a streak */
+/**
+ * Время выполнения шагов прошлого хода - в `ms.act` каждого шага (см. вызов в advance).
+ * Из `tookMs` результата, если агент его прислал; иначе - если шаг в ходе был один - от раздачи действий до
+ * прихода результатов; у ожидания - сколько оно ждало на самом деле (`waited`).
+ */
+export function stampActs(loop, results, nowMs = Date.now()) {
+  const pending = (loop && Array.isArray(loop.pending) ? loop.pending : []).filter((p) => Number.isInteger(p.at));
+  if (!pending.length) return;
+  const list = Array.isArray(results) ? results : [];
+  const only = pending.length === 1;
+  for (const p of pending) {
+    const step = loop.steps && loop.steps[p.at];
+    if (!step) continue;
+    const r = list.find((one) => one && String(one.id) === String(p.id));
+    const took = r && Number.isFinite(Number(r.tookMs)) ? Number(r.tookMs)
+      : r && Number.isFinite(Number(r.waited)) ? Number(r.waited)
+        : only && Number.isFinite(loop.handedAt) ? nowMs - loop.handedAt : null;
+    if (took == null || took < 0) continue;
+    step.ms = { ...(step.ms || {}), act: Math.round(took) };
+  }
+}
+
 /* `proven` - то, что этот ход доказал, собирается по пути наружу: кадр к нему один (один экран на ход), и
  * решает его вид `kindOf`. Массив, а не значение: пачка может сделать пять проверок сразу. */
 function resultBlocks(pending, said, loop, proven) {
@@ -431,6 +453,11 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
    * has no business being in it. */
   const saw = (peeked && peeked.isError !== true && peeked.output) ? String(peeked.output) : null;
 
+  /* ВРЕМЯ ВЫПОЛНЕНИЯ КАЖДОГО ШАГА (владелец, 2026-10-01: «время начала каждого шага и время его
+   * выполнения»). Агент от этой версии присылает `tookMs` у каждого действия; старый - нет, и тогда шаг,
+   * бывший в ходе один, получает время от раздачи действий до их результатов. Несколько шагов в одном ходе
+   * без tookMs остаются без числа: делить общее время на части было бы выдумкой. */
+  stampActs(loop, results);
   const proven = [];
   const answered = (loop.mine || []).concat(resultBlocks(loop.pending || [], results, loop, proven));
   /* Один кадр на ход, названный тем, что этот ход доказал. Пишется и при PASS: зелёная строка, к которой
@@ -550,6 +577,7 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
   }
 
   const modelMs = Date.now() - modelAt;
+  const decidedAt = Date.now();
 
   /* Too large to send. The step never happened, so it is not counted, and the picture that caused it is
    * taken back out of the conversation - the next request brings a smaller one in its place. */
@@ -706,6 +734,8 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
     loop.steps.push({
       tool: use.name || '?',
       input: use.input || {},
+      /* НАЧАЛО ШАГА - момент, когда модель начала его решать: с него и считает человек «шаг занял». */
+      at: decidedAt - modelMs,
       ms: { model: modelMs },
       ...(cached ? { cached } : {}),
     });
@@ -731,7 +761,7 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
     if (use.name === 'wait') {
       const ms = Math.min(SETTLE_MAX_MS, Math.max(200, Number(use.input && use.input.ms) || 2000));
       actions.push({ id: use.id, kind: 'wait', ms, reason: String((use.input && use.input.reason) || '') });
-      loop.pending.push({ id: use.id, name: 'wait' });
+      loop.pending.push({ id: use.id, name: 'wait', at: loop.steps.length - 1 });
       ran.push('wait');
       continue;
     }
@@ -772,5 +802,7 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
   const held = heldBy(loop);
   if (held && !held.answer) return holdTurn(loop, held);
 
+  /* Когда действия ушли на машину - от этого момента считается время шага у агента без tookMs. */
+  loop.handedAt = Date.now();
   return { loop: pack(loop), actions, step: loop.stepNo, shotWidth: loop.shotWidth, keep };
 }

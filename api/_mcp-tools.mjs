@@ -24,6 +24,7 @@ import {
   refOf, runIdOf, tallyOf, verdictSaid,
 } from './_case.mjs';
 import { casesFor, runsForCase } from './cases.js';
+import { tellOutcome } from './_telegram-out.mjs';
 
 
 export const SPOKEN = new Set(['2024-11-05', '2025-03-26', '2025-06-18']);
@@ -1203,8 +1204,10 @@ export async function callTool(sql, who, params, req) {
       update run_queue set state = 'cancelled', finished_at = now(),
              ok = false, said = 'cancelled before it finished'
       where user_id = ${who.id} and state in ('queued', 'claimed')
-      returning id
+      returning id, flow_id, tool_name, args, schedule_id, state
     `;
+    /* В ленту - каждую: отмена тоже исход (владелец, 2026-10-01). */
+    for (const one of killed) await tellOutcome(sql, who.id, one, false, 'cancelled before it finished');
     return say(killed.length
       ? `Cancelled ${killed.length} job${killed.length === 1 ? '' : 's'}. A run already under way stops at `
         + 'the next step the worker checks, which is within a second or two.'

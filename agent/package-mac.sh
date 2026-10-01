@@ -105,4 +105,12 @@ build_image "MouseFlow-Agent" "$packaged"
 build_image "MouseFlow-Agent-RecordOnly" "${packaged}
   <key>MFRecordOnly</key><true/>"
 
-[ "$notarize" = "yes" ] || echo "NOT notarised: these open on this Mac, and Gatekeeper refuses them anywhere else."
+# THE MARK THE SITE READS. Only a run that notarised and stapled both images writes it; a --no-notarize run
+# removes it, so a build for trying on this Mac can never be served (web/scripts/copy-agent.mjs).
+if [ "$notarize" = "yes" ]; then
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(sed -n 's/^let VERSION = "\([0-9.]*\)"/\1/p' "$source_file" | head -1)" \
+    > "${dist}/notarized.txt"
+else
+  rm -f "${dist}/notarized.txt"
+  echo "NOT notarised: these open on this Mac, and Gatekeeper refuses them anywhere else."
+fi

@@ -26,6 +26,32 @@ concrete thing named for the owner to check.
 
 *The split is finished. What follows is the rest of the sequence.*
 
+- [x] **The night the 04:30 task did not run — found and fixed 2026-10-01.** The cause was **our own test
+      suite**: since 2026-09-23 a check in `agent/check-swift.mjs` ran the installer's `write_login_item`
+      with real bash, and that function calls real `launchctl` — every `npm test` on the owner's Mac booted
+      out his agent and loaded a fixture plist pointing at `/tmp/agent`, which launchd refused with
+      `EX_CONFIG`. No crash report, no restart, silence until the next reinstall. The test now stubs
+      `launchctl` and pins that every call went to the stub; a full `npm test` leaves the real job's pid
+      unchanged (checked). Around it, so the next one is found in minutes and survives on its own:
+      - **every agent log line carries the time**, and start, signal and deliberate exits are logged;
+      - **a loose binary never attaches to the account** without `--account`, and `--home` isolates a test
+        copy's files (night tests had attached to the real account and polled its queue);
+      - **a watchdog** (`com.mouseflow.watchdog`, every 5 min) asks the agent on its own port and, if it is
+        silent, reloads the login item *from its file* — `kickstart -k` hung forever on the substituted job;
+        it leaves an agent stopped by hand alone until the next login, and tells the account when it revived one;
+      - **Telegram is the account's feed** (owner: "пусть телеграм станет дашбордом"): every run's outcome —
+        from Telegram, the app, a chat or a schedule — scheduled starts, misses, pauses and revivals, to every
+        paired chat, once each; `/feed off` turns it off. One funnel, `tellOutcome`, at every place a job closes;
+      - **`/api/watch`** warns before a due task while the Mac is silent, and reports a miss when it happens
+        rather than when the agent comes back. **Needs a clock**: Hobby allows a daily cron only (a more
+        frequent one fails the deploy), so the cron line waits for the plan — and `CRON_SECRET` must be set.
+- [x] **Each step shows when it started and how long it took — 2026-10-01** (owner). The number beside a
+      step used to be the model's thinking time alone; now it is the start time and the whole step, with
+      "decided in · done in · picture" on hover. The agent reports `tookMs` per action; an older agent gets
+      the time from hand-out to results when the turn had one step, and no number rather than an invented
+      split when it had several. Found on the way: a queued job showed as `mouseflow_do` until it was taken —
+      the feed now reads the goal from the job's arguments.
+
 - [x] **P1 gets Skills; Tests leaves the menu — done 2026-09-28.** Saved-from-chat skills at `/saved`: run
       now, repeat on a clock, runs as dots, delete. Cases stay without a UI (backend, MCP, direct `/tests`).
       Reverses the menu half of step 7. [SPLIT-PLAN §5.1](SPLIT-PLAN.md)

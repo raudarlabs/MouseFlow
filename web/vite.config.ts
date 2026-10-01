@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
@@ -158,6 +159,10 @@ export default defineConfig({
   define: {
     __BUILD__: JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA || 'dev').slice(0, 7)),
     __PRODUCT__: JSON.stringify(onlyProduct),
+    /* ЕСТЬ ЛИ НОТАРИЗОВАННОЕ ПРИЛОЖЕНИЕ ДЛЯ MAC - тот же признак, по которому web/scripts/copy-agent.mjs
+     * кладёт образы в /agent/. Нет признака - нет и кнопки: «Download for Mac», отвечающая 404 или отдающая
+     * образ, который Gatekeeper откажется открыть, хуже её отсутствия. */
+    __MAC_APP__: JSON.stringify(existsSync(here('../agent/dist/notarized.txt'))),
   },
   build: {
     /* Каждая половина в свой каталог, чтобы их можно было держать рядом и сравнивать. */

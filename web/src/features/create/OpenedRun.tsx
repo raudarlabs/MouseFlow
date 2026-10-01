@@ -35,6 +35,7 @@ import { asDid, describe } from './describe';
 import { Frames } from './Frames';
 import { dictatedFrom, provable, stepsOf, titleOf, took, when, wordsOf } from './run-history';
 import { evidenceOf, verdictKind } from './verdict';
+import { startedAt, tookDetail, tookFor } from './step-time';
 
 export function OpenedRun({
   run, flows, onAskAgain, onSaveAsSkill, onRename, onDelete, onClose,
@@ -144,6 +145,11 @@ export function OpenedRun({
           /* Проверка красится по своему исходу: в отчёте по тесту это единственное, что читают. */
           <StepLine key={`s${i}`} kind={verdictKind(step)}>
             {describe(asDid(step), platform)}
+            {(startedAt(step) || tookFor(step)) && (
+              <span className="ms-1.5 text-ink-inactive tabular-nums" title={tookDetail(step)}>
+                {[startedAt(step), tookFor(step)].filter(Boolean).join(' · ')}
+              </span>
+            )}
             {evidenceOf(step)}
           </StepLine>
         ))}

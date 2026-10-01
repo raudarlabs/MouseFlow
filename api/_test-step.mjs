@@ -30,7 +30,7 @@
  * Та же идиома, что в agent/test-contract.mjs, mcp/test-mcp.mjs и extension/check-extension.mjs. */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { HOLD_MAX_MS, HOLD_POLL_MS, MAX_STEPS, MIN_SHOT_W, advance, startLoop } from './_step.mjs';
+import { HOLD_MAX_MS, HOLD_POLL_MS, MAX_STEPS, MIN_SHOT_W, advance, stampActs, startLoop } from './_step.mjs';
 import { BATCH_MAX, ONE_WAY, SETTLE_MAX_MS, TOOLS, WAVE_TURNS } from './_brain.mjs';
 
 let pass = 0;
@@ -1596,6 +1596,30 @@ group('шлюз стоит только там, где его попросили
     !!stale.done && stale.done.ok === false);
   check('и причина называет и время, и о чём спрашивали',
     /minutes/.test(stale.done.error) && /press Send/.test(stale.done.error), stale.done.error);
+}
+
+group('время шага: когда начался и сколько выполнялся (владелец, 2026-10-01)');
+{
+  const loopOf = (pending, handedAt = 1000) => ({
+    steps: pending.map(() => ({ tool: 'click', ms: { model: 1900 } })), pending, handedAt,
+  });
+  const one = loopOf([{ id: 'a', at: 0 }]);
+  stampActs(one, [{ id: 'a', tookMs: 640 }], 5000);
+  check('агент прислал tookMs - он и есть время действия', one.steps[0].ms.act === 640 && one.steps[0].ms.model === 1900,
+    JSON.stringify(one.steps[0]));
+  const old = loopOf([{ id: 'a', at: 0 }]);
+  stampActs(old, [{ id: 'a' }], 1800);
+  check('старый агент, шаг в ходе один - от раздачи до результата', old.steps[0].ms.act === 800, JSON.stringify(old.steps[0]));
+  const two = loopOf([{ id: 'a', at: 0 }, { id: 'b', at: 1 }]);
+  stampActs(two, [{ id: 'a' }, { id: 'b' }], 9000);
+  check('два шага в ходе без tookMs - числа нет, а не выдуманное деление',
+    two.steps.every((st) => st.ms.act === undefined), JSON.stringify(two.steps));
+  const wait = loopOf([{ id: 'w', at: 0 }]);
+  stampActs(wait, [{ id: 'w', waited: 2400 }], 99999);
+  check('ожидание - сколько ждало на самом деле', wait.steps[0].ms.act === 2400);
+  const src = readFileSync(new URL('./_step.mjs', import.meta.url), 'utf8');
+  check('начало шага записано при решении', /at: decidedAt - modelMs,/.test(src));
+  check('и у ожидания есть номер шага, чтобы получить время', /name: 'wait', at: loop\.steps\.length - 1/.test(src));
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

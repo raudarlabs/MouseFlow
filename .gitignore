@@ -26,3 +26,7 @@ backup-key.txt
 
 # Артефакт `tsc -b` - кэш инкрементальной сборки, а не исходник.
 tsconfig.tsbuildinfo
+
+# Mac images are committed only when notarised (agent/package-mac.sh writes notarized.txt); a --no-notarize
+# build must never ride along by accident.
+agent/dist/

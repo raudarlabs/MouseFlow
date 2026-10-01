@@ -125,8 +125,13 @@ export const DownloadLink = ({ href, name, children }: {
  * запустить, и для Mac, на который нельзя скачать приложение. */
 export const MAC_IMAGE = { do: '/agent/MouseFlow-Agent.dmg', make: '/agent/MouseFlow-Agent-RecordOnly.dmg' } as const;
 
+/* Есть ли нотаризованный образ в этой сборке - см. web/vite.config.ts. */
+declare const __MAC_APP__: boolean;
+export const MAC_APP_READY = typeof __MAC_APP__ === 'boolean' && __MAC_APP__;
+
 export const MacDownload = () => {
   const { product } = useProduct();
+  if (!MAC_APP_READY) return null;
   const href = MAC_IMAGE[product === 'make' ? 'make' : 'do'];
   return (
     <div className="flex flex-wrap items-center gap-2">

@@ -3370,6 +3370,9 @@ group('в api/ нет ничего, что не должно быть маршр
    * это Responses API и говорит о себе, что он «не универсальный SDK», а транскрипция живёт на другом
    * эндпоинте и говорит multipart. Рядом с transcript.js по алфавиту и совершенно не о том: тот читает
    * ЗАПИСЬ действий, этот - звук. Имена близкие, и это стоит знать заранее. */
+  /* watch.js - 2026-10-01. Второй маршрут, которого зовёт не человек: планировщик (Vercel Cron). Часы,
+   * идущие сами, потому что часами расписаний служит опрос агента, и когда агент молчит - молчат и они.
+   * Закрыт своим секретом (CRON_SECRET), а не сессией: рассылает людям сообщения. */
   /* telegram.js - SPLIT-PLAN §7.2, шаг 14a. Единственный маршрут, которого зовёт НЕ человек и не его
    * машина, а чужая служба, - и поэтому единственный, у которого проверка «это правда телеграм» стоит
    * раньше чтения тела. Своя дверь, а не тул в mcp.js, по той же причине, что у schedules.js и memory.js:
@@ -3378,7 +3381,7 @@ group('в api/ нет ничего, что не должно быть маршр
   const expected = ['account.js', 'admin.js', 'artifacts.js', 'auth.js', 'cases.js', 'chat.js', 'chats.js',
     'claude.js', 'compose.js', 'docs.js', 'gallery.js', 'insights.js', 'mcp.js', 'memory.js', 'models.js',
     'oauth.js', 'params.js', 'queue.js', 'schedules.js', 'skill-md.js', 'sync.js', 'team.js',
-    'telegram.js', 'transcribe.js', 'transcript.js', 'well-known.js'];
+    'telegram.js', 'transcribe.js', 'transcript.js', 'watch.js', 'well-known.js'];
   const unexpected = routes.filter((n) => !expected.includes(n));
   check('и новых маршрутов не появилось незамеченными', unexpected.length === 0, unexpected.join(', '));
   /* И наоборот - что каждый ожидаемый на месте: список, из которого файл пропал, молча перестаёт его
@@ -6153,8 +6156,10 @@ group('свободная цель на десктопе: кому её можн
   /* Её забирает ТОЛЬКО тот, у кого модель в цикле. Проверяется, что она вынесена из обеих поблажек для
    * команд: и из `like '#%'`, и из «нет такого созданного навыка» - вторая пропускала её заодно, потому
    * что навыка у команды нет вовсе, и это была половина ошибки, которую легко не заметить. */
-  const claim = worker.slice(worker.indexOf('update run_queue set state = \'claimed\''),
-    worker.indexOf('returning id, flow_id, tool_name, args'));
+  /* Конец - ПОСЛЕ начала: та же строка returning есть и у подметания выше (с 2026-10-01 оно возвращает
+   * строку целиком, ради ленты), и indexOf с нуля находил её. */
+  const claimAt = worker.indexOf('update run_queue set state = \'claimed\'');
+  const claim = worker.slice(claimAt, worker.indexOf('returning id, flow_id, tool_name, args', claimAt));
   check('и она вынесена из поблажки для команд - её берёт только умеющий цели',
     /\$\{goalCapable\}[\s\S]{0,200}?q\.flow_id <> \$\{DESKTOP_GOAL\}/.test(claim), 'claim');
   check('и обе поблажки оказались ВНУТРИ этого исключения, а не рядом с ним',

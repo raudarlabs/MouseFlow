@@ -437,5 +437,17 @@ group('браузер рядом с разговором: картинка из 
   check('и под панелью сказано, куда уходит набранное', /nowhere else/.test(read('src/features/create/BrowserPane.tsx')));
 }
 
+group('у каждого шага - время начала и время выполнения');
+{
+  const create = read('src/features/create/CreateView.tsx');
+  const opened = read('src/features/create/OpenedRun.tsx');
+  check('одно правило на оба вида', /from '\.\/step-time'/.test(create) && /from '\.\/step-time'/.test(opened));
+  check('лента показывает начало и полное время', /startedAt\(\{ at: event\.at \}\), tookFor\(\{ ms: event\.spent \}\)/.test(create));
+  check('прогон «by itself» несёт и время действия, и начало', /act: step\.ms\.act/.test(create) && /at: step\.at,/.test(create));
+  check('открытый прогон - тоже', /\[startedAt\(step\), tookFor\(step\)\]/.test(opened));
+  check('цель работы в очереди - из её аргументов, а не имя тула',
+    /q\.args && typeof q\.args\.goal === 'string' && q\.args\.goal/.test(readFileSync(join(here, '../api/mcp.js'), 'utf8')));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

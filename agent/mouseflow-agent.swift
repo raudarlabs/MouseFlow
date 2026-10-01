@@ -121,6 +121,17 @@ func recordOnlyRefusal(_ action: String) -> String? {
 var moveThrottleMsDefault = 10
 var moveMinPx = 3
 
+/* ГДЕ АГЕНТ ДЕРЖИТ СВОЁ - аккаунт, отложенную запись, профиль своего браузера. Флаг `--home` - для тестов:
+ * копия агента, запущенная разработчиком, не должна читать файл аккаунта человека и брать его работу
+ * (найдено 2026-10-01: ночные тесты браузера подключились к настоящему аккаунту и опрашивали очередь
+ * наравне с его агентом). */
+var supportDir = FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Application Support/MouseFlow"
+/* БИНАРНИК ВНЕ .app К АККАУНТУ НЕ ПОДКЛЮЧАЕТСЯ, если его об этом не попросили: установленный агент всегда
+ * лежит в бандле, а свободный бинарник - это сборка разработчика или тест. Правило в коде, а не в
+ * дисциплине: забыть флаг легко, а цена - чужая работа, взятая чужой копией. */
+var attachLoose = false
+var watchdogMode = false
+
 do {
     var args = Array(CommandLine.arguments.dropFirst())
     while let arg = args.first {
@@ -140,6 +151,16 @@ do {
          * выключить запросом, - это не режим, а настройка, и её значение пришлось бы кому-то охранять. */
         case "--record-only":
             recordOnly = true
+        case "--home":
+            if let v = args.first { supportDir = v; args.removeFirst() }
+        /* СТОРОЖ (2026-10-01). Отдельная задача launchd раз в пять минут запускает этот же бинарник с этим
+         * флагом. Ночью агент перестал брать работу и launchd его не поднял - KeepAlive отвечает только за
+         * процесс, который вышел, а не за тот, которого нет в загруженных или который не отвечает. Сторож
+         * спрашивает агента его же дверью и, если ответа нет, поднимает задачу заново. Разбор - Watchdog.run. */
+        case "--watchdog":
+            watchdogMode = true
+        case "--account":
+            attachLoose = true
         case "--move-throttle-ms":
             if let v = args.first, let n = Int(v) { moveThrottleMsDefault = n; args.removeFirst() }
         case "--move-min-px":
@@ -182,6 +203,8 @@ do {
  *   MFAllowOrigin - страница, которой агент отвечает и ради которой может прописаться в автозапуск. Аргумент
  *                   сильнее: человек, запустивший бинарник руками с --allow-origin, сказал, чего хочет.
  *   MFPackaged    - что это сборка из .dmg, а не с установщика: от неё зависит первый запуск (см. ниже). */
+if watchdogMode { Watchdog.run() }
+
 let packagedBuild = (Bundle.main.object(forInfoDictionaryKey: "MFPackaged") as? Bool) == true
 if (Bundle.main.object(forInfoDictionaryKey: "MFRecordOnly") as? Bool) == true { recordOnly = true }
 if allowOrigin.isEmpty, let baked = Bundle.main.object(forInfoDictionaryKey: "MFAllowOrigin") as? String {
@@ -618,8 +641,7 @@ final class Recorder {
     private var ending = false
 
     private static var heldPath: String {
-        FileManager.default.homeDirectoryForCurrentUser.path
-            + "/Library/Application Support/MouseFlow/held-recording.mmmacro"
+        supportDir + "/held-recording.mmmacro"
     }
 
     private init() {
@@ -4814,8 +4836,25 @@ func installTap() -> Bool {
 /* Where the courier says things. stdout is what the launchd job records, and the installer's doctor prints
  * it - the same place the startup banner and the permission watcher already speak. */
 func log(_ words: String) {
-    print("[mouseflow] " + words)
+    print("[mouseflow \(logStamp())] " + words)
 }
+
+/* МЕТКА ВРЕМЕНИ В КАЖДОЙ СТРОКЕ (2026-10-01). Ночью агент перестал брать работу, и по логу нельзя было
+ * сказать даже, когда: строки «could not ask for work» и баннеры запуска не несли времени, а системный
+ * журнал launchd этого не хранит. Местное время с зоной - потому что человек сверяет его со своими часами
+ * («в 4:30 не прошло»), а не с UTC. */
+/* Статическое свойство, а не глобальная переменная: в main.swift глобальные инициализируются по порядку
+ * строк, и log(), позванный раньше этой строки, получил бы неинициализированный форматтер. Статическое -
+ * лениво и потокобезопасно. */
+enum LogClock {
+    static let format: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss ZZZZZ"
+        return f
+    }()
+}
+func logStamp() -> String { LogClock.format.string(from: Date()) }
 
 /* Falling over where nobody is looking.
  *
@@ -4940,9 +4979,7 @@ enum Account {
     private static let gate = NSLock()
     private static var current: Link?
 
-    private static var dir: String {
-        FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Application Support/MouseFlow"
-    }
+    private static var dir: String { supportDir }
     private static var path: String { dir + "/account.json" }
 
     static var link: Link? {
@@ -4952,6 +4989,10 @@ enum Account {
 
     /// Read once at startup. A missing or unreadable file means "not linked", which is the safe answer.
     static func load() {
+        if Bundle.main.bundleIdentifier == nil && !attachLoose {
+            log("a loose binary, not the installed app - not attached to any account (pass --account to attach)")
+            return
+        }
         guard let data = FileManager.default.contents(atPath: path),
               let raw = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let token = raw["token"] as? String, !token.isEmpty else { return }
@@ -5050,8 +5091,22 @@ enum Courier {
     static func begin() {
         Thread.detachNewThread {
             Thread.current.name = "mouseflow.courier"
+            tellRevived()
             loop()
         }
+    }
+
+    /* СТОРОЖ ПОДНЯЛ - СКАЗАТЬ АККАУНТУ (оттуда это уходит в телеграм-ленту). Метку оставляет Watchdog.run;
+     * снимается, только когда аккаунт её принял: не дошло - скажется при следующем старте. */
+    private static func tellRevived() {
+        guard let at = try? String(contentsOfFile: Watchdog.revivedMark, encoding: .utf8),
+              let link = Account.link,
+              let url = URL(string: link.base + "/api/mcp?worker=event") else { return }
+        let said: [String: Any] = ["event": "revived", "at": at.trimmingCharacters(in: .whitespacesAndNewlines),
+                                   "machine": Host.current().localizedName ?? "this Mac"]
+        guard let body = try? JSONSerialization.data(withJSONObject: said),
+              let (status, _) = request(url, token: link.token, body: body), status == 200 else { return }
+        try? FileManager.default.removeItem(atPath: Watchdog.revivedMark)
     }
 
     private static func loop() {
@@ -5313,7 +5368,13 @@ enum Courier {
             let actions = (raw["actions"] as? [[String: Any]]) ?? []
             var out: [String] = []
             for action in actions {
-                out.append(perform(action, link: link, id: id))
+                /* СКОЛЬКО ВЫПОЛНЯЛОСЬ ДЕЙСТВИЕ - полем каждого результата (2026-10-01): деплой кладёт его в шаг
+                 * прогона, и журнал показывает не только, сколько модель решала, но и сколько делала машина.
+                 * Результат - JSON-объект строкой; поле дописывается перед закрывающей скобкой. */
+                let began = Date()
+                let said = perform(action, link: link, id: id)
+                let took = Int(Date().timeIntervalSince(began) * 1000)
+                out.append(said.hasSuffix("}") ? String(said.dropLast()) + ",\"tookMs\":\(took)}" : said)
                 /* A stop that arrived while this was waiting. The rest of the turn is abandoned and the
                  * results so far are posted anyway: the deployment answers "done", writes the run to the
                  * account and clears the row, which is tidier than this end deciding any of that. */
@@ -5586,6 +5647,7 @@ enum Autostart {
         task.arguments = ["load", "-w", plistPath]
         try? task.run()
         task.waitUntilExit()
+        Watchdog.install()
         return nil
     }
 
@@ -5617,7 +5679,122 @@ enum Autostart {
         try? task.run()
         task.waitUntilExit()
         try? FileManager.default.removeItem(atPath: plistPath)
+        Watchdog.uninstall()
         return nil
+    }
+}
+
+/* ---------------------------------------------------------------- the watchdog
+ *
+ * ЗАЧЕМ. 2026-10-01 разовая задача на 04:30 не выполнилась: с 04:30 до утра агент не спросил работу ни разу,
+ * отчёта о падении нет, launchd его не поднял. KeepAlive поднимает ВЫШЕДШИЙ процесс загруженной задачи - и
+ * больше ничего: задача, выгруженная из launchd, или процесс, который жив, но не отвечает, для него в
+ * порядке. Сторож - вторая задача launchd с другим ярлыком: раз в пять минут спрашивает агента его же
+ * дверью (/health) и, если ответа нет, поднимает задачу заново.
+ *
+ * ЧЕЛОВЕКА СЛУШАЕТ. «Stop Until Next Login» оставляет метку, и до следующего входа сторож агента не
+ * трогает; «Quit and Turn Off Start at Login» снимает и сторожа. Остановленный руками агент, который
+ * поднимается сам через пять минут, - это агент, который не слушается.
+ *
+ * И ГОВОРИТ, ЧТО СДЕЛАЛ: строкой в общий лог и меткой revived, которую агент при старте передаёт аккаунту -
+ * оттуда она уходит в телеграм. */
+enum Watchdog {
+    static let label = "com.mouseflow.watchdog"
+    static var plistPath: String {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents/\(label).plist").path
+    }
+    static var stoppedMark: String { supportDir + "/stopped-by-person" }
+    static var revivedMark: String { supportDir + "/revived" }
+
+    static func install() {
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+          <key>Label</key><string>\(label)</string>
+          <key>ProgramArguments</key>
+          <array>
+            <string>\(Autostart.binary)</string>
+            <string>--watchdog</string>
+            <string>--port</string><string>\(port)</string>
+          </array>
+          <key>StartInterval</key><integer>300</integer>
+          <key>StandardOutPath</key><string>\(Autostart.logPath)</string>
+          <key>StandardErrorPath</key><string>\(Autostart.logPath)</string>
+        </dict>
+        </plist>
+        """
+        try? plist.write(toFile: plistPath, atomically: true, encoding: .utf8)
+        launchctl(["bootout", "gui/\(getuid())/\(label)"])
+        launchctl(["bootstrap", "gui/\(getuid())", plistPath])
+    }
+
+    static func uninstall() {
+        launchctl(["bootout", "gui/\(getuid())/\(label)"])
+        try? FileManager.default.removeItem(atPath: plistPath)
+    }
+
+    /// launchctl со сроком: `kickstart -k` на задаче, которая не может запуститься, ждёт вечно (измерено).
+    @discardableResult
+    static func launchctl(_ arguments: [String], within seconds: Double = 15) -> Int32 {
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        task.arguments = arguments
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        let done = DispatchSemaphore(value: 0)
+        task.terminationHandler = { _ in done.signal() }
+        do { try task.run() } catch { return -1 }
+        if done.wait(timeout: .now() + seconds) == .timedOut {
+            task.terminate()
+            return -2
+        }
+        return task.terminationStatus
+    }
+
+    /// Отвечает ли агент на этом порту - его же дверью, с коротким сроком.
+    static func answers() -> Bool {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/health") else { return false }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 8
+        let done = DispatchSemaphore(value: 0)
+        var ok = false
+        URLSession.shared.dataTask(with: req) { _, response, _ in
+            ok = response is HTTPURLResponse
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 10)
+        return ok
+    }
+
+    /// Один обход. Никогда не возвращается: это весь процесс сторожа.
+    static func run() -> Never {
+        if answers() { exit(0) }
+        if FileManager.default.fileExists(atPath: stoppedMark) {
+            log("watchdog: the agent is not answering, and it was stopped by hand - leaving it until next login")
+            exit(0)
+        }
+        /* Второй вопрос через несколько секунд: агент, который прямо сейчас перезапускается сам (за
+         * разрешениями, при обновлении), поднимается за пару секунд, и будить его в этот момент - лишнее. */
+        sleep(5)
+        if answers() { exit(0) }
+        /* ЗАНОВО ИЗ НАСТОЯЩЕГО ФАЙЛА, а не kickstart. 2026-10-01 под ярлыком агента в launchd оказалась ЧУЖАЯ
+         * задача (тест подменял её своей, с /tmp/agent), и kickstart -k терпеливо будил эту чужую -
+         * безуспешно и вечно. Выгрузить то, что под ярлыком, и загрузить файл из LaunchAgents - лечит и
+         * мёртвый процесс, и выгруженную задачу, и подменённую. Без файла поднимать нечего: автозапуск
+         * выключили, и это решение человека. */
+        guard FileManager.default.fileExists(atPath: Autostart.plistPath) else {
+            log("watchdog: the agent is not answering and start at login is off - nothing to start")
+            exit(0)
+        }
+        let job = "gui/\(getuid())/\(Autostart.label)"
+        launchctl(["bootout", job])
+        let loaded = launchctl(["bootstrap", "gui/\(getuid())", Autostart.plistPath])
+        let how = loaded == 0 ? "loaded the login item again from its file" : "could not load the login item (\(loaded))"
+        log("watchdog: the agent was not answering on port \(port) - \(how)")
+        try? logStamp().write(toFile: revivedMark, atomically: true, encoding: .utf8)
+        exit(0)
     }
 }
 
@@ -5697,8 +5874,7 @@ enum PermissionWatch {
      * process the stale answer too. The mtime signal fires for ANY application's TCC change, so it waits a
      * full minute. */
     private static func stampRestart(confirmed: Bool) -> Bool {
-        let dir = FileManager.default.homeDirectoryForCurrentUser.path
-            + "/Library/Application Support/MouseFlow"
+        let dir = supportDir
         let path = dir + "/restart-stamp"
         let now = Date().timeIntervalSince1970
         if let text = try? String(contentsOfFile: path, encoding: .utf8),
@@ -5775,7 +5951,7 @@ enum PermissionWatch {
                  * request count is the guard that actually covers it. */
                 if Recorder.shared.isRecording || Recorder.shared.busyEnding
                     || Replayer.shared.isPlaying || Busy.count > 0 { continue }
-                print("  permissions    granted in System Settings - restarting to pick them up"
+                log("restarting to pick up permissions granted in System Settings"
                     + " (launchd starts the agent again at once)")
                 usleep(300_000)
                 if Recorder.shared.isRecording || Recorder.shared.busyEnding
@@ -5818,7 +5994,7 @@ final class OwnBrowser {
     ]
     static var executable: String? { candidates.first { FileManager.default.isExecutableFile(atPath: $0) } }
     static var profile: String {
-        FileManager.default.homeDirectoryForCurrentUser.path + "/Library/Application Support/MouseFlow/Browser"
+        supportDir + "/Browser"
     }
     /// Вкладка по умолчанию - для того, кто не назвал свою (облачный цикл до панели, ручной вызов).
     static let workTab = "work"
@@ -6751,7 +6927,7 @@ func route(method: String, path: String, query: String, body: String) -> Respons
                 while Busy.count > 0 || Recorder.shared.isRecording || Replayer.shared.isPlaying {
                     usleep(250_000)
                 }
-                print("autostart enabled - handing the port to the login item")
+                log("autostart enabled - handing the port to the login item")
                 close(listener)
                 let kick = Process()
                 kick.executableURL = URL(fileURLWithPath: "/bin/launchctl")
@@ -6902,7 +7078,7 @@ let bound = withUnsafePointer(to: &address) { pointer in
 }
 if bound < 0 {
     FileHandle.standardError.write(
-        "port \(port) is already in use - another agent is probably running\n".data(using: .utf8)!)
+        "[mouseflow \(logStamp())] port \(port) is already in use - another agent is probably running\n".data(using: .utf8)!)
     exit(1)
 }
 if listen(listener, 128) < 0 {
@@ -6941,6 +7117,24 @@ print("""
   pressed, and when. Ctrl+C to stop the agent.
 
 """)
+
+/* КОГДА ЗАПУСТИЛСЯ И ЧЕМ КОНЧИЛСЯ - строками с меткой времени (2026-10-01). Баннер выше времени не несёт, и
+ * ночной разбор упёрся именно в это: было видно, что процесс перезапускался, но не когда, и не было видно,
+ * как он закончился. Завершение по сигналу пишется до выхода; падение оставляет отчёт macOS (.ips) само. */
+log("started - pid \(getpid()), \(recordOnly ? "record-only" : "acting"), port \(port)")
+/* Запустились - значит, «остановлен руками до следующего входа» кончилось: сторож снова в деле. */
+try? FileManager.default.removeItem(atPath: Watchdog.stoppedMark)
+var stopSignals: [DispatchSourceSignal] = []
+for (signo, name) in [(SIGTERM, "SIGTERM"), (SIGINT, "SIGINT"), (SIGHUP, "SIGHUP")] {
+    signal(signo, SIG_IGN)
+    let source = DispatchSource.makeSignalSource(signal: signo, queue: .global())
+    source.setEventHandler {
+        log("stopping - \(name) from outside (launchd, the installer, kill)")
+        exit(128 + signo)
+    }
+    source.resume()
+    stopSignals.append(source)
+}
 
 /* Started after the banner so its own lines land under it. Does nothing when both permissions are already
  * in place. */
@@ -7739,6 +7933,8 @@ final class MenuActions: NSObject, NSMenuDelegate {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         task.arguments = ["bootout", "gui/\(getuid())/\(Autostart.label)"]
+        log("stopping until next login - asked from the menu")
+        try? logStamp().write(toFile: Watchdog.stoppedMark, atomically: true, encoding: .utf8)
         try? task.run()
         task.waitUntilExit()
         exit(0)
@@ -7770,6 +7966,7 @@ final class MenuActions: NSObject, NSMenuDelegate {
 
     /// Stops the agent AND takes it out of login items - off until reinstalled or re-enabled in the app.
     @objc func quitForGood() {
+        log("quitting and turning off start at login - asked from the menu")
         _ = Autostart.disable()
         exit(0)
     }

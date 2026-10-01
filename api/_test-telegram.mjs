@@ -16,6 +16,7 @@ import {
   tagFor, tagIn,
   CHANNEL, DRAFT_TTL_MS, SAY, commandOf, draftId, expired, keyboardFor, looksLikeDeviceToken,
   outcomeMessage, planMessage, refusedDocument, routeOf, updateOf, verdictOf, modeWanted,
+  feedLine, feedSource, feedWanted, feedWorthy,
 } from './_telegram.mjs';
 
 let pass = 0;
@@ -293,11 +294,12 @@ group('ни одно закрытие работы не остаётся без�
   const silent = [];
   lines.forEach((ln, i) => {
     if (!closes.test(ln)) return;
-    if (!/tellChat/.test(lines.slice(i, i + 14).join('\n'))) silent.push(i + 1);
+    /* С 2026-10-01 исход идёт одной воронкой tellOutcome: чату-источнику ответом, остальным - лентой. */
+    if (!/tellOutcome|tellChatAbout/.test(lines.slice(i, i + 14).join('\n'))) silent.push(i + 1);
   });
   const found = lines.filter((ln) => closes.test(ln)).length;
   check('закрытия найдены - иначе этот пин ничего не сторожит', found >= 8, String(found));
-  check('и у каждого рядом есть ответ в чат', silent.length === 0, silent.join(', '));
+  check('и у каждого рядом есть ответ в чат и строка ленты', silent.length === 0, silent.join(', '));
 
   /* ТОЛЬКО КОГДА СТРОКА ДЕЙСТВИТЕЛЬНО ЗАКРЫТА ЭТИМ ВЫЗОВОМ. Отчёт по уже отменённой работе ничего не
    * закрывает, и сообщать о нём значило бы сказать «не вышло» про то, что человек сам остановил. */
@@ -308,7 +310,8 @@ group('ни одно закрытие работы не остаётся без�
    * не видит ничего и считает, что прогон идёт. Это два разных человека, даже когда это один человек. */
   const mcp = readFileSync(new URL('./mcp.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   check('и отмена со страницы доходит до чата',
-    /returning id, claimed_at, args/.test(mcp) && /await tellChat\(killed\[0\]\.args/.test(mcp));
+    /returning id, claimed_at, args, flow_id, tool_name, schedule_id, state/.test(mcp)
+      && /await tellOutcome\(sql, who\.id, killed\[0\], false/.test(mcp));
 
   /* СЛОВА ИСХОДА - ОДНИ. Вторая их редакция в воркере разошлась бы с первой первым же уточнением. */
   check('и слова исхода берутся из общего модуля, а не пишутся в воркере',
@@ -430,6 +433,38 @@ group('/mode - тот же выбор, что в панели, и только �
   check('и одобренная в чате работа идёт в запомненном режиме',
     /const gate = \(await modeOf\(sql, userId\)\) === ONE_WAY \? ONE_WAY : null;/.test(door)
       && /telegram: \{ chatId: draft\.chat_id \}, \.\.\.\(gate \? \{ gate \} : \{\}\)/.test(door));
+}
+
+group('лента: телеграм как журнал всего, что делает аккаунт');
+{
+  const route = (text, row = allowed) => routeOf({ row, update: updateOf(dm(text)) });
+  check('/feed - спросить, /feed off|on - переключить', route('/feed').act === 'feed' && route('/feed').on === null
+    && route('/feed off').on === 'off' && route('/feed on').on === true);
+  check('мусор - названный отказ', route('/feed maybe').act === 'refuse' && route('/feed maybe').say === SAY.feedBad);
+  check('незнакомец ленту не трогает', route('/feed off', null).act === 'greet');
+  check('и помощь о ней говорит', /\/feed/.test(SAY.help));
+  check('служебные команды записи - не работа, в ленту не идут',
+    !feedWorthy({ flow_id: '#record.start' }) && feedWorthy({ flow_id: '#goal.desktop' }) && feedWorthy({ flow_id: 'gd_1' }));
+  check('откуда работа - словами', feedSource({ schedule_id: 's' }) === 'by a schedule'
+    && feedSource({ args: { telegram: { chatId: 1 } } }) === 'from Telegram' && feedSource({ tool_name: 'page:X' }) === 'from the app'
+    && feedSource({ tool_name: 'mouseflow_do' }) === 'asked from a chat');
+  const line = feedLine({ event: 'failed', title: 'в 4:30 открой Claude', said: 'no window', source: 'by a schedule' });
+  /* В уведомлении телефона видна первая строка - в ней обязаны быть исход и название. */
+  check('первая строка - исход и название', line.split('\n')[0] === '❌ Not done — в 4:30 открой Claude', line);
+  check('у каждого события свой знак', ['done', 'failed', 'cancelled', 'started', 'missed', 'paused', 'revived', 'silent']
+    .every((e) => !feedLine({ event: e }).startsWith('ℹ️')));
+
+  const bare = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = bare(readFileSync(new URL('./_telegram-out.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+  check('выключенная лента молчит', /if \(pref && pref\.value === 'off'\) return;/.test(out));
+  check('чату-источнику исход ответом, в ленту ему же - не второй раз',
+    /await tellChat\(job\.args, ok, said\);/.test(out) && /tellFeed\(sql, userId, feedLine\(\{ event, title, said, source: feedSource\(job\) \}\), origin\)/.test(out)
+      && /String\(chat\.chat_id\) === String\(except\)/.test(out));
+  check('только спаренным чатам этого аккаунта', /from chat_sender where user_id = \$\{userId\} and state = 'allowed'/.test(out));
+  const worker = bare(readFileSync(new URL('./_mcp-worker.mjs', import.meta.url), 'utf8'));
+  check('расписание: запуск, пропуск и пауза - в ленте', /event: 'started', title: row\.label/.test(worker)
+    && /event: 'missed', title: row\.label/.test(worker) && (worker.match(/event: 'paused'/g) || []).length >= 2);
+  check('и сторож на машине, поднявший агента, тоже', /if \(action === 'event'\)/.test(worker) && /event: 'revived'/.test(worker));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

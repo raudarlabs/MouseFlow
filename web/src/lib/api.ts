@@ -426,7 +426,7 @@ export interface LiveJob {
   source: 'schedule' | 'you' | 'chat';
   startedAt: string | null;
   finishedAt: string | null;
-  steps: { tool: string; input: Record<string, unknown>; ms?: { shot: number; model: number; act: number } }[];
+  steps: { tool: string; input: Record<string, unknown>; at?: number; ms?: { shot?: number; model: number; act?: number } }[];
 }
 
 /* ПРОГОН СО СТРАНИЦЫ ОБЪЯВЛЯЕТ СЕБЯ ОЧЕРЕДИ - иначе Activity его не видит и остановить его нечем, кроме

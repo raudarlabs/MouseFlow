@@ -54,7 +54,7 @@ import {
 import { workerRoute } from './_mcp-worker.mjs';
 /* Потолок цели - один на все три двери, что её сохраняют. См. заметку у GOAL_MAX в _brain.mjs. */
 import { GOAL_MAX } from './_brain.mjs';
-import { tellChat } from './_telegram-out.mjs';
+import { tellOutcome } from './_telegram-out.mjs';
 
 /* ------------------------------------------------------------------------------- the route */
 
@@ -144,7 +144,7 @@ async function handler(req, res) {
     const days = Math.min(30, Math.max(0, Math.round(Number(req.query.days) || 0)));
     const rows = days
       ? await sql`
-        select q.id, q.flow_id, q.tool_name, q.state, q.ok, q.said, q.loop, q.schedule_id,
+        select q.id, q.flow_id, q.tool_name, q.state, q.ok, q.said, q.loop, q.schedule_id, q.args,
                q.created_at, q.claimed_at, q.finished_at,
                f.name as flow_name, r.steps as run_steps, r.goal as run_goal, r.started_at as run_started
         from run_queue q
@@ -155,7 +155,7 @@ async function handler(req, res) {
         order by q.created_at desc limit 200
       `
       : await sql`
-        select q.id, q.flow_id, q.tool_name, q.state, q.ok, q.said, q.loop, q.schedule_id,
+        select q.id, q.flow_id, q.tool_name, q.state, q.ok, q.said, q.loop, q.schedule_id, q.args,
                q.created_at, q.claimed_at, q.finished_at,
                f.name as flow_name, r.steps as run_steps, r.goal as run_goal, r.started_at as run_started
         from run_queue q
@@ -175,7 +175,9 @@ async function handler(req, res) {
           ok: q.ok,
           said: q.said || null,
           name: q.flow_name || q.tool_name || q.flow_id,
-          goal: (loop && loop.goal) || q.run_goal || null,
+          /* Цель - и у работы, которую ещё не взяли: у неё нет ни цикла, ни записи прогона, зато цель лежит
+           * в аргументах. Без этого лента Create называла её именем тула («mouseflow_do»). */
+          goal: (loop && loop.goal) || q.run_goal || (q.args && typeof q.args.goal === 'string' && q.args.goal) || null,
           scheduleId: q.schedule_id || null,
           /* Откуда работа: расписание, страница Create (человек сам, на этом компьютере) или чат через MCP.
            * Отдельным полем, потому что «by itself» и «you» - разные подписи у одной и той же строки. */
@@ -203,13 +205,13 @@ async function handler(req, res) {
       update run_queue set state = 'cancelled', finished_at = now(),
              ok = false, said = 'cancelled before it finished'
       where user_id = ${who.id} and id = ${id} and state in ('queued', 'claimed')
-      returning id, claimed_at, args
+      returning id, claimed_at, args, flow_id, tool_name, schedule_id, state
     `;
     /* И ЕСЛИ ЭТУ РАБОТУ ЖДУТ В ЧАТЕ - сказать туда. Отмена со страницы и ожидание с телефона - это два
      * РАЗНЫХ человека, даже когда это один человек: нажавший кнопку получит ответ этого маршрута, а тот,
      * кто держит телефон, не увидит ничего и будет считать, что прогон идёт. Говорит тот, кто закрыл
      * строку; api/telegram.js на свой /stop отвечает сам и сюда не ходит. */
-    if (killed.length) await tellChat(killed[0].args, false, 'cancelled before it finished');
+    if (killed.length) await tellOutcome(sql, who.id, killed[0], false, 'cancelled before it finished');
     if (!killed.length) return res.status(200).json({ ok: true, cancelled: false, said: 'nothing to cancel - it had already finished, or it is not yours' });
     return res.status(200).json({
       ok: true,
@@ -252,6 +254,11 @@ async function handler(req, res) {
        * знал. Двести - потолок ровно там же, где у журнала. */
       const steps = Array.isArray(body.steps) ? body.steps.slice(-200).map((s) => ({
         tool: String((s && s.tool) || '?'), input: s && typeof s.input === 'object' && s.input ? s.input : {},
+        /* Начало и время шага - чтобы лента в другой вкладке показывала их так же (2026-10-01). */
+        ...(s && Number.isFinite(s.at) ? { at: s.at } : {}),
+        ...(s && s.ms && typeof s.ms === 'object' ? { ms: {
+          model: Number(s.ms.model) || 0, act: Number(s.ms.act) || 0, shot: Number(s.ms.shot) || 0,
+        } } : {}),
       })) : [];
       const rows = await sql`
         update run_queue
@@ -267,12 +274,20 @@ async function handler(req, res) {
     }
     if (verb === 'end') {
       const ok = body.ok === true;
-      await sql`
+      const said = String(body.said || '').slice(0, 2000) || null;
+      /* Цель - ДО закрытия: loop обнуляется тем же запросом, а лента называет прогон его целью. */
+      const [was] = await sql`
+        select loop ->> 'goal' as goal from run_queue where id = ${id} and user_id = ${who.id} and tool_name = 'page'
+      `;
+      const closed = await sql`
         update run_queue
-        set state = ${ok ? 'done' : 'failed'}, ok = ${ok}, said = ${String(body.said || '').slice(0, 2000) || null},
+        set state = ${ok ? 'done' : 'failed'}, ok = ${ok}, said = ${said},
             finished_at = now(), loop = null
         where id = ${id} and user_id = ${who.id} and tool_name = 'page' and state = 'claimed'
+        returning id, flow_id, tool_name, args, schedule_id, state
       `;
+      /* И В ЛЕНТУ - прогон со страницы тоже «то, что происходит» (владелец, 2026-10-01). */
+      if (closed.length) await tellOutcome(sql, who.id, { ...closed[0], loop: { goal: was && was.goal } }, ok, said);
       return res.status(200).json({ ok: true });
     }
     return res.status(400).json({ error: `no live verb "${verb}"` });

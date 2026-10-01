@@ -71,6 +71,7 @@ import { usePageChrome } from '@/shell/Surface';
 import { type Plan, askForPlan } from '@/lib/plan';
 import { OpenedRun } from './OpenedRun';
 import { BrowserPane } from './BrowserPane';
+import { startedAt, tookDetail, tookFor } from './step-time';
 
 const BROWSER_OPEN_KEY = 'mouseflow.create.browser';
 /* Вкладка нового разговора: одна на вкладку приложения, в sessionStorage - перезагрузка страницы
@@ -457,7 +458,8 @@ export const CreateView = () => {
         const turnId = `q_${job.id}`;
         const feed: RunEvent[] = job.steps.map((step) => ({
           type: 'tool' as const, name: step.tool, input: step.input,
-          spent: step.ms ? { shot: step.ms.shot, model: step.ms.model } : undefined,
+          spent: step.ms ? { shot: step.ms.shot ?? 0, model: step.ms.model, act: step.ms.act } : undefined,
+          at: step.at,
         }));
         const finished = job.state === 'done' || job.state === 'failed';
         const before = seenJobs.current.get(job.id);
@@ -482,7 +484,9 @@ export const CreateView = () => {
               byItself: { scheduleId: job.scheduleId },
             }];
           }
-          return prev.map((t) => (t.id === turnId ? { ...t, feed, state: turnState, note } : t));
+          /* Цель обновляется, когда пришла лучшая: работа, увиденная ещё в очереди, могла прийти без неё. */
+          return prev.map((t) => (t.id === turnId
+            ? { ...t, feed, state: turnState, note, goal: job.goal ?? t.goal } : t));
         });
 
         /* Кончилось на глазах - сказать вслух и перечитать историю. Один раз: состояние сравнивается с тем,
@@ -1030,10 +1034,12 @@ export const CreateView = () => {
                             {/* Читается только когда есть что читать. Разбивка нужна тому, кто смотрит на
                               * бегущий прогон и думает «почему так медленно» - и отвечает она сразу: почти
                               * всё время уходит на решение, а не на картинку. */}
-                            {event.spent && (
-                              <span className="ms-1.5 text-ink-inactive tabular-nums">
-                                {(event.spent.model / 1000).toFixed(1)}s
-                                {event.spent.shot >= 100 && ` · shot ${(event.spent.shot / 1000).toFixed(1)}s`}
+                            {/* КОГДА НАЧАЛСЯ И СКОЛЬКО ЗАНЯЛ - владелец, 2026-10-01. Разбивка «решала /
+                              * делала / картинка» - в подсказке: в строке она отнимала бы место у шага. */}
+                            {(event.at || event.spent) && (
+                              <span className="ms-1.5 text-ink-inactive tabular-nums"
+                                title={tookDetail({ at: event.at, ms: event.spent })}>
+                                {[startedAt({ at: event.at }), tookFor({ ms: event.spent })].filter(Boolean).join(' · ')}
                               </span>
                             )}
                           </>

@@ -12,7 +12,9 @@
  * чата, всё равно записан в журнал и виден на странице. Потерять ответ неприятно; уронить из-за него
  * работу, которая уже сделана, - хуже.
  */
-import { holdKeyboard, holdMessage, outcomeMessage } from './_telegram.mjs';
+import {
+  FEED_KEY, feedLine, feedSource, feedWorthy, holdKeyboard, holdMessage, outcomeMessage,
+} from './_telegram.mjs';
 
 const API = 'https://api.telegram.org';
 
@@ -70,14 +72,74 @@ export async function tellChat(args, ok, said) {
   }
 }
 
-/** То же, когда аргументов под рукой нет, - один запрос на закрытие работы, и только на закрытие. */
+/** То же, когда строки под рукой нет, - один запрос на закрытие работы, и только на закрытие. */
 export async function tellChatAbout(sql, userId, id, ok, said) {
   try {
-    const [row] = await sql`select args from run_queue where id = ${id} and user_id = ${userId}`;
-    if (row) await tellChat(row.args, ok, said);
+    const [row] = await sql`
+      select id, flow_id, tool_name, args, schedule_id, state from run_queue where id = ${id} and user_id = ${userId}
+    `;
+    if (row) await tellOutcome(sql, userId, row, ok, said);
   } catch (_) {
     /* Нет строки, нет таблицы, база моргнула - исход всё равно записан там, где его читают глазами. */
   }
+}
+
+/* ЛЕНТА (владелец, 2026-10-01: «пусть телеграм станет дашбордом»). Всем спаренным чатам аккаунта, у которых
+ * она не выключена (/feed off), кроме `except` - того чата, которому этот исход уже сказан как ответ.
+ * Лучшее усилие, как всё в этом файле. */
+export async function tellFeed(sql, userId, line, except = null) {
+  if (!process.env.TELEGRAM_BOT_TOKEN || !userId) return;
+  try {
+    const [pref] = await sql`select value from user_pref where user_id = ${userId} and key = ${FEED_KEY}`;
+    if (pref && pref.value === 'off') return;
+    const chats = await sql`
+      select distinct chat_id from chat_sender where user_id = ${userId} and state = 'allowed'
+    `;
+    for (const chat of chats) {
+      if (except != null && String(chat.chat_id) === String(except)) continue;
+      await sendChat(chat.chat_id, line);
+    }
+  } catch (_) {
+    /* Нет таблицы (024 не применена), база моргнула - лента молчит, прогон записан. */
+  }
+}
+
+/** Как работа называется в ленте: подпись расписания, имя скилла, цель - что есть. */
+async function titleOf(sql, userId, job) {
+  try {
+    if (job.schedule_id) {
+      const [one] = await sql`select label from user_schedule where id = ${job.schedule_id} and user_id = ${userId}`;
+      if (one && one.label) return one.label;
+    }
+    const flow = String(job.flow_id || '');
+    if (flow && !flow.startsWith('#')) {
+      const [one] = await sql`select name from user_flow where user_id = ${userId} and client_id = ${flow}`;
+      if (one && one.name) return one.name;
+    }
+  } catch (_) { /* название - украшение, а не условие */ }
+  const args = job.args && typeof job.args === 'object' ? job.args : {};
+  if (args.goal) return String(args.goal);
+  if (job.loop && job.loop.goal) return String(job.loop.goal);
+  const tool = String(job.tool_name || '');
+  return tool.startsWith('case:') || tool.startsWith('page:') ? tool.slice(5) : tool || job.id;
+}
+
+/**
+ * ИСХОД РАБОТЫ - ОДНА ВОРОНКА на все места, где работа закрывается. Чату, из которого она пришла, - ответом
+ * (как всегда); остальным спаренным чатам аккаунта - строкой ленты. Один и тот же исход дважды в один чат не
+ * уходит.
+ *
+ * @param {{id?: string, flow_id?: string, tool_name?: string, args?: object, schedule_id?: string|null,
+ *          state?: string, loop?: object}} job
+ */
+export async function tellOutcome(sql, userId, job, ok, said) {
+  if (!job) return;
+  await tellChat(job.args, ok, said);
+  if (!feedWorthy(job)) return;
+  const origin = job.args && job.args.telegram ? job.args.telegram.chatId : null;
+  const event = job.state === 'cancelled' || /^cancelled/.test(String(said || '')) ? 'cancelled' : ok ? 'done' : 'failed';
+  const title = await titleOf(sql, userId, job);
+  await tellFeed(sql, userId, feedLine({ event, title, said, source: feedSource(job) }), origin);
 }
 
 /* ПРОГОН ОСТАНОВИЛСЯ И СПРАШИВАЕТ (SPLIT-PLAN §7.2, шаг 14b).
@@ -97,4 +159,23 @@ export async function askChat(args, jobId, hold) {
   } catch (_) {
     /* Сказано выше: молчание здесь дешевле падения. */
   }
+}
+
+/* ОДИН РАЗ НА СОБЫТИЕ. «Пропущено» может заметить и сторож (api/watch.js, по часам), и такт расписаний
+ * (когда агент вернулся): человеку нужна одна строка, а не две. Метка - в user_pref, значение - момент, к
+ * которому событие относится (next_at): тот же момент второй раз не сообщается, следующий - сообщается. */
+export async function feedOnce(sql, userId, key, stamp, line) {
+  try {
+    const name = `feed.once.${key}`.slice(0, 120);
+    const [had] = await sql`select value from user_pref where user_id = ${userId} and key = ${name}`;
+    if (had && had.value === String(stamp)) return false;
+    await sql`
+      insert into user_pref (user_id, key, value) values (${userId}, ${name}, ${String(stamp)})
+      on conflict (user_id, key) do update set value = excluded.value
+    `;
+  } catch (_) {
+    return false;
+  }
+  await tellFeed(sql, userId, line);
+  return true;
 }

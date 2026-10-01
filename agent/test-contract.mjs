@@ -262,7 +262,7 @@ group('свой браузер в агенте: pipe, свой профиль, �
       && /posix_spawn_file_actions_adddup2\(&actions, outbound\[1\], 4\)/.test(cls));
   check('флаг «под автоматикой» снят - иначе сайты отказывают', cls.includes('"--disable-blink-features=AutomationControlled"'));
   check('профиль свой, а не профиль человека по умолчанию', /--user-data-dir=\\\(OwnBrowser\.profile\)/.test(cls)
-    && /Application Support\/MouseFlow\/Browser/.test(cls));
+    && /supportDir \+ "\/Browser"/.test(cls) && /Application Support\/MouseFlow"/.test(code));
   /* Измерено: свёрнутое окно не отдаёт кадр после перехода. Позади других - отдаёт. */
   check('окно не сворачивается, а фокус возвращается тому, кто работал',
     !/"minimized"/.test(cls) && /before\?\.activate\(\)/.test(cls));
@@ -283,6 +283,31 @@ group('свой браузер в агенте: pipe, свой профиль, �
   check('панель ждёт кадра долгим опросом, а не крутит запросы', /func frame\(_ key: String, since: Int, wait: TimeInterval\)/.test(cls)
     && /frame\(key, since: queryInt\(query, "since", 0\), wait: 1\.5\)/.test(code));
   check('записи в pipe из двух потоков не перемешиваются', /writeLock\.lock\(\)/.test(cls));
+}
+
+group('ночь 2026-10-01: метки времени, тесты не трогают аккаунт, сторож поднимает агента');
+{
+  const code = read('agent/mouseflow-agent.swift').replace(/\/\*[\s\S]*?\*\//g, '');
+  const inst = read('agent/install-mac.sh');
+  check('каждая строка лога несёт время', /print\("\[mouseflow \\\(logStamp\(\)\)\] " \+ words\)/.test(code)
+    && /static let format: DateFormatter/.test(code));
+  check('старт и остановка по сигналу записаны', /log\("started - pid/.test(code) && /DispatchSource\.makeSignalSource\(signal: signo/.test(code)
+    && /log\("stopping - \\\(name\) from outside/.test(code));
+  check('свободный бинарник к аккаунту не подключается без --account',
+    /if Bundle\.main\.bundleIdentifier == nil && !attachLoose \{/.test(code) && /case "--account":/.test(code));
+  check('папка данных переопределяется для тестов', /case "--home":/.test(code) && /private static var dir: String \{ supportDir \}/.test(code));
+  check('сторож: спрашивает агента его же дверью и загружает задачу заново из настоящего файла',
+    /static func answers\(\) -> Bool/.test(code) && /launchctl\(\["bootout", job\]\)/.test(code)
+      && /launchctl\(\["bootstrap", "gui\/\\\(getuid\(\)\)", Autostart\.plistPath\]\)/.test(code)
+      && /if done\.wait\(timeout: \.now\(\) \+ seconds\) == \.timedOut/.test(code)
+      && /<key>StartInterval<\/key><integer>300<\/integer>/.test(code));
+  check('остановленного руками сторож не трогает до следующего входа',
+    /if FileManager\.default\.fileExists\(atPath: stoppedMark\)/.test(code)
+      && /try\? logStamp\(\)\.write\(toFile: Watchdog\.stoppedMark/.test(code)
+      && /try\? FileManager\.default\.removeItem\(atPath: Watchdog\.stoppedMark\)/.test(code));
+  check('автозапуск ставит сторожа, выключение - снимает', /Watchdog\.install\(\)/.test(code) && /Watchdog\.uninstall\(\)/.test(code));
+  check('установщик ставит и снимает сторожа тоже', /com\.mouseflow\.watchdog\.plist/.test(inst)
+    && /launchctl bootout "gui\/\$\(id -u\)\/com\.mouseflow\.watchdog"/.test(inst) && /<string>--watchdog<\/string>/.test(inst));
 }
 
 group('упакованное приложение для Mac: подписано, нотаризовано, режим запечатан');
@@ -307,9 +332,14 @@ group('упакованное приложение для Mac: подписан�
   check('автозапуск сохраняет режим', /\(recordOnly \? "\\n    <string>--record-only<\/string>" : ""\)/.test(agentSrc));
   check('первый запуск из образа или карантина не прописывает автозапуск в пустоту',
     /here\.hasPrefix\("\/Volumes\/"\) \|\| here\.contains\("\/AppTranslocation\/"\)/.test(agentSrc));
-  check('сборка сайта раздаёт оба образа, а их отсутствие - ошибка',
-    copyAgent.includes("'dist/MouseFlow-Agent.dmg'") && copyAgent.includes("'dist/MouseFlow-Agent-RecordOnly.dmg'")
-      && /process\.exit\(1\)/.test(copyAgent));
+  /* Только нотаризованные: метку пишет package-mac.sh после степлера, --no-notarize её снимает, и по ней
+   * же сборка решает, рисовать ли кнопку. Ненотаризованный образ на сайте - файл, который macOS не откроет. */
+  check('сборка сайта раздаёт образы только нотаризованными', /const NOTARIZED = resolve\(here, '\.\.\/\.\.\/agent\/dist\/notarized\.txt'\)/.test(copyAgent)
+      && /if \(existsSync\(NOTARIZED\)\)/.test(copyAgent) && /files\.push\(\.\.\.images\)/.test(copyAgent));
+  check('метку пишет только нотаризация, а сборка без неё метку снимает',
+    /> "\$\{dist\}\/notarized\.txt"/.test(pack) && /rm -f "\$\{dist\}\/notarized\.txt"/.test(pack));
+  check('и кнопка рисуется по той же метке', /if \(!MAC_APP_READY\) return null;/.test(platform)
+      && /__MAC_APP__: JSON\.stringify\(existsSync\(here\('\.\.\/agent\/dist\/notarized\.txt'\)\)\)/.test(read('web/vite.config.ts')));
   check('второй продукт скачивает сборку «только смотрит»',
     /make: '\/agent\/MouseFlow-Agent-RecordOnly\.dmg'/.test(platform) && /MAC_IMAGE\[product === 'make' \? 'make' : 'do'\]/.test(platform));
 }

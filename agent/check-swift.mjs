@@ -28,7 +28,7 @@
  * Запуск: node agent/check-swift.mjs
  */
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -861,7 +861,14 @@ group('установщик записывает режим в элемент в
     const script = join(dir, 'run.sh');
     const made = (mode) => {
       const out = join(dir, 'x.plist');
-      writeFileSync(script, ['#!/bin/bash', 'BUNDLE_ID=com.mouseflow.agent', fn,
+      /* LAUNCHCTL - ЗАГЛУШКОЙ, И ЭТО НЕ ОСТОРОЖНОСТЬ, А ПОЧИНКА (2026-10-01). Функция под тестом вызывает
+       * настоящий launchctl: bootout ярлыка com.mouseflow.agent и bootstrap только что записанного plist. С
+       * 23 сентября каждый `npm test` на Mac владельца выгружал его настоящего агента и загружал вместо него
+       * этот файл с /tmp/agent, которого нет, - launchd отвечал EX_CONFIG, и агент молчал до переустановки.
+       * Ночью 2026-10-01 это стоило разовой задачи на 04:30. Функция bash с тем же именем сильнее команды,
+       * и записывает, что её звали, - чтобы пин ниже проверил, что звали ИМЕННО её. */
+      writeFileSync(script, ['#!/bin/bash', 'BUNDLE_ID=com.mouseflow.agent',
+        `launchctl() { echo "$*" >> "${join(dir, 'launchctl.calls')}"; }`, fn,
         `write_login_item "${out}" /tmp/agent 8787 https://example.test "${mode}"`].join('\n'));
       const ran = spawnSync('bash', [script], { encoding: 'utf8' });
       return ran.status === 0 ? readFileSync(out, 'utf8') : 'FAILED: ' + ran.stderr;
@@ -877,6 +884,9 @@ group('установщик записывает режим в элемент в
     /* И plist остаётся читаемым для самой системы, а не только для регулярки. */
     check('и обе версии разбираются plutil',
       spawnSync('plutil', ['-lint', join(dir, 'x.plist')], { encoding: 'utf8' }).status === 0);
+    /* НАСТОЯЩИЙ launchd ТЕСТОМ НЕ ТРОНУТ: все вызовы ушли в заглушку. */
+    const calls = existsSync(join(dir, 'launchctl.calls')) ? readFileSync(join(dir, 'launchctl.calls'), 'utf8') : '';
+    check('тест не трогает настоящий launchd - все вызовы ушли в заглушку', /bootstrap/.test(calls), calls.slice(0, 200));
     rmSync(dir, { recursive: true, force: true });
   }
 }

@@ -103,6 +103,8 @@ USAGE
   if [ "$action" = "uninstall" ]; then
     launchctl bootout "gui/$(id -u)/${BUNDLE_ID}" 2>/dev/null || launchctl unload -w "$plist" 2>/dev/null || true
     rm -f "$plist"
+    launchctl bootout "gui/$(id -u)/com.mouseflow.watchdog" 2>/dev/null || true
+    rm -f "$(dirname "$plist")/com.mouseflow.watchdog.plist"
     pkill -f "mouseflow-agent" 2>/dev/null || true
     rm -rf "$install_dir"
     echo "MouseFlow agent removed. Its entries stay in System Settings; clear them with:"
@@ -442,6 +444,32 @@ PLIST
   launchctl bootout "gui/$(id -u)/${BUNDLE_ID}" 2>/dev/null || true
   launchctl bootstrap "gui/$(id -u)" "$plist" 2>/dev/null \
     || { launchctl unload -w "$plist" 2>/dev/null || true; launchctl load -w "$plist" 2>/dev/null || true; }
+
+  # THE WATCHDOG (2026-10-01): a second job, every five minutes, asks the agent on its own port and starts
+  # the login item again if nobody answers. KeepAlive only revives a process that exited from a LOADED job;
+  # the night a one-off task at 04:30 never ran, the agent was neither. The same plist the agent writes
+  # (Watchdog.install) - two writers, one shape.
+  local watchdog="$(dirname "$plist")/com.mouseflow.watchdog.plist"
+  cat > "$watchdog" <<WATCH
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.mouseflow.watchdog</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${binary}</string>
+    <string>--watchdog</string>
+    <string>--port</string><string>${port}</string>
+  </array>
+  <key>StartInterval</key><integer>300</integer>
+  <key>StandardOutPath</key><string>${HOME}/Library/Logs/mouseflow-agent.log</string>
+  <key>StandardErrorPath</key><string>${HOME}/Library/Logs/mouseflow-agent.log</string>
+</dict>
+</plist>
+WATCH
+  launchctl bootout "gui/$(id -u)/com.mouseflow.watchdog" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$watchdog" 2>/dev/null || true
 }
 
 # Everything about this install, in one paste.

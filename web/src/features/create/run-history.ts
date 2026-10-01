@@ -13,7 +13,13 @@ import type { Run } from '@/lib/api';
 import type { DictatedRun } from '@/lib/save-as-skill';
 
 /** Шаг прогона, как он лежит на аккаунте. Форма принадлежит тому, кто прогон записал. */
-export type Step = { tool?: string; input?: Record<string, unknown> | null };
+export type Step = {
+  tool?: string;
+  input?: Record<string, unknown> | null;
+  /** Начало и время шага, если прогон их записал (с 2026-10-01). */
+  at?: number;
+  ms?: { shot?: number; model?: number; act?: number } | null;
+};
 
 /* ДЕСКТОПНЫЙ ЛИ ЭТО ПРОГОН - по форме шагов, а не по отсутствию поля.
  *

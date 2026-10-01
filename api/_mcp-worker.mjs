@@ -24,7 +24,8 @@ import { RUN_KEY, caseGoal, caseIdOf, expectsOf, stripCase } from './_case.mjs';
 import { PAYLOAD_MAX_BYTES } from './_payload.mjs';
 /* Исход работы, пришедшей из чата, отвечает туда же. Обе формы - в api/_telegram-out.mjs, потому что
  * говорят в чат двое и с разных концов прогона; там же сказано, почему тишина хуже плохой новости. */
-import { askChat, tellChat, tellChatAbout } from './_telegram-out.mjs';
+import { askChat, feedOnce, tellChatAbout, tellFeed, tellOutcome } from './_telegram-out.mjs';
+import { feedLine } from './_telegram.mjs';
 
 /* And how long a worker's claim request may hold open with nothing to do. One request every half minute
  * beats one every three seconds, and an idle loop is not billed as CPU. */
@@ -139,6 +140,8 @@ async function dueNow(sql, who) {
                    updated_at = now()
             where id = ${row.id}
           `;
+          await tellFeed(sql, who.id, feedLine({ event: 'paused', title: row.label,
+            said: 'the skill it runs was deleted', source: 'a schedule' }));
           continue;
         }
       }
@@ -164,6 +167,8 @@ async function dueNow(sql, who) {
             runs = runs + 1, fails = 0, updated_at = now()
         where id = ${row.id}
       `;
+      /* В ЛЕНТУ - что пошло: исход придёт отдельной строкой, когда работа закроется. */
+      await tellFeed(sql, who.id, feedLine({ event: 'started', title: row.label, source: 'by a schedule' }));
       /* Одна мышь: остальные подошедшие расписания на этом такте уступают, а не выстраиваются в очередь. */
       busy = true;
       continue;
@@ -181,6 +186,11 @@ async function dueNow(sql, who) {
           misses = misses + ${verdict.do === 'miss' ? 1 : 0}, updated_at = now()
       where id = ${row.id}
     `;
+    /* ПРОПУЩЕНО - В ЛЕНТУ, один раз: сторож мог сказать это раньше, по часам, пока агент молчал. */
+    if (verdict.do === 'miss') {
+      await feedOnce(sql, who.id, `missed.${row.id}`, row.next_at && new Date(row.next_at).toISOString(),
+        feedLine({ event: 'missed', title: row.label, said: verdict.why, source: 'a schedule' }));
+    }
   }
 }
 
@@ -271,13 +281,13 @@ export async function workerRoute(action, req, res, sql, who) {
              said = 'the machine took this job and never reported back'
       where user_id = ${who.id} and state = 'claimed'
         and claimed_at < now() - ${`${Math.round(CLAIM_STALE_MS / 1000)} seconds`}::interval
-      returning args
+      returning id, flow_id, tool_name, args, schedule_id
     `;
     /* И ЭТО САМЫЙ ВАЖНЫЙ ИЗ ИСХОДОВ ДЛЯ ЧАТА, потому что он и есть тишина: машина взяла работу и пропала.
      * Человек с телефона не видит ни экрана, ни очереди, и без этой строки «наверное, ещё идёт» длится
      * ровно столько, сколько у него хватает терпения. Подметание уже здесь, у него на руках args, и
      * сказать стоит один запрос, которого всё равно не будет в обычную минуту - строк тут обычно ноль. */
-    for (const one of lost) await tellChat(one.args, false, 'the machine took this job and never reported back');
+    for (const one of lost) await tellOutcome(sql, who.id, one, false, 'the machine took this job and never reported back');
 
     const by = String((req.body && req.body.worker) || 'worker').slice(0, 60);
     /* WHAT THIS CLAIMER CAN ACTUALLY DO, which the queue did not ask until it had to.
@@ -420,7 +430,7 @@ export async function workerRoute(action, req, res, sql, who) {
             )
           order by q.created_at limit 1
         )
-        returning id, flow_id, tool_name, args
+        returning id, flow_id, tool_name, args, schedule_id
       `;
       if (took.length) {
         const job = took[0];
@@ -462,7 +472,7 @@ export async function workerRoute(action, req, res, sql, who) {
                    said = 'the skill was deleted between the ask and the run'
             where id = ${job.id}
           `;
-          await tellChat(job.args, false, 'the skill was deleted between the ask and the run');
+          await tellOutcome(sql, who.id, job, false, 'the skill was deleted between the ask and the run');
           continue;
         }
         const row = flow[0];
@@ -505,7 +515,7 @@ export async function workerRoute(action, req, res, sql, who) {
                        said = 'the case was deleted between the ask and the run'
                 where id = ${job.id}
               `;
-              await tellChat(job.args, false, 'the case was deleted between the ask and the run');
+              await tellOutcome(sql, who.id, job, false, 'the case was deleted between the ask and the run');
               continue;
             }
             const expects = Array.isArray(found[0].expects) ? found[0].expects : [];
@@ -515,7 +525,7 @@ export async function workerRoute(action, req, res, sql, who) {
                        said = 'this case has no checks, so there is nothing it could prove'
                 where id = ${job.id}
               `;
-              await tellChat(job.args, false, 'this case has no checks, so there is nothing it could prove');
+              await tellOutcome(sql, who.id, job, false, 'this case has no checks, so there is nothing it could prove');
               continue;
             }
             const skill = { ...payload, id: row.client_id, name: row.name, params: payload.params || [] };
@@ -528,7 +538,7 @@ export async function workerRoute(action, req, res, sql, who) {
                          + (missing.length === 1 ? 'it' : 'them')}
                 where id = ${job.id}
               `;
-              await tellChat(job.args, false, `this case needs ${missing.join(', ')}`);
+              await tellOutcome(sql, who.id, job, false, `this case needs ${missing.join(', ')}`);
               continue;
             }
             caseGoalText = caseGoal(fillGoal(skill, values), expects);
@@ -631,7 +641,7 @@ export async function workerRoute(action, req, res, sql, who) {
       `;
       /* И в чат, если работа пришла оттуда. Отказ - тоже исход, и для того, кто нажал Approve с телефона,
        * он важнее удачи: молчание он прочтёт как «наверное, ещё идёт». */
-      await tellChat(job && job.args, false, why);
+      await tellOutcome(sql, who.id, job, false, why);
       return res.status(200).json({ ok: true, done: true, outcome: { ok: false, said: why } });
     };
 
@@ -919,7 +929,7 @@ export async function workerRoute(action, req, res, sql, who) {
           update run_queue set state = 'failed', ok = false, said = ${said}, finished_at = now(), loop = null
           where id = ${id} and user_id = ${who.id} and state = 'claimed'
         `;
-        await tellChat(job.args, false, said);
+        await tellOutcome(sql, who.id, job, false, said);
         return res.status(200).json({ ok: true, done: true, outcome: { ok: false, said } });
       }
       /* И В ЖУРНАЛ ПРОГОНОВ - с единственным шагом, которым этот прогон и был.
@@ -933,7 +943,7 @@ export async function workerRoute(action, req, res, sql, who) {
         update run_queue set state = 'done', ok = true, said = ${said}, finished_at = now(), loop = null
         where id = ${id} and user_id = ${who.id} and state = 'claimed'
       `;
-      await tellChat(job.args, true, said);
+      await tellOutcome(sql, who.id, job, true, said);
       return res.status(200).json({ ok: true, done: true, outcome: { ok: true, said } });
     }
 
@@ -953,7 +963,7 @@ export async function workerRoute(action, req, res, sql, who) {
                finished_at = now(), loop = null
         where id = ${id} and user_id = ${who.id} and state = 'claimed'
       `;
-      await tellChat(job.args, done.ok, said);
+      await tellOutcome(sql, who.id, job, done.ok, said);
       return res.status(200).json({ ok: true, done: true, outcome: { ok: done.ok, said } });
     }
 
@@ -973,6 +983,21 @@ export async function workerRoute(action, req, res, sql, who) {
     return res.status(200).json({
       ok: true, step: out.step, shotWidth: out.shotWidth, actions: out.actions,
     });
+  }
+
+  /* СОБЫТИЕ МАШИНЫ ДЛЯ ЛЕНТЫ (2026-10-01). Сейчас одно: сторож на Mac поднял агента, который не отвечал. Это
+   * не работа и не падение - это то, о чём человек хочет знать: «машина была недоступна с такого-то по
+   * такое-то». Только названные события, текст - наш: машина не диктует, что писать человеку. */
+  if (action === 'event') {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'POST' });
+    const body = req.body || {};
+    if (body.event !== 'revived') return res.status(400).json({ error: 'unknown event' });
+    const machine = String(body.machine || 'your Mac').slice(0, 60);
+    const at = String(body.at || '').slice(0, 40);
+    await tellFeed(sql, who.id, feedLine({ event: 'revived', title: machine,
+      said: `the agent had stopped answering${at ? ` and was started again at ${at}` : ''}. `
+        + 'Anything due while it was down did not run.', source: 'the watchdog on that machine' }));
+    return res.status(200).json({ ok: true });
   }
 
   if (action === 'report') {
@@ -1043,7 +1068,14 @@ export async function workerRoute(action, req, res, sql, who) {
                     then ${`stopped after ${FAILS_BEFORE_PAUSE} failures in a row`} else paused_why end,
                   updated_at = now()
               where id = ${job.schedule_id} and user_id = ${who.id}
-            `;
+              returning label, paused, fails
+            `.then(async (rows) => {
+              if (rows[0] && rows[0].paused && rows[0].fails >= FAILS_BEFORE_PAUSE) {
+                await tellFeed(sql, who.id, feedLine({ event: 'paused', title: rows[0].label,
+                  said: `stopped after ${FAILS_BEFORE_PAUSE} failures in a row - resume it on the Skills page`,
+                  source: 'a schedule' }));
+              }
+            });
           }
         }
       } catch (_) { /* см. выше: отчёт уже записан, и это важнее */ }

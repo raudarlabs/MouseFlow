@@ -34,7 +34,7 @@ import { askAgent, refreshAgent, useAgent, useConsole } from '@/lib/store';
 /* Общее с панелью настроек: определение платформы, переключатель, строка с командой и ссылка на скачивание.
  * Вынесено туда после того, как выяснилось, что установочная команда живёт на ДВУХ экранах, а про macOS
  * узнал только один. */
-import { Command, DownloadLink, MacDownload, PlatformPicker, needsRestart, usePlatform } from './platform';
+import { Command, DownloadLink, MAC_APP_READY, MacDownload, PlatformPicker, needsRestart, usePlatform } from './platform';
 import { CONSENT_LINE, mcpUrl } from '@/lib/mcp-facts';
 
 interface Step {
@@ -72,10 +72,12 @@ export const ConnectView = () => {
   }, [terminal]);
 
   const commandStep: Step = {
-    title: mac ? 'Download the app — or use the install command' : 'Copy the install command',
+    title: mac && MAC_APP_READY ? 'Download the app — or use the install command' : 'Copy the install command',
     done: copied,
     note: mac
-      ? 'The app is signed and notarised, so it opens like any other. The command instead builds the agent on your machine; it needs Xcode Command Line Tools, and tells you the one command to run if they are missing.'
+      ? MAC_APP_READY
+        ? 'The app is signed and notarised, so it opens like any other. The command instead builds the agent on your machine; it needs Xcode Command Line Tools, and tells you the one command to run if they are missing.'
+        : 'It fetches the agent and builds it on your machine. Building locally is what keeps Gatekeeper out of the way — a downloaded binary would arrive quarantined. It needs Xcode Command Line Tools, and tells you the one command to run if they are missing.'
       : 'One line. It fetches the agent and starts it in one go — nothing to install, nothing to unblock.',
     body: (
       <div>

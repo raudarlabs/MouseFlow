@@ -33,10 +33,10 @@ import { GOAL_MAX, goalWith, looksLikeText } from './_attach.mjs';
 import { planFrom, planRequest } from './_plan.mjs';
 import { recognise, refusedAudio } from './_transcribe.mjs';
 import { callModel } from './_vision.mjs';
-import { callTelegram, fileUrl, sendChat } from './_telegram-out.mjs';
+import { callTelegram, fileUrl, sendChat, tellFeed } from './_telegram-out.mjs';
 import {
-  CHANNEL, HOLD_GO, HOLD_HALT, SAY, draftId, expired, holdAnswerOf, keyboardFor, outcomeMessage,
-  planMessage, refusedDocument, routeOf, tagFor, updateOf, verdictOf,
+  CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, SAY, draftId, expired, feedLine, feedSource, holdAnswerOf, keyboardFor,
+  outcomeMessage, planMessage, refusedDocument, routeOf, tagFor, updateOf, verdictOf,
 } from './_telegram.mjs';
 
 /* Модель для плана. Одна строка, одна причина: план - это один вызов перед прогоном, и он не должен стоить
@@ -143,14 +143,33 @@ async function mode(sql, update, userId, wanted) {
   return say(update.chatId, now === ONE_WAY ? SAY.modeAsk : SAY.modeAuto);
 }
 
+/* ЛЕНТА - на аккаунте, а не на чате: вопрос «сообщать ли мне обо всём» - про человека. По умолчанию
+ * включена; пустое значение и есть «включена». */
+async function feed(sql, update, userId, on) {
+  if (on !== null) {
+    await sql`
+      insert into user_pref (user_id, key, value) values (${userId}, ${FEED_KEY}, ${on === 'off' ? 'off' : ''})
+      on conflict (user_id, key) do update set value = excluded.value
+    `;
+  }
+  const [pref] = await sql`select value from user_pref where user_id = ${userId} and key = ${FEED_KEY}`;
+  return say(update.chatId, pref && pref.value === 'off' ? SAY.feedOff : SAY.feedOn);
+}
+
 async function stop(sql, update, userId) {
   const killed = await sql`
     update run_queue set state = 'cancelled', finished_at = now(),
            ok = false, said = 'cancelled before it finished'
     where user_id = ${userId} and state in ('queued', 'claimed')
-    returning id, claimed_at
+    returning id, claimed_at, flow_id, tool_name, args, schedule_id, state
   `;
   if (!killed.length) return say(update.chatId, 'Nothing is running.');
+  /* Этот чат получает ответ ниже; остальным спаренным - строку ленты. Работа из этого же чата ответ
+   * получит отсюда, поэтому в ленту для него она не дублируется (except). */
+  for (const one of killed) {
+    await tellFeed(sql, userId, feedLine({ event: 'cancelled', title: one.args && one.args.goal, said: 'stopped from Telegram',
+      source: feedSource(one) }), update.chatId);
+  }
   return say(update.chatId, killed.some((r) => r.claimed_at)
     ? 'Stopping. A run already under way stops at the next step the machine checks, within a second or two.'
     : 'Cancelled. It never started.');
@@ -423,6 +442,7 @@ async function handler(req, res) {
     if (route.act === 'status') { await status(sql, update, userId); return ok(res, 'status'); }
     if (route.act === 'stop') { await stop(sql, update, userId); return ok(res, 'stopped'); }
     if (route.act === 'mode') { await mode(sql, update, userId, route.mode); return ok(res, 'mode'); }
+    if (route.act === 'feed') { await feed(sql, update, userId, route.on); return ok(res, 'feed'); }
     if (route.act === 'decide') { await decide(sql, update, userId); return ok(res, 'decided'); }
     if (route.act === 'goal') { await offer(sql, update, userId); return ok(res, 'offered'); }
     if (route.act === 'amend') { await amend(sql, update, userId, route.draftId); return ok(res, 'amended'); }

@@ -19,11 +19,25 @@ const files = [
   'mouseflow-agent.ps1',   // Windows: fetched and run in memory by the one-liner
   'mouseflow-agent.swift', // macOS: fetched and compiled on the machine by the installer
   'install-mac.sh',        // macOS: the installer itself
-  /* Готовые приложения для Mac, собранные и нотаризованные agent/package-mac.sh. Лежат в agent/dist, а не
-   * рядом, потому что это сборка, а не исходник; отсутствие - та же ошибка: кнопка Download ответила бы 404. */
-  'dist/MouseFlow-Agent.dmg',
-  'dist/MouseFlow-Agent-RecordOnly.dmg',
 ];
+
+/* ГОТОВЫЕ ПРИЛОЖЕНИЯ ДЛЯ MAC - только нотаризованные. agent/package-mac.sh пишет agent/dist/notarized.txt
+ * после того, как Apple приняла и степлер прибил оба образа; без этой метки образы не раздаются, а кнопка
+ * Download не рисуется (тот же признак читает web/vite.config.ts). Раздать ненотаризованный образ значило бы
+ * дать человеку файл, который macOS на любом другом Mac откажется открыть. */
+const NOTARIZED = resolve(here, '../../agent/dist/notarized.txt');
+const images = ['dist/MouseFlow-Agent.dmg', 'dist/MouseFlow-Agent-RecordOnly.dmg'];
+if (existsSync(NOTARIZED)) {
+  for (const name of images) {
+    if (!existsSync(resolve(here, '../../agent/', name))) {
+      console.error(`agent/${name} is missing while notarized.txt says both were made - rebuild with package-mac.sh`);
+      process.exit(1);
+    }
+  }
+  files.push(...images);
+} else {
+  console.log('no notarised Mac app yet (agent/dist/notarized.txt) - the Download for Mac button stays hidden');
+}
 
 for (const name of files) {
   const from = resolve(here, '../../agent/', name);

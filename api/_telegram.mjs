@@ -60,6 +60,7 @@ export const SAY = {
     + '/status - is a computer of yours awake and taking work\n'
     + '/stop - stop whatever is running\n'
     + '/mode - run straight through, or ask before anything that cannot be undone\n'
+    + '/feed - this chat as a running log of everything your machines do (on by default)\n'
     + '/pair mf_... - pair this chat with an account',
   empty: 'There is nothing in that message to do. Say what you want done, in a sentence.',
   /* РЕЖИМ - тот же выбор, что в панели агента, и слова о нём те же по смыслу: «Auto» и «Ask first». */
@@ -69,6 +70,10 @@ export const SAY = {
   modeAsk: 'Mode: Ask first. After you approve, it still stops before anything that cannot be undone and '
     + 'asks you here, with Continue and Stop.\n\nSend /mode auto to run straight through.',
   modeBad: 'That is not a mode. Send /mode auto or /mode ask.',
+  feedOn: 'Feed: on. Every run on your account is reported here - done, failed, cancelled, missed - '
+    + 'whether it was asked from here, from the app, from a chat or by a schedule. Send /feed off to stop.',
+  feedOff: 'Feed: off. Only the tasks you send from here are reported here. Send /feed on to see everything.',
+  feedBad: 'Send /feed on or /feed off.',
   declined: 'Cancelled. Nothing was run.',
   expired: 'That plan is older than half an hour, so I did not run it. Send the task again and you will '
     + 'get a fresh plan.',
@@ -222,6 +227,11 @@ export function routeOf({ row, update }) {
   if (command) {
     if (command.name === 'status') return { act: 'status' };
     if (command.name === 'stop') return { act: 'stop' };
+    if (command.name === 'feed') {
+      const wanted = feedWanted(command.rest);
+      if (wanted === false) return { act: 'refuse', say: SAY.feedBad };
+      return { act: 'feed', on: wanted };
+    }
     if (command.name === 'mode') {
       const wanted = modeWanted(command.rest);
       if (wanted === false) return { act: 'refuse', say: SAY.modeBad };
@@ -376,4 +386,62 @@ export const expired = (createdAt, now = Date.now()) => {
 export function outcomeMessage({ ok, said }) {
   const words = String(said || '').trim() || (ok ? 'Done.' : 'It did not finish, and said nothing about why.');
   return `${ok ? 'Done' : 'Not done'} - ${words}`;
+}
+
+/* ------------------------------------------------------------------ лента: телеграм как журнал аккаунта
+ *
+ * ВЛАДЕЛЕЦ, 2026-10-01: «мы должны писать в телеграм обо всём, что происходит - успешный, неуспешный таск,
+ * закончили или не смогли; пусть телеграм станет дашбордом». Повод - ночь, когда разовая задача не
+ * выполнилась, а узнал об этом человек утром, открыв приложение.
+ *
+ * ПО УМОЛЧАНИЮ ВКЛЮЧЕНА у каждого спаренного чата, выключается /feed off. Хранится на аккаунте (user_pref),
+ * а не на чате: чатов у человека обычно один, а вопрос «сообщать ли мне обо всём» - про человека.
+ *
+ * ЧТО НЕ ПОПАДАЕТ В ЛЕНТУ: служебные команды записи (#record.*) - это рычаги, а не работа, и сообщение на
+ * каждое «начать запись» было бы шумом, за которым не видно исходов. */
+export const FEED_KEY = 'telegram.feed';
+
+/** Что просят командой /feed: null - спросить, true/false - включить/выключить, false-как-отказ - мусор. */
+export function feedWanted(rest) {
+  const said = String(rest || '').trim().toLowerCase();
+  if (!said) return null;
+  if (['on', 'yes', 'all'].includes(said)) return true;
+  if (['off', 'no', 'quiet', 'none'].includes(said)) return 'off';
+  return false;
+}
+
+/** Стоит ли эта работа строки в ленте. */
+export const feedWorthy = (job) => !String((job && job.flow_id) || '').startsWith('#record');
+
+/** Откуда работа - словами, которыми её узнают. */
+export function feedSource(job) {
+  const it = job && typeof job === 'object' ? job : {};
+  const tool = String(it.tool_name || '');
+  if (it.schedule_id) return 'by a schedule';
+  if (it.args && it.args.telegram) return 'from Telegram';
+  if (tool === 'page' || tool.startsWith('page:')) return 'from the app';
+  if (tool.startsWith('case:')) return 'a test case';
+  if (tool.startsWith('mouseflow_')) return 'asked from a chat';
+  return 'on your account';
+}
+
+const short = (text, max) => {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+};
+
+/**
+ * Строка ленты. `event`: done | failed | cancelled | started | missed | paused | revived | silent.
+ * Первым - значок и исход, потому что в списке уведомлений телефона видна только первая строка.
+ */
+export function feedLine({ event, title, said, source, when }) {
+  const head = {
+    done: '✅ Done', failed: '❌ Not done', cancelled: '⏹ Cancelled', started: '▶️ Started',
+    missed: '⏰ Missed', paused: '⏸ Schedule paused', revived: '🔁 Agent restarted', silent: '⚠️ Your Mac is not listening',
+  }[event] || 'ℹ️';
+  const lines = [`${head}${title ? ` — ${short(title, 120)}` : ''}`];
+  if (said) lines.push(short(said, 600));
+  const tail = [source, when].filter(Boolean).join(' · ');
+  if (tail) lines.push(tail);
+  return lines.join('\n');
 }

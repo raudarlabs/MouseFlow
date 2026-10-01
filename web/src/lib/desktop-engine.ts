@@ -114,7 +114,9 @@ export interface RunEvent {
   /* What the turn that produced this step cost. On screen so the pace can be read while it runs, rather
    * than reconstructed from the account afterwards - the question it answers, "why does this feel slow",
    * is asked while watching, not later. */
-  spent?: { shot: number; model: number };
+  spent?: { shot: number; model: number; act?: number };
+  /** Когда шаг начался (мс эпохи) - момент, когда модель начала его решать. */
+  at?: number;
 }
 
 export interface RunResult {
@@ -133,6 +135,8 @@ export interface RunStep {
   tool: string;
   input: Record<string, unknown>;
   ms?: { shot: number; model: number; act: number };
+  /** Когда шаг начался (мс эпохи). Владелец, 2026-10-01: «время начала каждого шага и время его выполнения». */
+  at?: number;
   /** Только у `expect`: вердикт с доказательством. `pass: null` - проверить не удалось (см. _expect.mjs). */
   outcome?: { pass: boolean | null; how: string; evidence: string };
 }
@@ -724,11 +728,13 @@ async function runWave(o: {
         continue;
       }
 
-      onEvent({ type: 'tool', name: use.name, input: use.input, spent: { shot: shotMs, model: modelMs } });
       const actAt = Date.now();
+      onEvent({ type: 'tool', name: use.name, input: use.input, spent: { shot: shotMs, model: modelMs },
+        at: actAt - modelMs });
       const trace: RunStep = {
         tool: use.name ?? '?',
         input: (use.input ?? {}) as Record<string, unknown>,
+        at: actAt - modelMs,
         /* The picture and the decision belong to the TURN, not to this action - a turn that returned three
          * of them paid for one of each. Written onto every step anyway, because the alternative is a shape
          * where some steps have timings and some do not, and whoever reads them later has to know why. */
@@ -741,6 +747,7 @@ async function runWave(o: {
         const outcome = await settle(machine, limit, isAborted, (waited) =>
           onEvent({ type: 'waiting', ms: waited, limit, reason: String(use.input?.reason ?? '') }));
         results.push({ type: 'tool_result', tool_use_id: use.id, content: waitReport(outcome) });
+        trace.ms!.act = Date.now() - actAt;
         ran.push('wait');
         continue;
       }
