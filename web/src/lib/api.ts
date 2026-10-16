@@ -113,6 +113,18 @@ export interface Device {
   label: string;
   createdAt: string;
   lastUsedAt: string | null;
+  /* ЧТО МАШИНА О СЕБЕ ЗНАЕТ (Hivelink H1, db/025_device.sql). Всё необязательное: до применения миграции
+   * этого нет, и отсутствие значит «не знаем», а не «пусто». */
+  /** Имя, которое дал человек. */
+  name?: string | null;
+  /** Имя компьютера, как агент сам его прислал в claim. */
+  hostname?: string | null;
+  platform?: string | null;
+  version?: string | null;
+  /** Когда последний раз спрашивала работу. */
+  seenAt?: string | null;
+  /** Работы за `days` суток, которые взяла эта машина. Нет поля - сервер ещё не умеет считать по машинам. */
+  jobs?: { days: number; done: number; failed: number; running: string | null };
 }
 
 /* Exactly what api/gallery.js hands out - read from the endpoint, not from memory, because the first
@@ -622,11 +634,12 @@ export const caseRun = (id: string) =>
 /* ЗАПУСТИТЬ СОХРАНЁННЫЙ СКИЛЛ - через очередь, как и всё, что делается не на глазах (api/queue.js). Работа
  * переживает вкладку; прогон ложится в журнал под скиллом. Отказ («машины нет», «занята», «не хватает
  * значения») приезжает словами. */
-export const runSkill = (skill: string, args: Record<string, string> = {}) =>
+/** `device` - на какой машине (id устройства); без него - на любой свободной. */
+export const runSkill = (skill: string, args: Record<string, string> = {}, device?: string | null) =>
   call<{ ok: true; id: string }>('/api/queue', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ skill, arguments: args }),
+    body: JSON.stringify({ skill, arguments: args, ...(device ? { device } : {}) }),
   });
 
 export const caseRemove = (id: string) =>
@@ -643,6 +656,14 @@ export const mintDeviceToken = (label: string) =>
 
 export const revokeDevice = (id: string) =>
   call<{ ok: true }>(`/api/sync?token=${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+/** Дать машине имя (Hivelink H1). Пустое снимает имя. */
+export const nameDevice = (id: string, name: string) =>
+  call<{ ok: true; id: string; name: string | null }>(`/api/sync?token=${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
 
 /* Числа настоящие, и их четырнадцать, а не четыре. Маршрут удалял четыре таблицы из четырнадцати, что
  * держат содержимое человека, и отвечал «удалено всё»; теперь удаляет все и умеет это назвать. */

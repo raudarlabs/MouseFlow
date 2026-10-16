@@ -19,7 +19,7 @@ import { FAILS_BEFORE_PAUSE, decide, ruleOf, whenSaid } from './_schedule.mjs';
 import { checksOf } from './_expect.mjs';
 import { ARTIFACT_KEEP_DAYS, artifactId, dropWhich, tooBig } from './_artifact.mjs';
 import { overSpend, spentWhy } from './_spend.mjs';
-import { BROWSER_GOAL, DESKTOP_GOAL, jobId, scheduleId } from './_queue.mjs';
+import { BROWSER_GOAL, DESKTOP_GOAL, jobId, roomForOne, scheduleId } from './_queue.mjs';
 import { RUN_KEY, caseGoal, caseIdOf, expectsOf, stripCase } from './_case.mjs';
 import { PAYLOAD_MAX_BYTES } from './_payload.mjs';
 /* Исход работы, пришедшей из чата, отвечает туда же. Обе формы - в api/_telegram-out.mjs, потому что
@@ -110,12 +110,10 @@ async function dueNow(sql, who) {
   }
   if (!rows.length) return;
 
-  /* Занято - это состояние аккаунта, а не расписания: одна мышь на все расписания и на ручной запуск тоже.
-   * Спрашивается один раз на такт. */
-  const busyRows = await sql`
-    select id from run_queue where user_id = ${who.id} and state in ('queued', 'claimed') limit 1
-  `;
-  let busy = busyRows.length > 0;
+  /* Занято - это состояние машин, а не расписания: одна мышь на МАШИНУ (Hivelink H1), и расписания с
+   * ручным запуском делят их. Правило одно с постановкой руками - roomForOne из api/_queue.mjs: работ в ходу
+   * меньше, чем машин на связи. Спрашивается в начале такта и после каждой поставленной. */
+  let busy = !(await roomForOne(sql, who.id));
 
   const nowMs = Date.now();
   for (const row of rows) {
@@ -169,8 +167,9 @@ async function dueNow(sql, who) {
       `;
       /* В ЛЕНТУ - что пошло: исход придёт отдельной строкой, когда работа закроется. */
       await tellFeed(sql, who.id, feedLine({ event: 'started', title: row.label, source: 'by a schedule' }));
-      /* Одна мышь: остальные подошедшие расписания на этом такте уступают, а не выстраиваются в очередь. */
-      busy = true;
+      /* Одна мышь на машину: следующее подошедшее встаёт, только если есть ещё свободная машина, а не
+       * выстраивается в очередь за этим. */
+      busy = !(await roomForOne(sql, who.id));
       continue;
     }
 
@@ -290,6 +289,25 @@ export async function workerRoute(action, req, res, sql, who) {
     for (const one of lost) await tellOutcome(sql, who.id, one, false, 'the machine took this job and never reported back');
 
     const by = String((req.body && req.body.worker) || 'worker').slice(0, 60);
+    /* КАКАЯ ЭТО МАШИНА (Hivelink H1) - id её токена, а не присланное имя: имя компьютера не уникально,
+     * его можно прислать любое, и оно меняется при переименовании. Пусто у того, кто пришёл не с токеном
+     * устройства, - тогда всё ниже ведёт себя как до H1. */
+    const me = who.deviceId || null;
+    if (me) {
+      /* Что машина сказала о себе - в её строку. До применения 025 колонок нет, и это молча ничего не
+       * делает: сведения - удобство, а не условие работы. */
+      try {
+        await sql`update device_token set seen_at = now(), hostname = ${by} where id = ${me} and user_id = ${who.id}`;
+      } catch (_) { /* 025 not applied yet */ }
+      /* ОДНА РАБОТА НА МАШИНУ И ЗДЕСЬ: машина, у которой уже есть взятая работа, вторую не получает - ни
+       * от расписания, ни от соседней постановки. Через to_jsonb: до 025 колонки нет, и условие ложно. */
+      const holding = await sql`
+        select id from run_queue q
+        where q.user_id = ${who.id} and q.state = 'claimed' and (to_jsonb(q) ->> 'claimed_device') = ${me}
+        limit 1
+      `;
+      if (holding.length) return res.status(200).json({ ok: true, job: null });
+    }
     /* WHAT THIS CLAIMER CAN ACTUALLY DO, which the queue did not ask until it had to.
      *
      * There are two kinds of claimer on one account and they are not interchangeable. An agent's own
@@ -418,6 +436,9 @@ export async function workerRoute(action, req, res, sql, who) {
             and (
               (to_jsonb(q) ->> 'machine') is null
               or (to_jsonb(q) ->> 'machine') = ${by}
+              /* И ПО ID МАШИНЫ (Hivelink H1): привязка, поставленная из Overview/Devices, называет токен,
+               * а не имя компьютера. Имя по-прежнему сличается - им привязаны кейсы, записанные до H1. */
+              or (to_jsonb(q) ->> 'machine') = ${me || ''}
             )
             /* Поверхность. См. claimerIsBrowser выше: браузерному - только браузерное, всем остальным -
              * всё, кроме браузерного. */
@@ -441,6 +462,13 @@ export async function workerRoute(action, req, res, sql, who) {
       `;
       if (took.length) {
         const job = took[0];
+        /* КТО ВЗЯЛ - id машины рядом с присланным именем. Отдельным оператором и молча, как привязка в
+         * queueOne: до применения 025 колонки нет, а работа уже взята и должна уйти машине. */
+        if (me) {
+          try {
+            await sql`update run_queue set claimed_device = ${me} where id = ${job.id} and user_id = ${who.id}`;
+          } catch (_) { /* 025 not applied yet */ }
+        }
         /* An agent job carries an instruction, not a skill, so there is nothing to look up. Marked by the
          * flow id rather than by a column, because it is the flow id that is absent. */
         if (String(job.flow_id || '').startsWith('#')) {
@@ -641,9 +669,14 @@ export async function workerRoute(action, req, res, sql, who) {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST' });
     const body = req.body || {};
     const id = String(body.id || '');
+    /* ТОЛЬКО ТОЙ МАШИНЕ, ЧТО ВЗЯЛА (Hivelink H1). Две машины одного аккаунта иначе могли бы вести один и тот
+     * же прогон - id работы угадывать не нужно, он в журнале. Для чужой работа выглядит как «нет такой».
+     * Пусто у claimed_device (до 025, взятое страницей) или у вызывающего без токена устройства - как раньше. */
+    const me = who.deviceId || '';
     const [job] = await sql`
       select id, flow_id, tool_name, args, state, loop, claimed_at, schedule_id
       from run_queue where id = ${id} and user_id = ${who.id}
+        and (${me} = '' or coalesce(to_jsonb(run_queue) ->> 'claimed_device', '') in ('', ${me}))
     `;
     const fail = async (why) => {
       await sql`
@@ -1042,10 +1075,25 @@ export async function workerRoute(action, req, res, sql, who) {
      * тем, что спросили, - и принимается только в той форме, в которой расширение его составляет. */
     const run = typeof body.run === 'string' && /^run_[A-Za-z0-9:.\-]{1,60}$/.test(body.run) ? body.run : null;
 
+    /* Закрывает работу только та машина, что её взяла (Hivelink H1) - то же условие, что у ?worker=step. */
+    const me = who.deviceId || '';
+    /* И ЧТО МАШИНА СКАЗАЛА О СЕБЕ В ОТЧЁТЕ - версия и платформа, в её строку. Молча, если 025 не применена. */
+    if (me && body.health && typeof body.health === 'object') {
+      const version = body.health.version ? String(body.health.version).slice(0, 20) : null;
+      const platform = body.health.platform ? String(body.health.platform).slice(0, 20) : null;
+      try {
+        await sql`
+          update device_token set agent_version = coalesce(${version}, agent_version),
+                 platform = coalesce(${platform}, platform)
+          where id = ${me} and user_id = ${who.id}
+        `;
+      } catch (_) { /* 025 not applied yet */ }
+    }
     const done = await sql`
       update run_queue set state = ${ok ? 'done' : 'failed'}, ok = ${ok}, said = ${said},
              finished_at = now(), args = args || ${JSON.stringify(run ? { [RUN_KEY]: run } : {})}::jsonb
       where id = ${id} and user_id = ${who.id} and state = 'claimed'
+        and (${me} = '' or coalesce(to_jsonb(run_queue) ->> 'claimed_device', '') in ('', ${me}))
       returning id
     `;
     /* И В ЧАТ, ЕСЛИ РАБОТА ПРИШЛА ОТТУДА. Это тот самый путь, которого здесь не было: свободную цель из
@@ -1142,7 +1190,11 @@ export async function workerRoute(action, req, res, sql, who) {
 
   if (action === 'state') {
     const id = String((req.query && req.query.id) || '');
-    const rows = await sql`select state from run_queue where id = ${id} and user_id = ${who.id}`;
+    const me = who.deviceId || '';
+    const rows = await sql`
+      select state from run_queue where id = ${id} and user_id = ${who.id}
+        and (${me} = '' or coalesce(to_jsonb(run_queue) ->> 'claimed_device', '') in ('', ${me}))
+    `;
     return res.status(200).json({ ok: true, state: rows.length ? rows[0].state : 'gone' });
   }
 

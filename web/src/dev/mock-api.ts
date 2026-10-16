@@ -569,6 +569,9 @@ const json = (res: Parameters<Connect.NextHandleFunction>[1], status: number, bo
   res.end(JSON.stringify(body));
 };
 
+/* Имена машин, данные в превью (Hivelink H1). undefined - не трогали, null - сняли. */
+const MACHINE_NAMES: Record<string, string | null | undefined> = {};
+
 export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
   const url = req.url ?? '';
   const method = (req.method ?? 'GET').toUpperCase();
@@ -659,14 +662,34 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
     return json(res, 200, { url: '/?auth=ok' });
   }
 
+  /* Имя машины - запоминается, чтобы «сохранил, и список изменился» было видно в превью. */
+  if (method === 'PATCH' && /^\/api\/sync\?token=/.test(url)) {
+    const id = decodeURIComponent(url.split('token=')[1] || '');
+    let text = '';
+    req.on('data', (chunk) => { text += chunk; });
+    req.on('end', () => {
+      let name: string | null = null;
+      try { name = String((text ? JSON.parse(text) : {}).name || '').trim().slice(0, 60) || null; } catch (_) { /* empty */ }
+      MACHINE_NAMES[id] = name;
+      json(res, 200, { ok: true, id, name });
+    });
+    return;
+  }
   if (url.startsWith('/api/sync?tokens=1')) {
     return json(res, 200, {
       ok: true,
       devices: [
         /* Три агента для обзора Hivelink: один на связи, один был вчера, один ни разу не спросил работу. */
-        { id: 'dev_a1', label: 'This computer', createdAt: hoursAgo(300), lastUsedAt: new Date(Date.now() - 4000).toISOString() },
-        { id: 'dev_a2', label: 'This computer', createdAt: hoursAgo(120), lastUsedAt: hoursAgo(26) },
-        { id: 'dev_a3', label: 'This computer', createdAt: hoursAgo(2), lastUsedAt: null },
+        /* С H1 у машины есть имя, имя компьютера и счёт работ - так отвечает сервер после миграции 025. */
+        { id: 'dev_a1', label: 'This computer', createdAt: hoursAgo(300), lastUsedAt: new Date(Date.now() - 4000).toISOString(),
+          name: MACHINE_NAMES.dev_a1 ?? 'Office-1', hostname: 'DESKTOP-7K2Q', platform: 'windows', version: '0.29.0',
+          seenAt: new Date(Date.now() - 4000).toISOString(), jobs: { days: 30, done: 31, failed: 3, running: 'page:Reply that the invoice is approved' } },
+        { id: 'dev_a2', label: 'This computer', createdAt: hoursAgo(120), lastUsedAt: hoursAgo(26),
+          name: MACHINE_NAMES.dev_a2 ?? null, hostname: 'Vics-MacBook-Air', platform: 'macos', version: '0.29.0',
+          seenAt: hoursAgo(26), jobs: { days: 30, done: 12, failed: 1, running: null } },
+        { id: 'dev_a3', label: 'This computer', createdAt: hoursAgo(2), lastUsedAt: null,
+          name: MACHINE_NAMES.dev_a3 ?? null, hostname: null, platform: null, version: null, seenAt: null,
+          jobs: { days: 30, done: 0, failed: 0, running: null } },
         { id: 'dev_1', label: 'Chrome extension', createdAt: hoursAgo(200), lastUsedAt: hoursAgo(4) },
         { id: 'dev_2', label: 'Chrome extension', createdAt: hoursAgo(500), lastUsedAt: null },
       ],

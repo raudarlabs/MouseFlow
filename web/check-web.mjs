@@ -390,7 +390,8 @@ group('Hivelink: имя, дом-обзор, тесты в Skills и MCP свои
   check('доля без прогонов - тире, а не 0%', /whole > 0 \? `\$\{Math\.round\(\(part \/ whole\) \* 100\)\}%` : '—'/.test(overview));
   check('изменение к прошлому окну - только если оно было', /if \(!had\) return null;/.test(overview));
   check('и чего нельзя посчитать по машинам, сказано, а не подставлено',
-    /A run does not record the\s+machine it ran on today/.test(overview));
+    /a\s+per-machine count would be a guess, so there is none/.test(overview)
+      && /machines\.some\(\(one\) => one\.jobs\)/.test(overview));
 
   /* MCP В HIVELINK - адрес с профилем, и список инструментов профиля сверен с сервером в обе стороны. */
   const facts = read('src/lib/mcp-facts.ts');

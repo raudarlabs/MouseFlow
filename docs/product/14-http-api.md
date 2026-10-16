@@ -99,6 +99,7 @@ The account: flows, runs and device tokens.
 | `POST /api/sync?issue=1` | **session** | Mint a device token, shown once |
 | `GET /api/sync?tokens=1` | **session** | List your paired devices |
 | `DELETE /api/sync?token=<id>` | **session** | Revoke one |
+| `PATCH /api/sync?token=<id>` | **session** | Name a machine — `{ name }`, empty removes it; `409` when another machine has that name, `503` before migration 025 |
 
 The extension holds skills in its own storage and the page holds its own; neither can see the other, because
 a page and an extension are separate origins with separate storage. That is a browser guarantee, not an

@@ -79,7 +79,7 @@ export async function byDeviceToken(sql, presented) {
   if (!String(presented || '').startsWith(DEVICE_TOKEN_PREFIX)) return null;
 
   const rows = await sql`
-    select t.user_id, u.name, u.email, u.image
+    select t.id as device_id, t.label as device_label, t.user_id, u.name, u.email, u.image
     from device_token t
     left join neon_auth."user" u on u.id = t.user_id
     where t.token_hash = ${hashToken(presented)} and t.revoked_at is null
@@ -100,6 +100,12 @@ export async function byDeviceToken(sql, presented) {
     email: row.email ? String(row.email).slice(0, 200) : null,
     image: row.image ? String(row.image).slice(0, 500) : null,
     via: 'device',
+    /* КАКАЯ ЭТО МАШИНА (Hivelink H1). У каждого привязанного агента свой токен, и до этого шага сервер
+     * знал по нему только человека - поэтому десять машин одного аккаунта были для очереди одной. Теперь
+     * id токена и есть машина: по нему claim пишет, кто взял работу, а step/report/state отвечают только
+     * ему. Метка - чтобы отличить агента («This computer») от расширения и токенов, выданных руками. */
+    deviceId: String(row.device_id),
+    deviceLabel: String(row.device_label || ''),
   };
 }
 

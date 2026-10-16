@@ -11,16 +11,18 @@
  *    выключенный в трее, не спрашивает ничего и читается как «не на связи»: для того, кто даёт команды,
  *    это одно и то же.
  *  - ПРОГОНЫ - половина `?half=ran` того же api/insights.js, что считал их для прежнего дашборда.
- *  - ЧЕГО НЕТ: прогон пока не знает, на какой машине он шёл (у run_queue и user_run нет id устройства), и
- *    у всех машин одно имя. Поэтому «какая машина сколько сделала» не показано вовсе, а сказано словами -
- *    это первый шаг плана устройств (docs/HIVELINK-PLAN.md), а не цифра, которую стоило бы подставить.
+ *  - ПО МАШИНАМ (Hivelink H1): имя, которое дал человек, имя компьютера, которое прислал агент, и сколько
+ *    работ взяла каждая (run_queue.claimed_device). Всё это - после миграции 025; до неё сервер не отдаёт
+ *    `jobs`, и страница говорит «не посчитано», а не рисует нули.
  */
 import { Link } from '@tanstack/react-router';
+import { Pencil } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
 import { Said } from '@/components/Said';
-import { type Device, type RanInsights, type Schedule, devices, ranInsights, schedules } from '@/lib/api';
+import { type Device, type RanInsights, type Schedule, devices, nameDevice, ranInsights, schedules } from '@/lib/api';
 import { Page } from '@/shell/Surface';
 import { when } from '@/features/create/run-history';
 import { dotClass } from '@/features/activity/status';
@@ -41,6 +43,10 @@ const WINDOWS = [7, 30, 90] as const;
 const isAgent = (one: Device) => one.label === AGENT_LABEL;
 const seenWithin = (one: Device, ms: number, now: number) =>
   !!one.lastUsedAt && now - new Date(one.lastUsedAt).getTime() < ms;
+
+/* Имя работы в очереди - словами человека: «page:<скилл>» ставит Skills, «mouseflow_do» - свободная цель. */
+const jobSaid = (tool: string) =>
+  tool.startsWith('page:') ? `“${tool.slice(5)}”` : tool.startsWith('mouseflow_') ? 'a goal' : `“${tool}”`;
 
 /** Доля словами: «92%», и тире, когда делить не на что - ноль прогонов не «0% успеха». */
 const pct = (part: number, whole: number) => (whole > 0 ? `${Math.round((part / whole) * 100)}%` : '—');
@@ -115,6 +121,85 @@ const Days = ({ days }: { days: RanInsights['byDay'] }) => {
         <span>{days.length ? new Date(days[days.length - 1].day).toLocaleDateString([], { day: 'numeric', month: 'short' }) : ''}</span>
       </div>
     </div>
+  );
+};
+
+/* ОДНА МАШИНА: на связи ли, как называется, что делает сейчас и сколько сделала за 30 дней. Имя дают здесь
+ * же, по нажатию на него: пока его нет, строка называется именем компьютера, которое агент прислал сам, а если
+ * и его нет - меткой привязки с номером. */
+const MachineRow = ({ one, fallback, online, onNamed }: {
+  one: Device;
+  fallback: string;
+  online: boolean;
+  onNamed: (name: string | null) => void;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(one.name || '');
+  const [busy, setBusy] = useState(false);
+  const [why, setWhy] = useState<string | null>(null);
+  const shown = one.name || one.hostname || fallback;
+
+  const save = async () => {
+    setBusy(true);
+    setWhy(null);
+    try {
+      const answer = await nameDevice(one.id, draft.trim());
+      onNamed(answer.name);
+      setEditing(false);
+    } catch (err) {
+      setWhy(err instanceof Error ? err.message : 'the name was not saved');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li className="flex flex-col gap-1 rounded-lg border-stroke/45 border bg-surface-card2 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        <span className={cn('size-2 rounded-full', dotClass(online ? 'good' : 'neutral'))} aria-hidden />
+        {editing ? (
+          <form className="flex min-w-[9rem] flex-1 items-center gap-1.5" onSubmit={(ev) => { ev.preventDefault(); void save(); }}>
+            <input
+              autoFocus
+              value={draft}
+              onChange={(ev) => setDraft(ev.target.value)}
+              placeholder={one.hostname || 'Office-3'}
+              aria-label="Machine name"
+              maxLength={60}
+              className="h-7 min-w-0 flex-1 rounded-md border-stroke border bg-surface-card px-2 text-[0.85rem] text-ink-primary focus:border-input-focus focus:outline-none"
+            />
+            <Button size="xs" type="submit" isLoading={busy}>Save</Button>
+            <Button size="xs" variant="ghost" onClick={() => { setEditing(false); setDraft(one.name || ''); setWhy(null); }}>Cancel</Button>
+          </form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            title="Give this machine a name"
+            className="group flex min-w-[9rem] flex-1 items-center gap-1.5 truncate text-left text-[0.88rem] text-ink-primary"
+          >
+            <span className="truncate">{shown}</span>
+            {one.name && one.hostname && one.hostname !== one.name && (
+              <span className="truncate text-[0.74rem] text-ink-inactive">{one.hostname}</span>
+            )}
+            <Pencil className="size-3 shrink-0 text-ink-inactive opacity-0 group-hover:opacity-100" />
+          </button>
+        )}
+        <span className="text-[0.78rem] text-ink-inactive tabular-nums">
+          {one.jobs?.running ? `running ${jobSaid(one.jobs.running)}`
+            : online ? 'online' : one.lastUsedAt ? `last seen ${when(one.lastUsedAt)}` : 'never connected'}
+        </span>
+        {one.jobs && (
+          <span className="text-[0.76rem] text-ink-inactive tabular-nums" title={`Jobs this machine took in the last ${one.jobs.days} days`}>
+            {one.jobs.done} done{one.jobs.failed ? ` · ${one.jobs.failed} failed` : ''} in {one.jobs.days} d
+          </span>
+        )}
+        <span className="hidden text-[0.76rem] text-ink-inactive sm:inline">
+          {one.platform ? `${one.platform}${one.version ? ` ${one.version}` : ''} · ` : ''}attached {when(one.createdAt)}
+        </span>
+      </div>
+      {why && <Said note={{ text: why, kind: 'bad' }} variant="inline" />}
+    </li>
   );
 };
 
@@ -232,23 +317,15 @@ export const OverviewView = () => {
         </div>
         {machines && machines.length ? (
           <ul className="mt-3 flex flex-col gap-1.5">
-            {machines.map((one, i) => {
-              const online = seenWithin(one, ONLINE_MS, now);
-              return (
-                <li key={one.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-lg border-stroke/45 border bg-surface-card2 px-3 py-2">
-                  <span className={cn('size-2 rounded-full', dotClass(online ? 'good' : 'neutral'))} aria-hidden />
-                  <span className="min-w-[9rem] flex-1 truncate text-[0.88rem] text-ink-primary">
-                    {/* У всех машин сегодня одно имя - его ставит привязка. Номер - чтобы строки различались,
-                      * пока имена не дают в Devices. */}
-                    {one.label} #{i + 1}
-                  </span>
-                  <span className="text-[0.78rem] text-ink-inactive tabular-nums">
-                    {online ? 'online' : one.lastUsedAt ? `last seen ${when(one.lastUsedAt)}` : 'never connected'}
-                  </span>
-                  <span className="hidden text-[0.76rem] text-ink-inactive sm:inline">attached {when(one.createdAt)}</span>
-                </li>
-              );
-            })}
+            {machines.map((one, i) => (
+              <MachineRow
+                key={one.id}
+                one={one}
+                fallback={`${one.label} #${i + 1}`}
+                online={seenWithin(one, ONLINE_MS, now)}
+                onNamed={(name) => setMachines((was) => (was ?? []).map((m) => (m.id === one.id ? { ...m, name } : m)))}
+              />
+            ))}
           </ul>
         ) : machines ? (
           <Typography variant="p" className="mt-2 text-[0.85rem] text-ink-inactive">
@@ -256,10 +333,14 @@ export const OverviewView = () => {
             machine you attach appears here.
           </Typography>
         ) : null}
-        <Typography variant="p" className="mt-3 max-w-[76ch] text-[0.76rem] text-ink-inactive">
-          Not counted yet: which machine ran which job, and names for machines. A run does not record the
-          machine it ran on today, so a per-machine count would be a guess. Both come with Devices.
-        </Typography>
+        {/* СЧЁТ ПО МАШИНАМ - только когда сервер его даёт (`jobs`, Hivelink H1, после миграции 025). До этого
+          * работа не знала, какая машина её взяла, и число по машине было бы догадкой - поэтому сказано. */}
+        {machines && machines.length > 0 && !machines.some((one) => one.jobs) && (
+          <Typography variant="p" className="mt-3 max-w-[76ch] text-[0.76rem] text-ink-inactive">
+            Not counted yet: which machine ran which job. Until the database learns it (migration 025), a
+            per-machine count would be a guess, so there is none.
+          </Typography>
+        )}
       </section>
 
       {/* ------------------------------------------------------------------ прогоны */}

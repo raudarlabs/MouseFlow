@@ -30,8 +30,12 @@ concrete thing named for the owner to check.
       **Overview** (machines connected / online / seen, runs, failures, what is coming up); **Tests live inside
       Skills**; **MCP** is a screen of its own at `/ai`. Web only, no migration.
       [HIVELINK-PLAN §1](HIVELINK-PLAN.md)
-- [ ] **Hivelink H1–H5 — many named machines, each given its own commands.** H1 needs a migration
-      (`025_device`) and waits for approval. [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+- [x] **Hivelink H1 — the machine is its device token — built 2026-10-16.** One job per machine, not per
+      account; only the taker steps and reports; names, computer names and per-machine counts on Overview.
+      **`db/025_device.sql` is written and not applied** — the code works without it and starts counting and
+      naming once it is. [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+- [ ] **Hivelink H2–H5 — the Devices screen, commands per machine, enrolment, packaging.**
+      [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
 
 - [x] **The night the 04:30 task did not run — found and fixed 2026-10-01.** The cause was **our own test
       suite**: since 2026-09-23 a check in `agent/check-swift.mjs` ran the installer's `write_login_item`

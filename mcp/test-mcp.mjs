@@ -4719,9 +4719,10 @@ group('расписания тикают опросом агента, а не к
       && !/args[\s\S]{0,80}schedule_id/.test(migration));
 
   /* Одна мышь - то же правило, что у ручного запуска: пока машина занята, второй прогон не ставится. */
-  check('занятая машина: подошедшее уступает такт, а не выстраивается в очередь',
-    route.includes("select id from run_queue where user_id = ${who.id} and state in ('queued', 'claimed')")
-      && route.includes('busy = true;'));
+  /* С Hivelink H1 «занято» - по машинам: подошедшее встаёт, пока есть свободная, и уступает, когда нет. */
+  check('занятые машины: подошедшее уступает такт, а не выстраивается в очередь',
+    (route.match(/busy = !\(await roomForOne\(sql, who\.id\)\);/g) || []).length === 2
+      && route.includes('const verdict = decide({ rule, dueMs, nowMs, busy });'));
 
   /* Пропуск - самый частый исход у любого домашнего расписания, и он обязан быть виден. */
   check('пропуск записывается в само расписание - прогоном он не становится, а молчать нельзя',
@@ -5539,8 +5540,8 @@ group('тест-кейс: утверждения заранее, вердикт 
     /export async function queueOne/.test(queue)
       && /from '\.\/_queue\.mjs'/.test(route) && /from '\.\/_queue\.mjs'/.test(door));
   check('«машины нет» и «одна мышь» сказаны один раз',
-    /has no computer listening/.test(queue) && /already busy on that machine/.test(queue)
-      && !/already busy on that machine/.test(route));
+    /has no computer listening/.test(queue) && /is already busy \(/.test(queue)
+      && /already busy \(\$\{already\.tool_name/.test(queue) && !/already busy \(\$\{/.test(route));
 
   /* ЧТО СЧИТАЕТСЯ ПРОГОНОМ КЕЙСА - один ответ на две двери: тулы берут запросы у маршрута страницы. */
   check('перечень кейсов - один запрос, и тулы берут его у страницы',
@@ -6095,12 +6096,12 @@ group('кейс можно привязать к машине, и до мигр�
    * применения падает вся постановка в очередь. */
   check('привязка ставится отдельным оператором, а не во вставке',
     /insert into run_queue \(id, user_id, flow_id, tool_name, args, schedule_id\)/.test(queue)
-      && /update run_queue set machine = \$\{machine\} where id = \$\{id\}/.test(queue));
+      && /update run_queue set machine = \$\{pin\} where id = \$\{id\}/.test(queue));
 
   /* И НЕ МОЛЧА. Кейс, привязанный к QA-VM и ушедший на любую машину, - это ложное зелёное: человек
    * думает, что проверял там, а проверяли здесь. Тихий catch был бы худшим решением из возможных. */
   check('неудача привязки ВОЗВРАЩАЕТСЯ, а не проглатывается',
-    /return \{ id, unpinned: machine \};/.test(queue));
+    /return \{ id, unpinned: pin \};/.test(queue));
   check('и вызывающий говорит её словами',
     /put\.unpinned/.test(cases) && /It was NOT pinned to/.test(cases));
   /* Двумя половинами, потому что в исходнике фраза склеена через ` + ': проверять её одной регуляркой
@@ -6347,6 +6348,72 @@ group('a saved skill runs from the page through the queue, and says what it lack
     /toolName: `page:\$\{flow\.name\}`/.test(block)
       && /String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\) \? 'you'/.test(read('../api/mcp.js')));
   check('a recording is never given a gate - nobody could answer it', /flow\.kind === 'created' && asked === ONE_WAY/.test(block));
+}
+
+/* HIVELINK H1 - МАШИНА КАК СУЩНОСТЬ НА СЕРВЕРЕ (docs/HIVELINK-PLAN.md §3). Машина - это токен агента; по
+ * нему очередь знает, кто взял работу, считает «занято» по машине, а не по аккаунту, и отвечает на шаг и
+ * отчёт только тому, кто взял. И всё это работает до миграции 025 - через to_jsonb и try/catch, как 022. */
+group('Hivelink H1: a machine is its device token, one job per machine, and only the taker reports');
+{
+  const session = read('../api/_session.js');
+  const queue = read('../api/_queue.mjs');
+  const worker = read('../api/_mcp-worker.mjs');
+  const sync = read('../api/sync.js');
+  const door = read('../api/queue.js');
+  const migration = read('../db/025_device.sql');
+
+  check('the device token says which machine it is, not only whose',
+    /t\.id as device_id/.test(session) && /deviceId: String\(row\.device_id\)/.test(session));
+  check('the migration adds names and facts to device_token and the taker to run_queue',
+    /alter table device_token add column if not exists name\s+text;/.test(migration)
+      && /alter table device_token add column if not exists seen_at\s+timestamptz;/.test(migration)
+      && /alter table run_queue add column if not exists claimed_device text;/.test(migration)
+      && /НЕ ПРИМЕНЕНА/.test(migration));
+
+  /* ОДНА РАБОТА НА МАШИНУ. Прежнее правило - «что-нибудь в ходу на аккаунте» - больше не стоит ни в
+   * постановке, ни в часах расписаний: десять машин - десять мышей. */
+  check('busy is per machine: a pinned job waits only for its machine, an unpinned one for a free seat',
+    /one\.machine === pin \|\| one\.claimed_device === pin/.test(queue)
+      && /const seats = Math\.max\(1, await onlineAgents\(sql, userId\)\);/.test(queue)
+      && /return active\.length >= seats \? active\[0\] : null;/.test(queue));
+  check('the account-wide busy query is gone from the queue and from the schedule tick',
+    !/select id, tool_name from run_queue where user_id = \$\{userId\} and state in \('queued', 'claimed'\) limit 1/.test(queue)
+      && !/select id from run_queue where user_id = \$\{who\.id\} and state in \('queued', 'claimed'\) limit 1/.test(worker)
+      && (worker.match(/busy = !\(await roomForOne\(sql, who\.id\)\);/g) || []).length === 2);
+  check('online means the token asked recently, counted only over agents',
+    /label = \$\{AGENT_LABEL\}/.test(queue) && /last_used_at > now\(\) - /.test(queue)
+      && /export const AGENT_LABEL = 'This computer';/.test(queue));
+  check('a machine named by id must be this account\'s and not revoked, or nothing is queued',
+    /where id = \$\{String\(deviceId\)\} and user_id = \$\{userId\} and revoked_at is null/.test(queue)
+      && /kind: 'no-device'/.test(queue) && /Nothing was queued|nothing was queued for it/.test(queue));
+
+  /* CLAIM. Пишет, кто взял; машине, у которой уже есть взятая работа, вторую не даёт; привязка сличается
+   * и с id, и с прежним именем компьютера, которым привязаны старые кейсы. */
+  const claim = worker.slice(worker.indexOf("if (action === 'claim')"), worker.indexOf("if (action === 'step')"));
+  check('claim records which machine took the job, without breaking before 025',
+    /update run_queue set claimed_device = \$\{me\} where id = \$\{job\.id\}/.test(claim)
+      && /catch \(_\) \{ \/\* 025 not applied yet \*\/ \}/.test(claim));
+  check('a machine already holding a job is given no second one',
+    /\(to_jsonb\(q\) ->> 'claimed_device'\) = \$\{me\}/.test(claim)
+      && /if \(holding\.length\) return res\.status\(200\)\.json\(\{ ok: true, job: null \}\);/.test(claim));
+  check('a pin matches the device id as well as the old computer name',
+    /or \(to_jsonb\(q\) ->> 'machine'\) = \$\{by\}/.test(claim) && /or \(to_jsonb\(q\) ->> 'machine'\) = \$\{me \|\| ''\}/.test(claim));
+
+  /* ТОЛЬКО ВЗЯВШАЯ ВЕДЁТ И ЗАКРЫВАЕТ. Условие одно на три двери, и оно пропускает то, у чего взявшего нет
+   * (до 025, работа страницы) - иначе H1 сломал бы всё, что шло до неё. */
+  const taker = /\(\$\{me\} = '' or coalesce\(to_jsonb\(run_queue\) ->> 'claimed_device', ''\) in \('', \$\{me\}\)\)/g;
+  check('step, report and state answer only the machine that took the job', (worker.match(taker) || []).length === 3);
+
+  check('the device list carries names, facts and per-machine counts - and no counts it cannot make',
+    /to_jsonb\(device_token\) ->> 'hostname' as hostname/.test(sync)
+      && /\.\.\.\(counted \? \{ jobs: /.test(sync)
+      && /column_name = 'claimed_device'/.test(sync));
+  check('a machine is named from a signed-in browser, and two machines cannot share a name',
+    /if \(req\.method === 'PATCH' && query\.token\)/.test(sync)
+      && /lower\(name\) = lower\(\$\{name\}\)/.test(sync)
+      && /needs database migration 025/.test(sync));
+  check('the queue door takes a machine for a skill and for a goal',
+    (door.match(/^\s+device,$/gm) || []).length === 2 && /const device = body\.device \?/.test(door));
 }
 
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by

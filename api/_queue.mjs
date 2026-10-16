@@ -68,6 +68,70 @@ export async function workerSeen(sql, userId) {
   }
 }
 
+/* ------------------------------------------------------------------ МАШИНЫ (Hivelink H1)
+ *
+ * Машина - это токен агента (см. db/025_device.sql и byDeviceToken). Метку ставит привязка агента на
+ * Connections; расширение и токены, выданные руками, - не машины, которым дают команды. */
+export const AGENT_LABEL = 'This computer';
+
+/* «На связи» - спрашивал работу недавно. Агент спрашивает каждые 3 с и при сбоях отступает до 60 с, так что
+ * полторы минуты тишины значат, что он выключен, спит или работу не берёт. last_used_at, а не seen_at из 025:
+ * он есть на любом развёртывании и пишется на каждом запросе с токеном - для «жив ли» этого достаточно. */
+export const DEVICE_ONLINE_MS = 90_000;
+
+/** Сколько машин аккаунта сейчас на связи. 0 - ни одной, и это тоже ответ. */
+export async function onlineAgents(sql, userId) {
+  try {
+    const rows = await sql`
+      select count(*)::int as n from device_token
+      where user_id = ${userId} and revoked_at is null and label = ${AGENT_LABEL}
+        and last_used_at > now() - ${`${Math.round(DEVICE_ONLINE_MS / 1000)} seconds`}::interval
+    `;
+    return rows.length ? Number(rows[0].n) || 0 : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+/** Машина этого аккаунта по id, или null - чужая, отозванная или несуществующая выглядят одинаково. */
+export async function deviceOf(sql, userId, deviceId) {
+  if (!deviceId || !/^dev_[0-9a-f]{4,40}$/.test(String(deviceId))) return null;
+  const rows = await sql`
+    select id, label, to_jsonb(device_token) ->> 'name' as name, to_jsonb(device_token) ->> 'hostname' as hostname
+    from device_token where id = ${String(deviceId)} and user_id = ${userId} and revoked_at is null limit 1
+  `;
+  return rows.length ? rows[0] : null;
+}
+
+/** Как назвать машину в словах отказа: её имя, имя компьютера или, если не знаем ничего, «that machine». */
+export const deviceSaid = (one) => (one && (one.name || one.hostname)) || 'that machine';
+
+/* ЧТО СЕЙЧАС ЗАНЯТО. Одна работа на МАШИНУ, а не на аккаунт: десять машин - десять мышей.
+ *
+ * Работа с привязкой (run_queue.machine) занимает свою машину; без привязки - любую свободную. Поэтому:
+ *   - привязанная к D встаёт, если у D нет ни поставленной на неё, ни взятой ею работы;
+ *   - непривязанная встаёт, если работ в ходу меньше, чем машин на связи (и не меньше одной - машина,
+ *     замолчавшая минуту назад, всё ещё может взять следующую, как это было до H1).
+ * claimed_device - через to_jsonb, как machine у 022: до применения 025 колонки нет, и запрос, назвавший
+ * её прямо, ронял бы постановку в очередь целиком, а не «не считал по машинам». */
+async function busyFor(sql, userId, pin) {
+  const active = await sql`
+    select id, tool_name, to_jsonb(q) ->> 'machine' as machine, to_jsonb(q) ->> 'claimed_device' as claimed_device
+    from run_queue q where user_id = ${userId} and state in ('queued', 'claimed')
+  `;
+  if (pin) {
+    const mine = active.find((one) => one.machine === pin || one.claimed_device === pin);
+    return mine || null;
+  }
+  const seats = Math.max(1, await onlineAgents(sql, userId));
+  return active.length >= seats ? active[0] : null;
+}
+
+/** То же правило для часов расписаний (dueNow): можно ли поставить ещё одну работу без привязки. */
+export async function roomForOne(sql, userId) {
+  return !(await busyFor(sql, userId, null));
+}
+
 /**
  * Положить одну работу в очередь, если её есть куда положить.
  *
@@ -78,7 +142,7 @@ export async function workerSeen(sql, userId) {
  *   вслух, см. ниже.
  */
 export async function queueOne(
-  sql, userId, { flowId, toolName, args, scheduleId = null, machine = null },
+  sql, userId, { flowId, toolName, args, scheduleId = null, machine = null, device = null },
 ) {
   const seen = await workerSeen(sql, userId);
   if (seen === null) {
@@ -90,14 +154,30 @@ export async function queueOne(
     };
   }
 
-  const already = await sql`
-    select id, tool_name from run_queue where user_id = ${userId} and state in ('queued', 'claimed') limit 1
-  `;
-  if (already.length) {
+  /* МАШИНА, НАЗВАННАЯ ПО ID (Hivelink H1). Чужая или отозванная - отказ словами, а не работа, которую
+   * никто никогда не возьмёт. Имя компьютера (`machine`, у кейсов) по-прежнему принимается как было. */
+  let target = null;
+  if (device) {
+    target = await deviceOf(sql, userId, device);
+    if (!target) {
+      return {
+        kind: 'no-device',
+        why: 'That machine is not attached to this account any more, so nothing was queued for it. Pick one '
+          + 'from the machines on Overview.',
+      };
+    }
+  }
+  const pin = target ? target.id : machine;
+
+  const already = await busyFor(sql, userId, pin);
+  if (already) {
     return {
       kind: 'busy',
-      why: `MouseFlow is already busy on that machine (${already[0].tool_name || already[0].id}). One `
-        + 'thing at a time - there is one mouse. Wait for it, or call mouseflow_stop.',
+      why: (pin
+        ? `${deviceSaid(target)} is already busy (${already.tool_name || already.id}). One thing at a time on `
+          + 'one machine - there is one mouse. Wait for it, or call mouseflow_stop.'
+        : `Every machine that is listening is already busy (${already.tool_name || already.id}). One thing at `
+          + 'a time per machine - there is one mouse each. Wait for one, or call mouseflow_stop.'),
     };
   }
 
@@ -117,12 +197,12 @@ export async function queueOne(
    * НО НЕ МОЛЧА. Кейс, привязанный к QA-VM и запущенный где угодно, - это ровно ложное зелёное: человек
    * думает, что проверял на той машине, а проверяли на этой. Поэтому неудача привязки ВОЗВРАЩАЕТСЯ, и
    * вызывающий обязан сказать её словами. Тихий catch тут был бы худшим из возможных решений. */
-  if (!machine) return { id };
+  if (!pin) return { id };
   try {
-    await sql`update run_queue set machine = ${machine} where id = ${id} and user_id = ${userId}`;
+    await sql`update run_queue set machine = ${pin} where id = ${id} and user_id = ${userId}`;
     return { id };
   } catch (_) {
-    return { id, unpinned: machine };
+    return { id, unpinned: pin };
   }
 }
 

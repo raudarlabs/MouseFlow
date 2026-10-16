@@ -127,6 +127,9 @@ async function handler(req, res) {
      *
      * ПАРАМЕТРЫ ПРОВЕРЯЮТСЯ ЗДЕСЬ, а не ночью у драйвера: пустое значение подставилось бы дырой в цель, и
      * прогон сделал бы почти то. Отказ называет, чего не хватает, - та же missingParams, что у драйвера. */
+    /* НА КАКОЙ МАШИНЕ (Hivelink H1): id устройства, или ничего - тогда любая свободная. Проверяет его
+     * queueOne: чужая или отозванная машина - отказ словами, а не работа, которую никто не возьмёт. */
+    const device = body.device ? String(body.device).trim().slice(0, 60) : null;
     if (body.skill !== undefined) {
       const skillId = String(body.skill || '').trim();
       if (!ID.test(skillId)) return fail(res, 400, 'that is not a skill id');
@@ -151,6 +154,7 @@ async function handler(req, res) {
          * зеркала прогонов со страницы (api/mcp.js), и их двери трогают строки по этому точному имени. */
         toolName: `page:${flow.name}`.slice(0, 80),
         args: { ...values, ...(gate ? { gate } : {}) },
+        device,
       });
       if (put.why) return res.status(409).json({ ok: false, error: { type: 'queue_error', message: put.why } });
       return res.status(200).json({ ok: true, id: put.id });
@@ -181,6 +185,7 @@ async function handler(req, res) {
       : {};
     const put = await queueOne(sql, who.id, {
       flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}), ...browser },
+      device,
     });
     if (put.why) return res.status(409).json({ ok: false, error: { type: 'queue_error', message: put.why } });
     return res.status(200).json({ ok: true, id: put.id });

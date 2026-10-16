@@ -77,6 +77,12 @@ async function handler(req, res) {
       if (who.via !== 'session') return fail(res, 403, 'only a signed-in browser can revoke a device');
       return await revokeToken(req, res, sql, who);
     }
+    /* ИМЯ МАШИНЫ (Hivelink H1). PATCH с ?token= - это переименование устройства, а не предпочтение: у
+     * предпочтения нет id в адресе. Только из браузера - как выдача, список и отзыв. */
+    if (req.method === 'PATCH' && query.token) {
+      if (who.via !== 'session') return fail(res, 403, 'only a signed-in browser can name a device');
+      return await nameToken(req, res, sql, who);
+    }
     /* ОДИН PAYLOAD, ПО ПРОСЬБЕ. Список их больше не везёт (см. pull), а нужны они там, где с записью
      * действительно что-то делают: забирают в браузер, переименовывают, публикуют, открывают. Все эти
      * случаи - действие человека, а не открытие страницы, и лишний запрос там незаметен. */
@@ -130,17 +136,86 @@ async function setPref(req, res, sql, who) {
 
 async function listTokens(res, sql, who) {
   const rows = await sql`
-    select id, label, created_at, last_used_at from device_token
+    select id, label, created_at, last_used_at,
+           to_jsonb(device_token) ->> 'name' as name,
+           to_jsonb(device_token) ->> 'hostname' as hostname,
+           to_jsonb(device_token) ->> 'platform' as platform,
+           to_jsonb(device_token) ->> 'agent_version' as agent_version,
+           to_jsonb(device_token) ->> 'seen_at' as seen_at
+    from device_token
     where user_id = ${who.id} and revoked_at is null
-    order by created_at desc limit 20
+    order by created_at desc limit 50
   `;
+  /* ЧТО КАЖДАЯ МАШИНА ДЕЛАЕТ И СДЕЛАЛА (Hivelink H1) - из run_queue по claimed_device, за тридцать дней.
+   * До применения 025 колонки нет, to_jsonb отдаёт null, и счёт пуст: это «не знаем», а не «ноль», и
+   * поэтому `jobs` тогда не отдаётся вовсе. */
+  let stats = new Map();
+  let counted = false;
+  try {
+    const byDevice = await sql`
+      select to_jsonb(q) ->> 'claimed_device' as device,
+             count(*) filter (where state = 'done')::int as done,
+             count(*) filter (where state = 'failed')::int as failed,
+             max(case when state = 'claimed' then tool_name end) as running
+      from run_queue q
+      where user_id = ${who.id} and created_at > now() - interval '30 days'
+        and (to_jsonb(q) ->> 'claimed_device') is not null
+      group by 1
+    `;
+    stats = new Map(byDevice.map((r) => [r.device, r]));
+    const has = await sql`
+      select 1 from information_schema.columns
+      where table_name = 'run_queue' and column_name = 'claimed_device' limit 1
+    `;
+    counted = has.length > 0;
+  } catch (_) {
+    counted = false;
+  }
   return res.status(200).json({
     ok: true,
-    devices: rows.map((r) => ({
-      id: r.id, label: r.label, createdAt: r.created_at, lastUsedAt: r.last_used_at,
-    })),
+    devices: rows.map((r) => {
+      const one = stats.get(r.id);
+      return {
+        id: r.id, label: r.label, createdAt: r.created_at, lastUsedAt: r.last_used_at,
+        name: r.name || null, hostname: r.hostname || null, platform: r.platform || null,
+        version: r.agent_version || null, seenAt: r.seen_at || null,
+        ...(counted ? { jobs: { days: 30, done: one ? one.done : 0, failed: one ? one.failed : 0,
+          running: one ? one.running || null : null } } : {}),
+      };
+    }),
     you: { name: who.name, image: who.image },
   });
+}
+
+/* Дать машине имя. Пустое - снять имя (машина снова называется по имени компьютера). Одно имя на аккаунт:
+ * два «Office-3» в списке - это выбор, который нельзя сделать правильно. */
+async function nameToken(req, res, sql, who) {
+  const id = String((req.query && req.query.token) || '');
+  const name = String((req.body && req.body.name) || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!id) return fail(res, 400, 'which device?');
+  try {
+    if (name) {
+      const taken = await sql`
+        select 1 from device_token
+        where user_id = ${who.id} and revoked_at is null and id <> ${id} and lower(name) = lower(${name}) limit 1
+      `;
+      if (taken.length) return fail(res, 409, `another machine is already called "${name}"`);
+    }
+    const rows = await sql`
+      update device_token set name = ${name || null}
+      where id = ${id} and user_id = ${who.id} and revoked_at is null
+      returning id
+    `;
+    if (!rows.length) return fail(res, 404, 'no such device on this account');
+    return res.status(200).json({ ok: true, id, name: name || null });
+  } catch (err) {
+    /* Колонки name нет - миграция 025 не применена. Сказано словами: «не сохранилось» без причины читается
+     * как поломка экрана. */
+    if (/column .*name.* does not exist/i.test(String(err && err.message))) {
+      return fail(res, 503, 'naming machines needs database migration 025, which is not applied yet');
+    }
+    throw err;
+  }
 }
 
 async function revokeToken(req, res, sql, who) {
