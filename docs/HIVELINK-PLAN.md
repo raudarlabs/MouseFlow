@@ -49,8 +49,8 @@ not record its machine today, so a per-machine number would be invented. Both ar
 - `step`/`report`/`state` require `claimed_by = deviceId`; stop, status and the stale sweep per machine.
 - **Works with 0.29.0 agents unchanged** — each already presents its own token.
 
-**Built 2026-10-16; `db/025_device.sql` written and NOT applied** (it needs the owner's go-ahead and a
-machine with `.env.local`). As built:
+**Built 2026-10-16; `db/025_device.sql` applied the same day** (owner's go-ahead; all eight columns and
+the index read back). As built:
 - `byDeviceToken` returns `deviceId`. The claim stamps `seen_at`/`hostname` on the token, records
   `claimed_device`, gives a machine that already holds a job no second one, and matches a pin
   (`run_queue.machine`) against the device id as well as the old computer name.

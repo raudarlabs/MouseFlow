@@ -6370,7 +6370,7 @@ group('Hivelink H1: a machine is its device token, one job per machine, and only
     /alter table device_token add column if not exists name\s+text;/.test(migration)
       && /alter table device_token add column if not exists seen_at\s+timestamptz;/.test(migration)
       && /alter table run_queue add column if not exists claimed_device text;/.test(migration)
-      && /НЕ ПРИМЕНЕНА/.test(migration));
+      && /ПРИМЕНЕНА 2026-10-16/.test(migration));
 
   /* ОДНА РАБОТА НА МАШИНУ. Прежнее правило - «что-нибудь в ходу на аккаунте» - больше не стоит ни в
    * постановке, ни в часах расписаний: десять машин - десять мышей. */
