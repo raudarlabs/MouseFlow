@@ -175,6 +175,15 @@ under the input and a "Dashboard" button to a deployment that no longer exists):
   is the one that chat was paired with (`chat_sender`, `allowed`). The check is executed in
   `api/_test-telegram.mjs` — forged user, foreign token, old string, no signature all refused.
 
+**Machine cards in Telegram, 2026-10-16** (owner: "each device with its own options - give a command, shut
+down, reboot, status"): /machines is a list of buttons; a tap turns the same message into that machine's
+card — status, platform and version, what it cannot do, what it is running — with **Give a task** (the next
+task goes there, once), **Make default** (= /use), **Refresh**, **Pause/Resume**, **Stop** the current job,
+and **Restart** / **Shut down**, each asked twice. Restart and shut down are agent commands (see
+`agent/PROTOCOL.md`); a machine whose agent has not declared `power` is told to update rather than given a
+job it would never take. The menu button is now also set per chat — the previous bot had set one for the
+chat itself, which outranks the default.
+
 ## 4. Open questions for the owner
 
 1. Commands beyond skill / goal / stop / screenshot — shell commands? (new, and the riskiest)

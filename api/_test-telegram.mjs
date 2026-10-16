@@ -518,5 +518,27 @@ group('мини-приложение: initData проверяется подпи
     /export const KEYBOARD = \{/.test(words) && /if \(KEYBOARD_BUTTONS\[said\]\) return \{ name: KEYBOARD_BUTTONS\[said\], rest: '' \};/.test(words));
 }
 
+/* КАРТОЧКИ МАШИН (2026-10-16): у каждой машины свои кнопки, а перезагрузка и выключение - вторым нажатием. */
+group('карточки машин: свои кнопки, опасное - со вторым нажатием, и только агенту, который умеет');
+{
+  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8');
+  const worker = readFileSync(new URL('./_mcp-worker.mjs', import.meta.url), 'utf8');
+  check('/machines - список кнопками, и карточка открывается в том же сообщении',
+    /if \(route\.act === 'machines'\) \{ await machineList\(sql, update, userId\);/.test(route)
+      && /callTelegram\('editMessageText'/.test(route) && /callback_data: `mc:card:\$\{m\.id\}`/.test(route));
+  check('кнопки карточки ведут к своему делу', ['task', 'use', 'pause', 'resume', 'stop', 'rst', 'off']
+    .every((a) => new RegExp(`mc:${a}:\\$\\{m\\.id\\}`).test(route)));
+  check('перезагрузка и выключение - сначала вопрос, работа - только по второму нажатию',
+    /if \(action === 'rst' \|\| action === 'off'\) return machineCard\(sql, update, userId, m\.id, null,/.test(route)
+      && /if \(action === 'rst!' \|\| action === 'off!'\)/.test(route));
+  check('и только машине, чей агент сказал, что умеет', /if \(!m\.caps \|\| !m\.caps\.power\)/.test(route)
+    && /and \(\$\{claimerPower\} or q\.flow_id not like '#machine\.%'\)/.test(worker));
+  check('callback_data укладывается в 64 байта телеграма', 'mc:rst!:dev_0123456789ab'.length <= 64);
+  check('«Give a task» - один раз и не вечно', /const device = \(await takeOnce\(sql, userId\)\) \|\| await machineOf\(sql, userId\);/.test(route)
+    && /30 \* 60_000/.test(route));
+  check('и кнопка меню ставится этому чату, потому что личная сильнее общей',
+    /callTelegram\('setChatMenuButton', \{\s*chat_id: chatId,/.test(route));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

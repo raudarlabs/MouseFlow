@@ -5285,6 +5285,11 @@ enum Courier {
                 } else {
                     let done = carry(job)
                     report(link, id: job.id, done: done)
+                    /* ПЕРЕЗАГРУЗКА - ПОСЛЕ ОТЧЁТА: после неё отчитаться будет некому. */
+                    if let kind = powerPending {
+                        powerPending = nil
+                        power(link, kind: kind)
+                    }
                 }
             }
         }
@@ -5339,6 +5344,8 @@ enum Courier {
                                    * Recording, на которой любая цель падает на первом шаге (найдено 2026-10-16). */
                                   "canSee": Permission.screenRecording,
                                   "canAct": Permission.accessibility && !recordOnly,
+                                  /* Перезагрузить и выключить по команде из аккаунта - умеет с 2026-10-16. */
+                                  "power": !recordOnly,
                                   "wait": claimWaitSeconds]
         guard let body = try? JSONSerialization.data(withJSONObject: ask),
               let (status, data) = request(url, token: link.token, body: body) else {
@@ -5706,7 +5713,55 @@ enum Courier {
         var body: String?
     }
 
+    /* ПЕРЕЗАГРУЗИТЬ ИЛИ ВЫКЛЮЧИТЬ (2026-10-16). Команда из аккаунта - отчёт «перезагружаюсь» уходит первым,
+     * потом через две секунды окну входа отправляется то же событие, что шлёт пункт меню Apple: 'rest' -
+     * перезапуск, 'shut' - выключение (QA1134). Без sudo и без диалога; программа с несохранённой работой
+     * может его остановить, и тогда агент говорит об этом событием power-failed - работа к тому времени уже
+     * закрыта как начатая. */
+    private static var powerPending: String?
+
+    private static func power(_ link: Account.Link, kind: String) {
+        sleep(2)
+        let code = kind == "shutdown" ? "shut" : "rest"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", "tell application \"loginwindow\" to «event aevt\(code)»"]
+        let errors = Pipe()
+        task.standardError = errors
+        var said = ""
+        do {
+            try task.run()
+            task.waitUntilExit()
+            if task.terminationStatus != 0 {
+                said = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "osascript failed"
+            }
+        } catch {
+            said = "could not run osascript: \(error.localizedDescription)"
+        }
+        if said.isEmpty { log("\(kind) requested from the account"); return }
+        log("\(kind) did not happen: \(said)")
+        guard let url = URL(string: link.base + "/api/mcp?worker=event") else { return }
+        let ask: [String: Any] = ["event": "power-failed", "kind": kind,
+                                  "machine": Host.current().localizedName ?? "this Mac", "said": said]
+        if let body = try? JSONSerialization.data(withJSONObject: ask) {
+            _ = request(url, token: link.token, body: body)
+        }
+    }
+
     private static func carry(_ job: Job) -> Done {
+        if job.command == "#machine.restart" || job.command == "#machine.shutdown" {
+            if recordOnly {
+                return Done(ok: false, said: "This agent is record-only, so it does not restart or shut down the Mac.",
+                            body: nil)
+            }
+            let kind = job.command == "#machine.shutdown" ? "shutdown" : "restart"
+            powerPending = kind
+            return Done(ok: true, said: kind == "shutdown"
+                ? "Shutting down in a moment. It cannot be started again from the account - somebody has to press the power button."
+                : "Restarting in a moment. The agent starts again at login; if the Mac asks for a password at startup (FileVault), it waits there.",
+                body: nil)
+        }
         if job.command == "#record.start" {
             if eventTap == nil {
                 return Done(ok: false, said: "This Mac has no input hook, so nothing would be captured - "

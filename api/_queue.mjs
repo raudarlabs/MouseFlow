@@ -52,6 +52,11 @@ export const BROWSER_GOAL = '#goal.browser';
  * и положить его в любую из них значило бы, что вторая начнёт импортировать первую. */
 export const DESKTOP_GOAL = '#goal.desktop';
 
+/* ПЕРЕЗАГРУЗИТЬ И ВЫКЛЮЧИТЬ МАШИНУ - команды из того же словаря (2026-10-16). Всегда привязаны к одной
+ * машине, и берёт их только агент, объявивший `power` (см. claim). */
+export const MACHINE_RESTART = '#machine.restart';
+export const MACHINE_SHUTDOWN = '#machine.shutdown';
+
 /** Whether a machine has asked for work lately, and when. */
 export async function workerSeen(sql, userId) {
   try {
@@ -85,7 +90,7 @@ export const CAPS_PREFIX = 'device.caps.';
 export const capsOf = (raw) => {
   try {
     const v = JSON.parse(String(raw || ''));
-    return { canSee: v.canSee === true, canAct: v.canAct === true };
+    return { canSee: v.canSee === true, canAct: v.canAct === true, power: v.power === true };
   } catch (_) {
     return null;
   }

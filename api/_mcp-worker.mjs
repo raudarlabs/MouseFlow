@@ -346,7 +346,9 @@ export async function workerRoute(action, req, res, sql, who) {
        * три секунды не превращается в запись каждые три секунды. Агент постарше полей не шлёт, и тогда о
        * нём сказано «не знаем», а не «не может». */
       if (typeof (req.body && req.body.canSee) === 'boolean' || typeof (req.body && req.body.canAct) === 'boolean') {
-        const caps = JSON.stringify({ canSee: req.body.canSee === true, canAct: req.body.canAct === true });
+        const caps = JSON.stringify({ canSee: req.body.canSee === true, canAct: req.body.canAct === true,
+          /* Умеет ли перезагрузить и выключить машину по команде из аккаунта (#machine.*). */
+          power: req.body.power === true });
         await sql`
           insert into user_pref (user_id, key, value) values (${who.id}, ${CAPS_PREFIX + me}, ${caps})
           on conflict (user_id, key) do update set value = excluded.value, updated_at = now()
@@ -440,6 +442,10 @@ export async function workerRoute(action, req, res, sql, who) {
      * постарше про `surface` не знает и выполнил бы такую цель НАСТОЯЩЕЙ мышью по экрану - ровно то, от чего
      * свой браузер и спасает. Объявление на забирающем, как и `steps`: отсутствие - «не умею». */
     const claimerOwnBrowser = !!(req.body && req.body.ownBrowser === true);
+    /* ПЕРЕЗАГРУЗИТЬ И ВЫКЛЮЧИТЬ (#machine.restart, #machine.shutdown) - только тому, кто сказал, что умеет.
+     * Агент постарше ответил бы «does not understand», а работа такая всегда привязана к машине, так что
+     * висела бы до сорока пяти минут. Объявление на забирающем, как `steps` и `ownBrowser`. */
+    const claimerPower = !!(req.body && req.body.power === true);
     const wait = Math.min(CLAIM_WAIT_MAX_MS, Math.max(0, Number((req.body && req.body.wait) || 0) * 1000));
     const until = Date.now() + wait;
 
@@ -463,6 +469,7 @@ export async function workerRoute(action, req, res, sql, who) {
              * Взятая им, она возвращается словами «asked to do something it does not understand» -
              * наблюдалось на первом же прогоне из телеграма. */
             and (${claimerOwnBrowser} or q.flow_id <> ${DESKTOP_GOAL} or coalesce(q.args ->> 'surface', '') <> 'browser')
+            and (${claimerPower} or q.flow_id not like '#machine.%')
             and (
               ${goalCapable}
               or (
@@ -1099,6 +1106,15 @@ export async function workerRoute(action, req, res, sql, who) {
   if (action === 'event') {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST' });
     const body = req.body || {};
+    /* ПЕРЕЗАГРУЗКА ИЛИ ВЫКЛЮЧЕНИЕ НЕ СЛУЧИЛИСЬ (2026-10-16). Агент отчитывается «перезагружаюсь» ДО того, как
+     * перезагрузиться - после уже не сможет, - и если система отказала, работа уже закрыта удачей. Тогда он
+     * говорит это событием, и оно уходит в ленту: молчание прочитали бы как «перезагрузилась». */
+    if (body.event === 'power-failed') {
+      const machine = String(body.machine || 'that computer').slice(0, 60);
+      await tellFeed(sql, who.id, feedLine({ event: 'failed', title: `${String(body.kind || 'restart').slice(0, 20)} on ${machine}`,
+        said: String(body.said || 'the system refused').slice(0, 300), source: 'the agent on that machine' }));
+      return res.status(200).json({ ok: true });
+    }
     if (body.event !== 'revived') return res.status(400).json({ error: 'unknown event' });
     const machine = String(body.machine || 'your Mac').slice(0, 60);
     const at = String(body.at || '').slice(0, 40);

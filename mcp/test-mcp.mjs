@@ -6545,7 +6545,7 @@ group('Hivelink H5: machines by name from MCP and Telegram, and a quiet account 
   check('Telegram: /machines lists, /use picks, and approved tasks go to the pick',
     /if \(command\.name === 'machines'\) return \{ act: 'machines' \};/.test(tgWords)
       && /if \(command\.name === 'use'\) return \{ act: 'use', machine: command\.rest \};/.test(tgWords)
-      && /const device = await machineOf\(sql, userId\);/.test(tg) && /\/use NAME/.test(tgWords));
+      && /const device = \(await takeOnce\(sql, userId\)\) \|\| await machineOf\(sql, userId\);/.test(tg) && /\/use NAME/.test(tgWords));
 
   check('an idle answer says when to ask again: 3 s while the account is in use, 15 s when quiet',
     /export const POLL_BUSY_S = 3;/.test(worker) && /export const POLL_QUIET_S = 15;/.test(worker)
@@ -6604,6 +6604,24 @@ group('the bot publishes its own command menu, and /status names the machines');
     [...words.matchAll(/command: '([a-z]+)'/g)].map((m) => m[1])
       .every((c) => c === 'help' || new RegExp(`command\\.name === '${c}'`).test(words)));
   check('/status lists the machines when there are any', /taking work now:/.test(tg) && /machinesOf\(sql, userId\)\.catch/.test(tg));
+}
+
+/* ПЕРЕЗАГРУЗИТЬ И ВЫКЛЮЧИТЬ ИЗ АККАУНТА (2026-10-16). Отчёт - до команды, отказ системы - событием. */
+group('restart and shut down from the account: reported first, done after, refused where not declared');
+{
+  const swift = read('../agent/mouseflow-agent.swift');
+  const ps = read('../agent/mouseflow-agent.ps1');
+  check('both agents declare power, except record-only', /"power": !recordOnly,/.test(swift)
+    && /",\\"power\\":" \+ \(Agent\.RecordOnly \? "false" : "true"\)/.test(ps));
+  check('both report before they act', /report\(link, id: job\.id, done: done\)\s*\/\*[^*]*\*\/\s*if let kind = powerPending/.test(swift)
+    && /Report\(root, token, id, ok, said, body\);\s*\/\*[^*]*\*\/\s*if \(_powerPending != null\)/.test(ps));
+  check('the Mac asks loginwindow, Windows asks shutdown.exe with ten seconds and a reason',
+    /tell application \\"loginwindow\\" to «event aevt\\\(code\)»/.test(swift)
+      && /\/t 10 \/c \\"Hivelink: /.test(ps));
+  check('and a refusal by the system is said in the feed', /event: 'power-failed'|"event": "power-failed"/.test(swift)
+    && /body\.event === 'power-failed'/.test(read('../api/_mcp-worker.mjs')));
+  check('record-only agents refuse it', /This agent is record-only, so it does not restart or shut down the Mac\./.test(swift)
+    && /This agent is record-only, so it does not restart or shut down the PC\./.test(ps));
 }
 
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by

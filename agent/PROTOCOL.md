@@ -141,6 +141,14 @@ last ten minutes) and 15 when it is quiet. An agent clamps it to 1-30 and uses 3
 agent older than this asks every three seconds, as it always did. Ten machines asking every three seconds
 is close to 300,000 function calls a day for one account, nearly all of them answered "nothing".
 
+**`#machine.restart` and `#machine.shutdown` (2026-10-16).** Always pinned to one machine and handed only to
+a claimer that sends `power: true` (record-only agents send false and refuse it in words). The agent
+**reports first** — "restarting in a moment" — because afterwards there is nobody to report, then acts:
+macOS sends loginwindow the same event the Apple menu does (`'rest'` / `'shut'`, QA1134, no sudo, no
+dialog), Windows runs `shutdown.exe /r|/s /t 10 /c "Hivelink: …"`. If the system refuses (an app with
+unsaved work can stop it), the agent sends `?worker=event` `{ event: "power-failed", kind, machine, said }`,
+which goes to the feed.
+
 Three rules that are part of the contract rather than of one implementation:
 
 - **Off until somebody switches it on**, and visible while it is on. Everything else an agent does happens
