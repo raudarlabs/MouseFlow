@@ -632,9 +632,10 @@ const CARD_ROWS_BELOW_MD = [
 const RANGES = [7];
 
 const PRESET = 'rounded-md px-2.5 py-1 text-[0.82rem] font-medium transition-colors duration-fast';
-/* The selected preset sits ON the accent, which is now lime - a light colour - so its label is the
- * theme-independent near-black rather than --content-on-solid, which is white by design and right
- * where it sits over a dark surface. See src/mouseflow-palette.css. */
+/* The selected preset sits ON the accent, which in the dark theme is honey - a light colour - so its label
+ * is --on-accent, the concept's near-black there and the pale ink on the light theme's deep amber, rather
+ * than --content-on-solid, which is white by design and right where it sits over a dark surface. See
+ * src/mouseflow-palette.css. */
 const PRESET_ON = 'on-accent bg-brand-primary';
 const PRESET_OFF = 'text-ink-secondary hover:bg-state-hover';
 

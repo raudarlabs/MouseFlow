@@ -190,7 +190,7 @@ const RecorderCard = ({ live, screen, elapsedMs, events, windows, onToggle, foot
             'relative grid place-items-center rounded-full transition-all duration-base',
             'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary',
             live
-              ? 'size-20 bg-fb-red shadow-[0_0_0_8px_rgba(239,68,68,0.14)] hover:bg-fb-red/90'
+              ? 'size-20 bg-fb-red shadow-[0_0_0_8px_hsl(var(--red-500)/0.14)] hover:bg-fb-red/90'
               : 'size-14 bg-brand-primary hover:bg-brand-primary/90',
           )}
         >
@@ -199,7 +199,7 @@ const RecorderCard = ({ live, screen, elapsedMs, events, windows, onToggle, foot
             * A dot said nothing - it was the same mark the status light uses, in the middle of a control.
             * A triangle and a square are the two shapes every player anybody has ever used agrees on, so
             * they need no label and survive every language. */}
-          {/* White on the RED stop, navy on the LIME start: the two states are two different
+          {/* White on the RED stop, --on-accent on the HONEY start: the two states are two different
             * backgrounds, and one colour cannot be right on both. */}
           {live
             ? <Square className="size-7 fill-current text-white" />

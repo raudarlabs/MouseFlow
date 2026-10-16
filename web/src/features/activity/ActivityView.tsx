@@ -262,7 +262,7 @@ export const ActivityView = () => {
       {/* ------------------------------------------------------------------ RUNNING NOW */}
       <section className="mb-4 rounded-xl border-stroke border bg-surface-card p-4">
         <div className="flex items-baseline gap-2.5">
-          <span className={cn('size-2 self-center rounded-full', running.length ? 'bg-fb-attention shadow-[0_0_0_4px_rgba(255,105,0,.18)]' : 'bg-ink-inactive')} />
+          <span className={cn('size-2 self-center rounded-full', running.length ? 'bg-fb-attention shadow-[0_0_0_4px_hsl(var(--fb-attention)/0.18)]' : 'bg-ink-inactive')} />
           <Typography variant="span" className={LABEL}>Running now</Typography>
           <Typography variant="span" className="text-[0.78rem] text-ink-inactive tabular-nums">
             {running.length ? `${running.length} run${running.length === 1 ? '' : 's'}` : 'nothing'}

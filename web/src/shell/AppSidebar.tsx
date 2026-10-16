@@ -50,6 +50,7 @@ import { hoursOf } from '@/lib/api';
 import { PRODUCTS, PRODUCT_IDS, type Product, screensFor } from '@/lib/product';
 import { useActivityCount } from '@/features/activity/ActivityView';
 import { useAccount } from '@/shell/AccountProvider';
+import { ProductMark } from '@/components/brand/HiveMark';
 import { goalRuns, titleOf } from '@/features/create/run-history';
 import { chooseProduct, lockedProduct, useProduct } from '@/shell/useProduct';
 
@@ -81,6 +82,9 @@ const ICONS: Record<string, LucideIcon> = {
 const ROW = 'flex h-9 items-center gap-2.5 rounded-md';
 const SQUARE = 'grid size-9 shrink-0 place-items-center rounded-md';
 const GLYPH = 'size-[18px] shrink-0';
+/* Имя продукта над меню - это словесный знак, и пишется он шрифтом заголовков (Sora), как на лендинге:
+ * один дизайн для обоих, а не похожий. Чуть плотнее по трекингу - Sora широкий, и концепт набирает его так же. */
+const NAME = 'truncate font-display text-[0.92rem] tracking-[-0.02em]';
 
 interface Props {
   onOpenSettings: (screen?: 'account' | 'connections' | 'hours') => void;
@@ -166,11 +170,9 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
               tight ? 'size-9 justify-center' : 'h-9 px-2.5',
             )}
           >
-            <svg viewBox="0 0 24 24" aria-hidden className={cn(GLYPH, 'text-logo-mark')}>
-              <path d="M5 4l14 8-6 1.6L10.5 20z" fill="currentColor" />
-            </svg>
+            <ProductMark product={product} className={GLYPH} />
             {!tight && (
-              <Typography variant="span" weight="semibold" className="truncate text-[0.92rem]">
+              <Typography variant="span" weight="semibold" className={NAME}>
                 {PRODUCTS[product].name}
               </Typography>
             )}
@@ -189,14 +191,10 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
                 tight ? 'size-9 justify-center' : 'h-9 px-2.5 py-0',
               )}
             >
-              <svg viewBox="0 0 24 24" aria-hidden className={cn(GLYPH, 'text-logo-mark')}>
-                {/* Centred on 12,12. It used to span y 3..19 in a 24 box - a whole unit high - which is
-                    invisible on its own and obvious in the extension's rail beside four centred glyphs. */}
-                <path d="M5 4l14 8-6 1.6L10.5 20z" fill="currentColor" />
-              </svg>
+              <ProductMark product={product} className={GLYPH} />
               {!tight && (
                 <>
-                  <Typography variant="span" weight="semibold" className="truncate text-[0.92rem]">
+                  <Typography variant="span" weight="semibold" className={NAME}>
                     {PRODUCTS[product].name}
                   </Typography>
                   <ChevronsUpDown className="size-3.5 shrink-0 text-ink-inactive" />
