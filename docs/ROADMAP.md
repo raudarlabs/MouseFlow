@@ -34,7 +34,10 @@ concrete thing named for the owner to check.
       account; only the taker steps and reports; names, computer names and per-machine counts on Overview.
       **`db/025_device.sql` is written and not applied** — the code works without it and starts counting and
       naming once it is. [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
-- [ ] **Hivelink H2–H5 — the Devices screen, commands per machine, enrolment, packaging.**
+- [x] **Hivelink H2 — Devices and commands — built 2026-10-16.** `/devices`: name, pause, remove, Stop, and a
+      goal or a skill sent to one machine or several; Skills and schedules on a chosen machine; Machine in Logs.
+      [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+- [ ] **Hivelink H3–H5 — enrolment without a browser on each machine, packaging and updates, MCP/Telegram.**
       [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
 
 - [x] **The night the 04:30 task did not run — found and fixed 2026-10-01.** The cause was **our own test

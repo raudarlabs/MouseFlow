@@ -86,6 +86,8 @@ export async function onlineAgents(sql, userId) {
       select count(*)::int as n from device_token
       where user_id = ${userId} and revoked_at is null and label = ${AGENT_LABEL}
         and last_used_at > now() - ${`${Math.round(DEVICE_ONLINE_MS / 1000)} seconds`}::interval
+        /* Машина на паузе (H2) работу не берёт - и мест не даёт. */
+        and coalesce(to_jsonb(device_token) ->> 'paused', 'false') <> 'true'
     `;
     return rows.length ? Number(rows[0].n) || 0 : 0;
   } catch (_) {
@@ -97,7 +99,8 @@ export async function onlineAgents(sql, userId) {
 export async function deviceOf(sql, userId, deviceId) {
   if (!deviceId || !/^dev_[0-9a-f]{4,40}$/.test(String(deviceId))) return null;
   const rows = await sql`
-    select id, label, to_jsonb(device_token) ->> 'name' as name, to_jsonb(device_token) ->> 'hostname' as hostname
+    select id, label, to_jsonb(device_token) ->> 'name' as name, to_jsonb(device_token) ->> 'hostname' as hostname,
+           coalesce(to_jsonb(device_token) ->> 'paused', 'false') = 'true' as paused
     from device_token where id = ${String(deviceId)} and user_id = ${userId} and revoked_at is null limit 1
   `;
   return rows.length ? rows[0] : null;
@@ -127,9 +130,10 @@ async function busyFor(sql, userId, pin) {
   return active.length >= seats ? active[0] : null;
 }
 
-/** То же правило для часов расписаний (dueNow): можно ли поставить ещё одну работу без привязки. */
-export async function roomForOne(sql, userId) {
-  return !(await busyFor(sql, userId, null));
+/** То же правило для часов расписаний (dueNow): можно ли поставить ещё одну работу - без привязки или на
+ *  машину `pin` (id устройства, Hivelink H2). */
+export async function roomForOne(sql, userId, pin = null) {
+  return !(await busyFor(sql, userId, pin));
 }
 
 /**
@@ -166,6 +170,14 @@ export async function queueOne(
           + 'from the machines on Overview.',
       };
     }
+  }
+  /* Машина на паузе - отказ сразу, а не работа, которая простоит, пока кто-нибудь не вспомнит про паузу. */
+  if (target && target.paused) {
+    return {
+      kind: 'paused',
+      why: `${deviceSaid(target)} is paused, so it takes no work. Resume it on Devices, or pick another machine. `
+        + 'Nothing was queued.',
+    };
   }
   const pin = target ? target.id : machine;
 

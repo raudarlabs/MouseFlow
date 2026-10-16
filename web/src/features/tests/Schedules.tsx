@@ -240,9 +240,11 @@ const Tab = ({ on, children, onClick }: {
   </button>
 );
 
-export const ScheduleFor = ({ flowId, name, onDone, onCancel }: {
+export const ScheduleFor = ({ flowId, name, onDone, onCancel, device = null }: {
   flowId: string;
   name: string;
+  /** На какой машине (Hivelink H2); null - на любой свободной. */
+  device?: string | null;
   /** Поставлено: сказать словами и перечитать полосу. */
   onDone: (said: string) => void;
   onCancel: () => void;
@@ -265,8 +267,12 @@ export const ScheduleFor = ({ flowId, name, onDone, onCancel }: {
         label: label.trim() || name,
         zone,
         ...(kind === 'every' ? { every } : { at, days }),
+        ...(device ? { device } : {}),
       });
-      onDone(`"${made.schedule.label}" runs ${made.schedule.rule}. Next ${made.schedule.nextSaid}.`);
+      /* Привязка, которая не записалась, - вслух (см. api/schedules.js): иначе человек думает, что выбрал
+       * машину, а расписание пойдёт на любую. */
+      onDone(`"${made.schedule.label}" runs ${made.schedule.rule}. Next ${made.schedule.nextSaid}.`
+        + (made.unpinned ? ` ${made.unpinned}` : ''));
     } catch (err) {
       /* Отказ показывается ЗДЕСЬ, а не общей плашкой наверху: он почти всегда про то поле, которое человек
        * только что выбрал («каждые 5 минут - слишком часто»), и читать его надо не отрываясь от полей. */

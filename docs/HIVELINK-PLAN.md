@@ -77,6 +77,23 @@ machine with `.env.local`). As built:
 - `/devices` screen; a machine picker on Create, Skills and schedules; a Machine column in Logs; Overview's
   per-machine numbers.
 
+**Built 2026-10-16** (same migration, 025, extended with `device_token.paused` and `user_schedule.machine`):
+- `/devices`: every attached machine with status (online / paused / offline), its name (click to rename),
+  what it is doing now with **Stop**, jobs in 30 days, agent platform and version; **Pause/Resume** and
+  **Remove** (revoke, pressed twice).
+- **A command to one machine or several**: a goal in words or a skill with its values, picked machines as
+  the addressees. `POST /api/queue` with `devices[]` makes one row per machine and answers `queued` and
+  `refused` with each refusal in words; at most 50.
+- **Pause from the account** is the server saying "no work" on the claim — so it works on any agent version.
+  A paused machine gets no pinned job and gives no free seat.
+- **Skills** runs and schedules on a chosen machine; a schedule pinned to a machine waits for that machine,
+  and its jobs carry the pin. `api/schedules.js` says when the pin could not be written.
+- **Logs** has a Machine column (and in the CSV): the machine that took the job, else the one it is pinned
+  to, else the name it reported.
+- Not in H2, deliberately: a "screenshot now" command needs agent 0.30 (H3); Create still runs on the
+  computer the browser is on (a machine picker there means moving its loop onto the queue); MCP and
+  Telegram get `device` in H5.
+
 ### H3 — enrolling many machines without a browser on each (agent 0.30.0)
 - An enrolment code from the account (short-lived, optionally N uses for a batch):
   `… --enroll CODE --name "Office-3"`; the agent trades it for its own token at `POST /api/devices?enroll`.

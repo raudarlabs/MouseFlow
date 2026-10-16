@@ -123,6 +123,9 @@ type Entry =
  * это текст на несколько строк, и в адресной строке ему не место. */
 export const RELAUNCH_KEY = 'mouseflow.relaunch';
 
+/** Машина строки журнала (H2): из работы очереди, к которой относится прогон. */
+const machineOfEntry = (e: Entry): string | null => (e.job && e.job.machine && e.job.machine.name) || null;
+
 const statusOf = (e: Entry): StatusFilter => {
   if (e.kind === 'job') return e.job.state === 'cancelled' ? 'cancelled' : 'failed';
   const first = runChips(e.run)[0]?.label ?? '';
@@ -149,6 +152,8 @@ const CSV_COLUMNS: CsvColumn<Entry>[] = [
     header: 'Source',
     get: (e) => (e.kind === 'run' ? sourceOf(e.run, e.job) : (e.job.scheduleId ? 'schedule' : 'chat')),
   },
+  /* На какой машине (Hivelink H2) - пусто, где не знаем: прогон страницы, или работа, которую никто не взял. */
+  { header: 'Machine', get: (e) => machineOfEntry(e) ?? '' },
   { header: 'Took', get: (e) => (e.kind === 'run' ? took(e.run) : '') },
   { header: 'Steps', get: (e) => (e.kind === 'run' ? stepsOf(e.run).length : '') },
   { header: 'Error', get: (e) => (e.kind === 'run' ? (e.run.error ?? '') : (e.job.said ?? '')) },
@@ -455,6 +460,7 @@ export const ActivityView = () => {
                   <th scope="col" className="w-full max-w-0 px-2 py-2 font-medium">What was asked</th>
                   <th scope="col" className="whitespace-nowrap px-2 py-2 font-medium">Outcome</th>
                   <th scope="col" className="whitespace-nowrap px-2 py-2 font-medium">Source</th>
+                  <th scope="col" className="whitespace-nowrap px-2 py-2 font-medium">Machine</th>
                   <th scope="col" className="whitespace-nowrap px-2 py-2 font-medium">Started</th>
                   <th scope="col" className="whitespace-nowrap px-2 py-2 text-right font-medium">Took</th>
                   <th scope="col" className="px-2 py-2 font-medium" />
@@ -511,6 +517,9 @@ export const ActivityView = () => {
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-2 py-2 align-middle text-ink-secondary">{from}</td>
+                        <td className="max-w-[10rem] truncate whitespace-nowrap px-2 py-2 align-middle text-ink-secondary">
+                          {machineOfEntry(e) ?? <span className="text-ink-inactive">—</span>}
+                        </td>
                         <td className="whitespace-nowrap px-2 py-2 align-middle text-ink-inactive tabular-nums">{when(e.at)}</td>
                         <td className="whitespace-nowrap px-2 py-2 text-right align-middle text-ink-inactive tabular-nums">{length || '—'}</td>
                         <td className="whitespace-nowrap px-2 py-2 text-right align-middle">
@@ -545,7 +554,7 @@ export const ActivityView = () => {
                             * одна раскрытая строка сдвигала шапку и все остальные. `max-w-0 w-full` плюс
                             * свой горизонтальный скроллер: широкое прокручивается внутри себя, как того и
                             * требует правило для широкого содержимого в этом репозитории. */}
-                          <td colSpan={7} className="w-full max-w-0 px-4 py-3">
+                          <td colSpan={8} className="w-full max-w-0 px-4 py-3">
                             <div className="flex flex-col gap-1 overflow-x-auto">
                               {goal && goal !== title && (
                                 <Typography variant="p" className="text-ink-inactive text-[0.78rem] italic">asked for: {goal}</Typography>

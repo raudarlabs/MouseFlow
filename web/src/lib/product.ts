@@ -132,6 +132,20 @@ export const SCREENS: Screen[] = [
         + 'week — every number counted from your own runs, and the ones that cannot be counted yet say so.',
     },
   },
+  /* DEVICES - машины аккаунта и команды им (владелец, 2026-10-16: «увидеть все компы в списке и давать
+   * каждому из них отдельные команды»). Сразу за обзором: обзор отвечает «что с ними», этот экран - «скажи им». */
+  {
+    to: '/devices',
+    label: 'Devices',
+    title: 'Devices',
+    owner: 'do',
+    nav: true,
+    tour: {
+      title: 'Name them, then tell them',
+      body: 'Every computer with the agent attached shows up here. Give each a name, pick one or several, and '
+        + 'send a goal or a skill — each machine does it on its own screen, and Logs shows which one did what.',
+    },
+  },
   {
     to: '/record',
     label: 'Record',

@@ -24,6 +24,7 @@ quietly teaching somebody the wrong product.
 | | Screen | What it covers |
 |---|---|---|
 | Overview | `/overview` | The home screen: machines connected, online now and seen in the window; runs, success rate, failures by reason, most-run skills and what runs next by itself. Per-machine counts wait for Devices — see `docs/HIVELINK-PLAN.md` |
+| Devices | `/devices` | Every attached machine: status, name, what it does now, jobs in 30 days; pause, remove, Stop; and a goal or a skill sent to one machine or several. See `docs/HIVELINK-PLAN.md` H2 |
 | [05 — Create](05-create.md) | `/create` | Prompt → flow: the executor, the plan, checkpoint gates, window pinning, live context, the decision loop |
 | [26 — Logs](26-activity.md) | `/logs` | Running, waiting and everything that ran, with Stop and Cancel beside the thing itself; the status vocabulary |
 | [27 — Test cases](27-cases.md) | `/saved` | A skill plus what must be true when it has run: the four verdicts, and why nothing without evidence is ever green |

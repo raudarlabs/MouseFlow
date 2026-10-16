@@ -15,6 +15,7 @@ import { CreateView } from '@/features/create/CreateView';
 import { ActivityView } from '@/features/activity/ActivityView';
 import { OverviewView } from '@/features/overview/OverviewView';
 import { AiView } from '@/features/ai/AiView';
+import { DevicesView } from '@/features/devices/DevicesView';
 import { SavedSkillsView } from '@/features/saved/SavedSkillsView';
 import { SkillsView } from '@/features/skills/SkillsView';
 import { GalleryView } from '@/features/gallery/GalleryView';
@@ -63,6 +64,8 @@ const routes = [
   }),
   /* ДОМ HIVELINK: сколько машин подключено, сколько на связи, что они сделали за окно. */
   createRoute({ getParentRoute: () => rootRoute, path: '/overview', component: OverviewView }),
+  /* МАШИНЫ И КОМАНДЫ ИМ (H2, docs/HIVELINK-PLAN.md). */
+  createRoute({ getParentRoute: () => rootRoute, path: '/devices', component: DevicesView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/record', component: RecordView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/create', component: CreateView }),
   /* ПРОШЛЫЙ ПРОГОН - ТОТ ЖЕ ЭКРАН, ОТКРЫТЫЙ НА НЁМ (владелец, 2026-09-28). Не отдельная страница: прогон

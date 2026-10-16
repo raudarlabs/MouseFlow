@@ -21,6 +21,7 @@ import { cors } from './_cors.mjs';
 import { firstAt, readRule, ruleOf, ruleSaid, whenSaid } from './_schedule.mjs';
 /* Ключ, под которым в аргументах работы едет указатель на тест-кейс. См. api/_case.mjs. */
 import { CASE_KEY } from './_case.mjs';
+import { deviceOf } from './_queue.mjs';
 
 const fail = (res, status, message) =>
   res.status(status).json({ error: { type: 'schedule_error', message } });
@@ -54,6 +55,9 @@ const row = (one) => {
     caseId: one.args && typeof one.args === 'object' && one.args[CASE_KEY]
       ? String(one.args[CASE_KEY].id || '') || null
       : null,
+    /* НА КАКОЙ МАШИНЕ (Hivelink H2): id устройства или null - на любой свободной. До 025 колонки нет, и
+     * поле всегда null - это «не привязано», и так оно и есть. */
+    machine: one.machine || null,
   };
 };
 
@@ -64,7 +68,8 @@ const row = (one) => {
 async function list(res, sql, userId) {
   const rows = await sql`
     select id, flow_id, tool_name, label, kind, every_minutes, at_minutes, days, zone,
-           next_at, paused, paused_why, last_at, last_said, runs, misses, fails, args
+           next_at, paused, paused_why, last_at, last_said, runs, misses, fails, args,
+           to_jsonb(user_schedule) ->> 'machine' as machine
     from user_schedule
     where user_id = ${userId} and deleted_at is null
       /* Отработавшие одноразовые, записанные до того, как они стали завершаться (см. dueNow в api/mcp.js).
@@ -117,6 +122,12 @@ async function add(req, res, sql, userId) {
   `;
   if (!flow.length) return fail(res, 404, 'no skill with that id on this account');
 
+  /* МАШИНА (Hivelink H2) - проверяется до записи: расписание, привязанное к чужой или отозванной машине,
+   * срабатывало бы в пустоту каждый раз. */
+  const askedDevice = body.device ? String(body.device).trim() : '';
+  const device = askedDevice ? await deviceOf(sql, userId, askedDevice) : null;
+  if (askedDevice && !device) return fail(res, 404, 'that machine is not attached to this account');
+
   const at = firstAt(rule, Date.now());
   if (at == null || at < Date.now() - 60_000) {
     return fail(res, 400, 'that time has already passed');
@@ -145,18 +156,35 @@ async function add(req, res, sql, userId) {
       ${rule.days || 'all'}, ${rule.zone}, ${new Date(at).toISOString()}
     )
   `;
+  /* Привязка - отдельным оператором и НЕ МОЛЧА, как у очереди: расписание без колонки 025 встало бы на
+   * любую машину, а человек думал бы, что на выбранную. */
+  let unpinned = false;
+  if (device) {
+    try {
+      await sql`update user_schedule set machine = ${device.id} where id = ${id} and user_id = ${userId}`;
+    } catch (_) {
+      unpinned = true;
+    }
+  }
   const made = await sql`
     select id, flow_id, tool_name, label, kind, every_minutes, at_minutes, days, zone,
-           next_at, paused, paused_why, last_at, last_said, runs, misses, fails, args
+           next_at, paused, paused_why, last_at, last_said, runs, misses, fails, args,
+           to_jsonb(user_schedule) ->> 'machine' as machine
     from user_schedule where id = ${id} and user_id = ${userId}
   `;
-  return res.status(200).json({ ok: true, schedule: row(made[0]) });
+  return res.status(200).json({
+    ok: true,
+    schedule: row(made[0]),
+    ...(unpinned ? { unpinned: 'It runs on any free machine for now: pinning a schedule to one needs database '
+      + 'migration 025, which is not applied yet.' } : {}),
+  });
 }
 
 async function pause(req, res, sql, userId, id) {
   const rows = await sql`
     select id, flow_id, tool_name, label, kind, every_minutes, at_minutes, days, zone,
-           next_at, paused, paused_why, last_at, last_said, runs, misses, fails, args
+           next_at, paused, paused_why, last_at, last_said, runs, misses, fails, args,
+           to_jsonb(user_schedule) ->> 'machine' as machine
     from user_schedule
     where id = ${id} and user_id = ${userId} and deleted_at is null
   `;
@@ -176,7 +204,8 @@ async function pause(req, res, sql, userId, id) {
   `;
   const after = await sql`
     select id, flow_id, tool_name, label, kind, every_minutes, at_minutes, days, zone,
-           next_at, paused, paused_why, last_at, last_said, runs, misses, fails, args
+           next_at, paused, paused_why, last_at, last_said, runs, misses, fails, args,
+           to_jsonb(user_schedule) ->> 'machine' as machine
     from user_schedule where id = ${id} and user_id = ${userId}
   `;
   return res.status(200).json({ ok: true, schedule: row(after[0]) });

@@ -125,7 +125,19 @@ export interface Device {
   seenAt?: string | null;
   /** Работы за `days` суток, которые взяла эта машина. Нет поля - сервер ещё не умеет считать по машинам. */
   jobs?: { days: number; done: number; failed: number; running: string | null };
+  /** На паузе из аккаунта (H2): сервер не выдаёт ей работу. */
+  paused?: boolean;
 }
+
+/** Машина ли это, которой дают команды, - токен агента, а не расширения и не выданный руками. */
+export const AGENT_LABEL = 'This computer';
+export const isMachine = (one: Device) => one.label === AGENT_LABEL;
+/** На связи - спрашивала работу в последние 90 с (то же окно, что у сервера, api/_queue.mjs). */
+export const MACHINE_ONLINE_MS = 90_000;
+export const machineOnline = (one: Device, now = Date.now()) =>
+  !!one.lastUsedAt && now - new Date(one.lastUsedAt).getTime() < MACHINE_ONLINE_MS;
+/** Как машину назвать: данное имя, имя компьютера, или запасное. */
+export const machineName = (one: Device, fallback = 'This computer') => one.name || one.hostname || fallback;
 
 /* Exactly what api/gallery.js hands out - read from the endpoint, not from memory, because the first
  * version of this interface said `author: string` and `published`, and the view then rendered an object
@@ -389,6 +401,8 @@ export interface Schedule {
   fails: number;
   /** Расписание тест-кейса - его id; у обычного расписания скилла пусто. См. api/_case.mjs. */
   caseId?: string | null;
+  /** Машина, к которой привязано (H2), или null - на любой свободной. */
+  machine?: string | null;
 }
 
 export const schedules = () => call<{ ok: true; schedules: Schedule[] }>('/api/schedules');
@@ -456,6 +470,8 @@ export interface LiveJob {
   startedAt: string | null;
   finishedAt: string | null;
   steps: { tool: string; input: Record<string, unknown>; at?: number; ms?: { shot?: number; model: number; act?: number } }[];
+  /** На какой машине (H2): взявшая или та, к которой привязана. Нет - не знаем. */
+  machine?: { id: string | null; name: string | null } | null;
 }
 
 /* ПРОГОН СО СТРАНИЦЫ ОБЪЯВЛЯЕТ СЕБЯ ОЧЕРЕДИ - иначе Activity его не видит и остановить его нечем, кроме
@@ -495,7 +511,9 @@ export const scheduleAdd = (body: {
   once?: string;
   zone?: string;
   arguments?: Record<string, unknown>;
-}) => call<{ ok: true; schedule: Schedule }>('/api/schedules', {
+  /** На какой машине (H2). Без него - на любой свободной. */
+  device?: string;
+}) => call<{ ok: true; schedule: Schedule; unpinned?: string }>('/api/schedules', {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify(body),
@@ -656,6 +674,41 @@ export const mintDeviceToken = (label: string) =>
 
 export const revokeDevice = (id: string) =>
   call<{ ok: true }>(`/api/sync?token=${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+/** Поставить машину на паузу из аккаунта или снять с неё (H2). */
+export const pauseDevice = (id: string, paused: boolean) =>
+  call<{ ok: true; id: string; paused: boolean }>(`/api/sync?token=${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ paused }),
+  });
+
+/** Исход постановки на несколько машин сразу: какие встали, какие нет и почему. */
+export interface FleetAnswer {
+  ok: boolean;
+  queued: { device: string; id: string }[];
+  refused: { device: string; why: string }[];
+}
+
+/* КОМАНДА МАШИНАМ (H2) - цель словами или скилл, на одну машину или на несколько. Тот же /api/queue, что у
+ * панели и Skills. Отказ на всех машинах приходит ответом 409 с тем же телом - он читается, а не бросается:
+ * «две встали, одна на паузе» - это ответ, а не ошибка. */
+export const commandMachines = async (body: {
+  devices: string[];
+  goal?: string;
+  skill?: string;
+  arguments?: Record<string, string>;
+}): Promise<FleetAnswer> => {
+  const res = await fetch('/api/queue', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const answer = await res.json().catch(() => null);
+  if (answer && Array.isArray(answer.queued)) return answer as FleetAnswer;
+  throw new Error((answer && answer.error && answer.error.message) || `the command was not sent (${res.status})`);
+};
 
 /** Дать машине имя (Hivelink H1). Пустое снимает имя. */
 export const nameDevice = (id: string, name: string) =>

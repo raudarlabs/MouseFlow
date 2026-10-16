@@ -10,6 +10,7 @@ Entry point: `web/src/main.tsx`.
 |---|---|---|
 | `/` | → the chosen product's home | `/overview` for *Hivelink* (the default since 2026-10-16), `/record` for *Make it reusable*. See **Two products, one shell** below. |
 | `/overview` | Overview | Hivelink's home: machines connected, online now and seen in the window; runs, success, failures and what is coming up. 2026-10-16. |
+| `/devices` | Devices (Hivelink) | Machines and commands to them: rename, pause, remove, Stop, and one goal or skill to several machines at once. 2026-10-16. |
 | `/record` | [Record](04-record.md) | |
 | `/logs` | [Logs](26-activity.md) | Running, waiting and everything that ran, with Stop and Cancel beside each. Renamed from Activity, 2026-09-18. |
 | `/activity` | → `/logs` | The old path, kept: it was linked from chats and from schedule mail. |
@@ -93,7 +94,7 @@ the suite (`web/check-web.mjs`) loads it and asks it the same questions the side
 
 | Product | Menu |
 |---|---|
-| *Hivelink* | Overview, Create, Logs, Skills (with tests), MCP |
+| *Hivelink* | Overview, Devices, Create, Logs, Skills (with tests), MCP |
 | *Make it reusable* | Record, Skills, Dashboard, Teams, Gallery |
 
 **The owner trimmed the first product on 2026-09-18**: the Gallery, the Dashboard and Teams belong to the

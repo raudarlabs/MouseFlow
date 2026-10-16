@@ -31,7 +31,9 @@ import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
 import { ArmedButton } from '@/components/ArmedButton';
 import { Said, type SaidNote } from '@/components/Said';
-import { type Case, type Flow, type Run, cases, push, runSkill } from '@/lib/api';
+import {
+  type Case, type Device, type Flow, type Run, cases, devices, isMachine, machineName, machineOnline, push, runSkill,
+} from '@/lib/api';
 import { refreshLive } from '@/lib/live';
 import { useAccount } from '@/shell/AccountProvider';
 import { Page } from '@/shell/Surface';
@@ -88,6 +90,20 @@ export const SavedSkillsView = () => {
 
   useEffect(() => { void loadTests(); }, [loadTests]);
 
+  /* НА КАКОЙ МАШИНЕ (Hivelink H2). Один выбор на страницу - и для «Run now», и для нового расписания: пусто -
+   * на любой свободной, как было. Список машин - те же токены агентов, что на Devices. */
+  const [machines, setMachines] = useState<Device[]>([]);
+  const [target, setTarget] = useState('');
+  useEffect(() => {
+    devices()
+      .then((body) => setMachines(body.devices.filter(isMachine)
+        .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))))
+      .catch(() => setMachines([]));
+  }, []);
+  const targetName = target
+    ? machineName(machines.find((one) => one.id === target) ?? { id: '', label: 'that machine', createdAt: '', lastUsedAt: null })
+    : null;
+
   const skills = useMemo(() => flows.filter((one) => one.kind === 'created'), [flows]);
   /* Прогоны каждого скилла - по flowId, который пишет и облачный драйвер, и страница. Новые первыми. */
   const runsOf = useMemo(() => {
@@ -140,10 +156,14 @@ export const SavedSkillsView = () => {
     setBusy(flow.id);
     setNote(null);
     try {
-      await runSkill(flow.id, given);
+      await runSkill(flow.id, given, target || null);
       setAsking(null);
       setValues({});
-      setNote({ text: `"${flow.name}" is queued. It starts as soon as the computer picks it up — follow it on Logs.`, kind: 'good' });
+      setNote({
+        text: `"${flow.name}" is queued${targetName ? ` for ${targetName}` : ''}. It starts as soon as `
+          + `${targetName ? 'it' : 'a free machine'} picks it up — follow it on Logs.`,
+        kind: 'good',
+      });
       void refreshLive();
     } catch (err) {
       setNote({ text: err instanceof Error ? err.message : 'it could not be started', kind: 'bad' });
@@ -192,6 +212,24 @@ export const SavedSkillsView = () => {
           {failing ? ` · ${failing} failing` : ''}
         </Typography>
         {testsFailed && <Said note={{ text: testsFailed, kind: 'bad' }} />}
+        {machines.length > 1 && (
+          <label className="mt-2 flex flex-wrap items-center gap-2 text-[0.82rem] text-ink-secondary">
+            Runs and new schedules go to
+            <select
+              value={target}
+              onChange={(ev) => setTarget(ev.target.value)}
+              aria-label="Machine"
+              className="h-8 rounded-md border-stroke border bg-surface-card2 px-2 text-[0.82rem] text-ink-body focus:border-input-focus focus:outline-none"
+            >
+              <option value="">any free machine</option>
+              {machines.map((one, i) => (
+                <option key={one.id} value={one.id}>
+                  {machineName(one, `${one.label} #${i + 1}`)}{one.paused ? ' (paused)' : machineOnline(one) ? '' : ' (offline)'}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {!skills.length ? (
           <Typography variant="p" className="py-6 text-center text-[0.88rem] text-ink-inactive">
@@ -335,6 +373,7 @@ export const SavedSkillsView = () => {
                     <ScheduleFor
                       flowId={flow.id}
                       name={flow.name}
+                      device={target || null}
                       onCancel={() => setClocking(null)}
                       onDone={(text) => {
                         setClocking(null);

@@ -130,6 +130,22 @@ async function handler(req, res) {
     /* НА КАКОЙ МАШИНЕ (Hivelink H1): id устройства, или ничего - тогда любая свободная. Проверяет его
      * queueOne: чужая или отозванная машина - отказ словами, а не работа, которую никто не возьмёт. */
     const device = body.device ? String(body.device).trim().slice(0, 60) : null;
+    /* НЕСКОЛЬКО МАШИН СРАЗУ (H2): одна и та же работа - по строке на машину, каждая со своим исходом. Не
+     * «всё или ничего»: занятая или поставленная на паузу машина не должна отменять работу на остальных, и
+     * ответ называет, какая встала, а какая - нет и почему. Потолок - пятьдесят, как у списка машин. */
+    const fleet = Array.isArray(body.devices)
+      ? [...new Set(body.devices.map((one) => String(one || '').trim().slice(0, 60)).filter(Boolean))].slice(0, 50)
+      : null;
+    const many = async (spec) => {
+      const queued = [];
+      const refused = [];
+      for (const one of fleet) {
+        const put = await queueOne(sql, who.id, { ...spec, device: one });
+        if (put.why) refused.push({ device: one, why: put.why });
+        else queued.push({ device: one, id: put.id });
+      }
+      return res.status(queued.length ? 200 : 409).json({ ok: queued.length > 0, queued, refused });
+    };
     if (body.skill !== undefined) {
       const skillId = String(body.skill || '').trim();
       if (!ID.test(skillId)) return fail(res, 400, 'that is not a skill id');
@@ -148,6 +164,12 @@ async function handler(req, res) {
       /* Режим едет только к цели: запись проигрывается без модели, и спросить в ней некому. */
       const asked = body.gate === undefined ? await modeOf(sql, who.id) : body.gate;
       const gate = flow.kind === 'created' && asked === ONE_WAY ? ONE_WAY : null;
+      if (fleet && fleet.length) {
+        return await many({
+          flowId: flow.client_id, toolName: `page:${flow.name}`.slice(0, 80),
+          args: { ...values, ...(gate ? { gate } : {}) },
+        });
+      }
       const put = await queueOne(sql, who.id, {
         flowId: flow.client_id,
         /* 'page:<имя>' - Logs читает префикс как «you», а не «chat». Не голое 'page': так подписаны живые
@@ -183,6 +205,11 @@ async function handler(req, res) {
     const browser = body.surface === 'browser'
       ? { surface: 'browser', tab: String(body.tab || 'work').replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 80) || 'work' }
       : {};
+    if (fleet && fleet.length) {
+      return await many({
+        flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}), ...browser },
+      });
+    }
     const put = await queueOne(sql, who.id, {
       flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}), ...browser },
       device,

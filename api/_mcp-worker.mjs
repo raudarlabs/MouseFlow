@@ -96,7 +96,7 @@ async function dueNow(sql, who) {
   try {
     rows = await sql`
       select id, flow_id, tool_name, args, label, kind, every_minutes, at_minutes, days, zone,
-             next_at, fails
+             next_at, fails, to_jsonb(user_schedule) ->> 'machine' as machine
       from user_schedule
       where user_id = ${who.id} and deleted_at is null and paused = false
         and next_at is not null and next_at <= now()
@@ -119,7 +119,10 @@ async function dueNow(sql, who) {
   for (const row of rows) {
     const rule = ruleOf(row);
     const dueMs = new Date(row.next_at).getTime();
-    const verdict = decide({ rule, dueMs, nowMs, busy });
+    /* РАСПИСАНИЕ, ПРИВЯЗАННОЕ К МАШИНЕ (Hivelink H2), ждёт свою машину, а не любую свободную. */
+    const pinned = row.machine ? String(row.machine) : null;
+    const blocked = pinned ? !(await roomForOne(sql, who.id, pinned)) : busy;
+    const verdict = decide({ rule, dueMs, nowMs, busy: blocked });
 
     if (verdict.do === 'run') {
       /* Скилл, на который расписание показывает, мог быть удалён. Ставить строку, которая гарантированно
@@ -149,6 +152,8 @@ async function dueNow(sql, who) {
         values (${id}, ${who.id}, ${row.flow_id}, ${row.tool_name},
                 ${JSON.stringify(row.args || {})}, ${row.id})
       `;
+      /* Работа расписания несёт его машину - той же колонкой, что привязка руками (022). */
+      if (pinned) await sql`update run_queue set machine = ${pinned} where id = ${id} and user_id = ${who.id}`;
       /* ОДНОРАЗОВОЕ, КОТОРОЕ СРАБОТАЛО, - ЗАКОНЧЕНО, а не «на паузе». Раньше оно оставалось в списке живых
        * расписаний с пометкой «it was a one-off, and it has run», и за ночь их набралось двадцать: каждый
        * прогон, отложивший себя через defer_until, оставлял ещё одну строку с кнопкой Resume, которая ничем
@@ -307,6 +312,14 @@ export async function workerRoute(action, req, res, sql, who) {
         limit 1
       `;
       if (holding.length) return res.status(200).json({ ok: true, job: null });
+      /* НА ПАУЗЕ ИЗ АККАУНТА (H2) - работы нет, как на пустой очереди. Агенту не нужно знать слово «пауза»:
+       * так она работает на любой его версии. До 025 колонки нет - условие ложно. */
+      const halted = await sql`
+        select 1 from device_token
+        where id = ${me} and user_id = ${who.id} and coalesce(to_jsonb(device_token) ->> 'paused', 'false') = 'true'
+        limit 1
+      `;
+      if (halted.length) return res.status(200).json({ ok: true, job: null });
     }
     /* WHAT THIS CLAIMER CAN ACTUALLY DO, which the queue did not ask until it had to.
      *

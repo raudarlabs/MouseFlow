@@ -786,7 +786,7 @@ check('and it is in the sidebar, not buried in a dialog',
    продуктов в порядке объявления, то есть ровно сегодняшнее меню; по каждому продукту в отдельности он
    закреплён в web/check-web.mjs. */
 /* 2026-10-16: /overview (дом Hivelink) первым и /ai (MCP внутри Hivelink) после его Skills - владелец. */
-const NAV_ORDER = '/overview,/record,/create,/logs,/skills,/docs,/saved,/ai,/dashboard,/team,/gallery';
+const NAV_ORDER = '/overview,/devices,/record,/create,/logs,/skills,/docs,/saved,/ai,/dashboard,/team,/gallery';
 const navNow = SCREENS.filter((s) => s.nav).map((s) => s.to).join();
 check('порядок в сайдбаре тот, о котором договорились, и Gallery последняя',
   navNow === NAV_ORDER, navNow);
@@ -4722,7 +4722,8 @@ group('расписания тикают опросом агента, а не к
   /* С Hivelink H1 «занято» - по машинам: подошедшее встаёт, пока есть свободная, и уступает, когда нет. */
   check('занятые машины: подошедшее уступает такт, а не выстраивается в очередь',
     (route.match(/busy = !\(await roomForOne\(sql, who\.id\)\);/g) || []).length === 2
-      && route.includes('const verdict = decide({ rule, dueMs, nowMs, busy });'));
+      && route.includes('const verdict = decide({ rule, dueMs, nowMs, busy: blocked });')
+      && route.includes('const blocked = pinned ? !(await roomForOne(sql, who.id, pinned)) : busy;'));
 
   /* Пропуск - самый частый исход у любого домашнего расписания, и он обязан быть виден. */
   check('пропуск записывается в само расписание - прогоном он не становится, а молчать нельзя',
@@ -5358,7 +5359,7 @@ group('Activity отвечает целиком: идёт, ждёт, было - 
     /useSyncExternalStore\(subscribe, snapshot, snapshot\)/.test(live) && /if \(!listeners\.size && timer\)/.test(live));
   check('и сайдбар считает только идущее и ждущее, никогда историю',
     /job\.state === 'claimed' \|\| job\.state === 'queued'/.test(page) && /liveCount > 0 &&/.test(sidebar));
-  check('пункт стоит после Create и до Skills', /'\/overview,\/record,\/create,\/logs,\/skills/.test(read('./test-mcp.mjs')));
+  check('пункт стоит после Create и до Skills', /'\/overview,\/devices,\/record,\/create,\/logs,\/skills/.test(read('./test-mcp.mjs')));
 
   /* ТРИ ОСИ, А НЕ ОДИН ПЕРЕКЛЮЧАТЕЛЬ: «failed» и «by itself» это разные вопросы, и один сегментный контрол
    * заставлял выбирать между ними. */
@@ -6414,6 +6415,45 @@ group('Hivelink H1: a machine is its device token, one job per machine, and only
       && /needs database migration 025/.test(sync));
   check('the queue door takes a machine for a skill and for a goal',
     (door.match(/^\s+device,$/gm) || []).length === 2 && /const device = body\.device \?/.test(door));
+}
+
+/* HIVELINK H2 - КОМАНДЫ МАШИНАМ. Пауза из аккаунта, несколько машин одной командой, расписание на машине и
+ * машина в журнале. Агента это не трогает: пауза - это «работы нет» на claim. */
+group('Hivelink H2: pause from the account, one command to many machines, schedules and Logs know the machine');
+{
+  const queue = read('../api/_queue.mjs');
+  const worker = read('../api/_mcp-worker.mjs');
+  const sync = read('../api/sync.js');
+  const door = read('../api/queue.js');
+  const sched = read('../api/schedules.js');
+  const live = read('../api/mcp.js');
+  const migration = read('../db/025_device.sql');
+
+  check('a paused machine is told there is no work - any agent version understands that',
+    /coalesce\(to_jsonb\(device_token\) ->> 'paused', 'false'\) = 'true'/.test(worker)
+      && /if \(halted\.length\) return res\.status\(200\)\.json\(\{ ok: true, job: null \}\);/.test(worker)
+      && /add column if not exists paused\s+boolean not null default false;/.test(migration));
+  check('and it neither gets a pinned job nor counts as a free seat',
+    /kind: 'paused'/.test(queue) && /and coalesce\(to_jsonb\(device_token\) ->> 'paused', 'false'\) <> 'true'/.test(queue));
+  check('pausing is a PATCH from a signed-in browser, and says when 025 is missing',
+    /typeof req\.body\.paused === 'boolean' && req\.body\.name === undefined/.test(sync)
+      && /pausing a machine needs database migration 025/.test(sync));
+
+  check('one command to several machines is one row each, and each outcome is named',
+    /const fleet = Array\.isArray\(body\.devices\)/.test(door)
+      && /const put = await queueOne\(sql, who\.id, \{ \.\.\.spec, device: one \}\);/.test(door)
+      && /refused\.push\(\{ device: one, why: put\.why \}\)/.test(door)
+      && /\.slice\(0, 50\)/.test(door));
+
+  check('a schedule can belong to a machine, checked before it is written, and its jobs carry it',
+    /add column if not exists machine text;/.test(migration)
+      && /if \(askedDevice && !device\) return fail\(res, 404/.test(sched)
+      && /update run_queue set machine = \$\{pinned\} where id = \$\{id\}/.test(worker));
+  check('a pin that did not take is said, not swallowed', /unpinned: 'It runs on any free machine for now/.test(sched));
+
+  check('the live feed names the machine: the taker, else the pin, else what it sent',
+    (live.match(/left join device_token d on d\.user_id = q\.user_id/g) || []).length === 2
+      && /machine: q\.on_device && String\(q\.on_device\)\.startsWith\('dev_'\)/.test(live));
 }
 
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by

@@ -145,22 +145,30 @@ async function handler(req, res) {
     const rows = days
       ? await sql`
         select q.id, q.flow_id, q.tool_name, q.state, q.ok, q.said, q.loop, q.schedule_id, q.args,
-               q.created_at, q.claimed_at, q.finished_at,
+               q.created_at, q.claimed_at, q.finished_at, q.claimed_by,
+               coalesce(to_jsonb(q) ->> 'claimed_device', to_jsonb(q) ->> 'machine') as on_device,
+               to_jsonb(d) ->> 'name' as on_device_name, to_jsonb(d) ->> 'hostname' as on_device_host,
                f.name as flow_name, r.steps as run_steps, r.goal as run_goal, r.started_at as run_started
         from run_queue q
         left join user_flow f on f.user_id = q.user_id and f.client_id = q.flow_id
         left join user_run r on r.user_id = q.user_id and r.client_id = q.id
+        left join device_token d on d.user_id = q.user_id
+          and d.id = coalesce(to_jsonb(q) ->> 'claimed_device', to_jsonb(q) ->> 'machine')
         where q.user_id = ${who.id}
           and (q.state in ('queued', 'claimed') or q.finished_at > now() - ${`${days} days`}::interval)
         order by q.created_at desc limit 200
       `
       : await sql`
         select q.id, q.flow_id, q.tool_name, q.state, q.ok, q.said, q.loop, q.schedule_id, q.args,
-               q.created_at, q.claimed_at, q.finished_at,
+               q.created_at, q.claimed_at, q.finished_at, q.claimed_by,
+               coalesce(to_jsonb(q) ->> 'claimed_device', to_jsonb(q) ->> 'machine') as on_device,
+               to_jsonb(d) ->> 'name' as on_device_name, to_jsonb(d) ->> 'hostname' as on_device_host,
                f.name as flow_name, r.steps as run_steps, r.goal as run_goal, r.started_at as run_started
         from run_queue q
         left join user_flow f on f.user_id = q.user_id and f.client_id = q.flow_id
         left join user_run r on r.user_id = q.user_id and r.client_id = q.id
+        left join device_token d on d.user_id = q.user_id
+          and d.id = coalesce(to_jsonb(q) ->> 'claimed_device', to_jsonb(q) ->> 'machine')
         where q.user_id = ${who.id}
           and (q.state in ('queued', 'claimed') or q.finished_at > now() - interval '3 minutes')
         order by q.created_at desc limit 5
@@ -179,6 +187,14 @@ async function handler(req, res) {
            * в аргументах. Без этого лента Create называла её именем тула («mouseflow_do»). */
           goal: (loop && loop.goal) || q.run_goal || (q.args && typeof q.args.goal === 'string' && q.args.goal) || null,
           scheduleId: q.schedule_id || null,
+          /* НА КАКОЙ МАШИНЕ (Hivelink H2): взявшая, а пока не взяли - та, к которой привязана. Имя - данное
+           * человеком, затем имя компьютера; у работы, взятой до 025, - присланное в claim имя, как было.
+           * null - не знаем: работа страницы, или ещё никто не взял и привязки нет. */
+          machine: q.on_device && String(q.on_device).startsWith('dev_')
+            ? { id: String(q.on_device), name: q.on_device_name || q.on_device_host || null }
+            : q.claimed_by && !['page', 'worker'].includes(q.claimed_by)
+              ? { id: null, name: String(q.claimed_by) }
+              : null,
           /* Откуда работа: расписание, страница Create (человек сам, на этом компьютере) или чат через MCP.
            * Отдельным полем, потому что «by itself» и «you» - разные подписи у одной и той же строки. */
           source: q.schedule_id ? 'schedule'

@@ -178,7 +178,7 @@ group('порядок меню закреплён по каждому проду
     /* Первый продукт - это ПРОВЕРКИ: попросил, прочитал журнал, сложил в навык, проверяешь. Галерея,
      * дашборд и команды ушли во второй - решение владельца от 2026-09-18, см. комментарии в product.ts. */
     /* 2026-10-16, владелец: Hivelink - обзор машин домом, Tests внутри Skills, и MCP своим экраном. */
-    do: '/overview,/create,/logs,/saved,/ai',
+    do: '/overview,/devices,/create,/logs,/saved,/ai',
     make: '/record,/skills,/docs,/dashboard,/team,/gallery',
   };
   for (const id of PRODUCT_IDS) {
@@ -356,7 +356,7 @@ group('у первого продукта - Skills вместо Tests: сохр�
     && /path: '\/tests',\s*beforeLoad: \(\) => \{ throw redirect\(\{ to: '\/saved' \}\); \}/.test(main), show(tests));
   check('мастерская второго продукта не тронута', SCREENS.find((s) => s.to === '/skills')?.owner === 'make');
   check('здесь - скиллы из цели, а не записи', /flows\.filter\(\(one\) => one\.kind === 'created'\)/.test(view));
-  check('запуск - через очередь, а не своим путём', /await runSkill\(flow\.id, given\)/.test(view)
+  check('запуск - через очередь, а не своим путём', /await runSkill\(flow\.id, given, target \|\| null\)/.test(view)
     && /'\/api\/queue'/.test(read('src/lib/api.ts')));
   check('расписания - те же, что стояли на Tests, а не вторая копия',
     /from '@\/features\/tests\/Schedules'/.test(view) && /<ScheduleFor\b/.test(view) && /<Schedules\b/.test(view));
@@ -419,13 +419,43 @@ group('Hivelink: имя, дом-обзор, тесты в Skills и MCP свои
     /path: '\/ai', component: AiView/.test(main) && /path: '\/mcp', component: McpView/.test(main));
 }
 
+group('Hivelink H2: Devices - name, pause, remove, and a command to one machine or several');
+{
+  const view = read('src/features/devices/DevicesView.tsx');
+  const api = read('src/lib/api.ts');
+  check('Devices - экран Hivelink, сразу за обзором', productAt('/devices') === 'do'
+    && screensFor('do').map((s) => s.to).slice(0, 2).join() === '/overview,/devices'
+    && /path: '\/devices', component: DevicesView/.test(main));
+  check('машины - токены агентов, и «на связи» то же окно, что у сервера',
+    /export const AGENT_LABEL = 'This computer';/.test(api) && /export const MACHINE_ONLINE_MS = 90_000;/.test(api)
+      && /DEVICE_ONLINE_MS = 90_000/.test(readFileSync(join(here, '../api/_queue.mjs'), 'utf8')));
+  check('команда - цель словами или скилл, одной машине или выбранным, через ту же очередь',
+    /commandMachines\(mode === 'goal'/.test(view) && /\{ devices: targets, goal: goal\.trim\(\) \}/.test(view)
+      && /\{ devices: targets, skill: skillId, arguments: values \}/.test(view)
+      && /fetch\('\/api\/queue'/.test(api));
+  check('и исход каждой машины сказан словами, а не одним «отправлено»',
+    /answer\.refused\.map\(\(one\) => one\.why\)/.test(view) && /went\.length \? `Sent to \$\{went\.join\(', '\)\}/.test(view)
+      && /why: `\$\{deviceSaid\(target\)\} is paused/.test(readFileSync(join(here, '../api/_queue.mjs'), 'utf8')));
+  check('пауза, удаление с двойным нажатием и Stop того, что машина делает',
+    /pauseDevice\(one\.id, !one\.paused\)/.test(view) && /<ArmedButton\b/.test(view) && /revokeDevice\(one\.id\)/.test(view)
+      && /cancelJob\(job\.id\)/.test(view));
+  check('счёт по машине - только когда сервер его даёт', /one\.jobs\s*\?/.test(view) && /not counted yet/.test(view));
+  check('записи на этом экране нет - Hivelink даёт команды, а не показывает', !/recordStart|recordStop|#record\.|'\/record'/.test(view.replace(/\/\*[\s\S]*?\*\//g, '')));
+  check('в Logs есть колонка машины, и в выгрузке тоже',
+    /<th scope="col" className="whitespace-nowrap px-2 py-2 font-medium">Machine<\/th>/.test(read('src/features/activity/ActivityView.tsx'))
+      && /\{ header: 'Machine', get: \(e\) => machineOfEntry\(e\) \?\? '' \}/.test(read('src/features/activity/ActivityView.tsx')));
+  check('а Skills запускает и ставит на часы на выбранной машине',
+    /<ScheduleFor[\s\S]{0,120}device=\{target \|\| null\}/.test(read('src/features/saved/SavedSkillsView.tsx'))
+      && /\.\.\.\(device \? \{ device \} : \{\}\)/.test(read('src/features/tests/Schedules.tsx')));
+}
+
 group('папки одного продукта не импортируют папки другого');
 {
   /* Шаг 0 плана разделения (docs/SEPARATION-PLAN.md): продукты разойдутся по аккаунтам, и код экрана P1,
    * читающий из папки экрана P2, - это нитка, которую тогда придётся рвать под нагрузкой. Общее живёт в
    * lib/, components/ и shell/. Какая папка чья - по экрану, который она рисует. */
   const OWNER = {
-    create: 'do', saved: 'do', activity: 'do', panel: 'do', connect: 'do', tests: 'do', overview: 'do', ai: 'do',
+    create: 'do', saved: 'do', activity: 'do', panel: 'do', connect: 'do', tests: 'do', overview: 'do', ai: 'do', devices: 'do',
     record: 'make', skills: 'make', docs: 'make', insights: 'make', team: 'make', gallery: 'make',
     chat: 'make', mcp: 'make',
   };

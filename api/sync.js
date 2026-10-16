@@ -141,7 +141,8 @@ async function listTokens(res, sql, who) {
            to_jsonb(device_token) ->> 'hostname' as hostname,
            to_jsonb(device_token) ->> 'platform' as platform,
            to_jsonb(device_token) ->> 'agent_version' as agent_version,
-           to_jsonb(device_token) ->> 'seen_at' as seen_at
+           to_jsonb(device_token) ->> 'seen_at' as seen_at,
+           to_jsonb(device_token) ->> 'paused' as paused
     from device_token
     where user_id = ${who.id} and revoked_at is null
     order by created_at desc limit 50
@@ -179,6 +180,8 @@ async function listTokens(res, sql, who) {
         id: r.id, label: r.label, createdAt: r.created_at, lastUsedAt: r.last_used_at,
         name: r.name || null, hostname: r.hostname || null, platform: r.platform || null,
         version: r.agent_version || null, seenAt: r.seen_at || null,
+        /* Пауза из аккаунта (H2). Отсутствие поля - до 025 - значит «паузы нет», и так оно и есть. */
+        paused: r.paused === 'true',
         ...(counted ? { jobs: { days: 30, done: one ? one.done : 0, failed: one ? one.failed : 0,
           running: one ? one.running || null : null } } : {}),
       };
@@ -193,6 +196,24 @@ async function nameToken(req, res, sql, who) {
   const id = String((req.query && req.query.token) || '');
   const name = String((req.body && req.body.name) || '').replace(/\s+/g, ' ').trim().slice(0, 60);
   if (!id) return fail(res, 400, 'which device?');
+  /* ПАУЗА (H2) - тем же PATCH: `{ paused: true|false }` без имени. Сервер перестаёт выдавать машине работу;
+   * то, что она уже взяла, доделывается - остановить его можно Stop на строке работы. */
+  if (req.body && typeof req.body.paused === 'boolean' && req.body.name === undefined) {
+    try {
+      const rows = await sql`
+        update device_token set paused = ${req.body.paused}
+        where id = ${id} and user_id = ${who.id} and revoked_at is null
+        returning id
+      `;
+      if (!rows.length) return fail(res, 404, 'no such device on this account');
+      return res.status(200).json({ ok: true, id, paused: req.body.paused });
+    } catch (err) {
+      if (/column .*paused.* does not exist/i.test(String(err && err.message))) {
+        return fail(res, 503, 'pausing a machine needs database migration 025, which is not applied yet');
+      }
+      throw err;
+    }
+  }
   try {
     if (name) {
       const taken = await sql`

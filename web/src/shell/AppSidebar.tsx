@@ -25,6 +25,7 @@ import {
   FolderOpen,
   LayoutDashboard,
   LayoutGrid,
+  Monitor,
   PanelLeft,
   Plug,
   Repeat,
@@ -61,6 +62,7 @@ const NONE_HIDDEN = new Set<string>();
  * ярлык, заголовок, бета, счётчик, шаг тура - переехало в product.ts, где у него один экземпляр. */
 const ICONS: Record<string, LucideIcon> = {
   '/overview': LayoutDashboard,
+  '/devices': Monitor,
   '/record': CircleDot,
   '/create': Sparkles,
   '/logs': ScrollText,

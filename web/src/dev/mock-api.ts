@@ -571,6 +571,10 @@ const json = (res: Parameters<Connect.NextHandleFunction>[1], status: number, bo
 
 /* Имена машин, данные в превью (Hivelink H1). undefined - не трогали, null - сняли. */
 const MACHINE_NAMES: Record<string, string | null | undefined> = {};
+/* Пауза машин и работы, отправленные им со страницы Devices (H2) - запоминаются, как имена. */
+const MACHINE_PAUSED: Record<string, boolean> = {};
+const FLEET_JOBS: { id: string; device: string; name: string; goal: string | null; at: string }[] = [];
+const MACHINE_LABELS: Record<string, string> = { dev_a1: 'Office-1', dev_a2: 'Vics-MacBook-Air', dev_a3: 'This computer #3' };
 
 export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
   const url = req.url ?? '';
@@ -668,8 +672,14 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
     let text = '';
     req.on('data', (chunk) => { text += chunk; });
     req.on('end', () => {
-      let name: string | null = null;
-      try { name = String((text ? JSON.parse(text) : {}).name || '').trim().slice(0, 60) || null; } catch (_) { /* empty */ }
+      let body: Record<string, unknown> = {};
+      try { body = text ? JSON.parse(text) : {}; } catch (_) { /* empty */ }
+      if (typeof body.paused === 'boolean' && body.name === undefined) {
+        MACHINE_PAUSED[id] = body.paused;
+        json(res, 200, { ok: true, id, paused: body.paused });
+        return;
+      }
+      const name = String(body.name || '').trim().slice(0, 60) || null;
       MACHINE_NAMES[id] = name;
       json(res, 200, { ok: true, id, name });
     });
@@ -683,13 +693,13 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
         /* С H1 у машины есть имя, имя компьютера и счёт работ - так отвечает сервер после миграции 025. */
         { id: 'dev_a1', label: 'This computer', createdAt: hoursAgo(300), lastUsedAt: new Date(Date.now() - 4000).toISOString(),
           name: MACHINE_NAMES.dev_a1 ?? 'Office-1', hostname: 'DESKTOP-7K2Q', platform: 'windows', version: '0.29.0',
-          seenAt: new Date(Date.now() - 4000).toISOString(), jobs: { days: 30, done: 31, failed: 3, running: 'page:Reply that the invoice is approved' } },
+          seenAt: new Date(Date.now() - 4000).toISOString(), jobs: { days: 30, done: 31, failed: 3, running: 'page:Reply that the invoice is approved' }, paused: !!MACHINE_PAUSED.dev_a1 },
         { id: 'dev_a2', label: 'This computer', createdAt: hoursAgo(120), lastUsedAt: hoursAgo(26),
           name: MACHINE_NAMES.dev_a2 ?? null, hostname: 'Vics-MacBook-Air', platform: 'macos', version: '0.29.0',
-          seenAt: hoursAgo(26), jobs: { days: 30, done: 12, failed: 1, running: null } },
+          seenAt: hoursAgo(26), jobs: { days: 30, done: 12, failed: 1, running: null }, paused: !!MACHINE_PAUSED.dev_a2 },
         { id: 'dev_a3', label: 'This computer', createdAt: hoursAgo(2), lastUsedAt: null,
           name: MACHINE_NAMES.dev_a3 ?? null, hostname: null, platform: null, version: null, seenAt: null,
-          jobs: { days: 30, done: 0, failed: 0, running: null } },
+          jobs: { days: 30, done: 0, failed: 0, running: null }, paused: !!MACHINE_PAUSED.dev_a3 },
         { id: 'dev_1', label: 'Chrome extension', createdAt: hoursAgo(200), lastUsedAt: hoursAgo(4) },
         { id: 'dev_2', label: 'Chrome extension', createdAt: hoursAgo(500), lastUsedAt: null },
       ],
@@ -1140,6 +1150,37 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
 
   /* Страница Create спрашивает это каждые несколько секунд. У мока нет машины - и ответ говорит «ничего»,
    * а не 404, который в консоли читался бы как поломка. */
+  /* ОЧЕРЕДЬ (H2): команда машинам. Машина на паузе и машина, ни разу не подключавшаяся, отказывают - как
+   * сервер; остальные получают работу, и она видна в живой ленте с именем машины. */
+  if (url.startsWith('/api/queue') && method === 'POST') {
+    let text = '';
+    req.on('data', (chunk) => { text += chunk; });
+    req.on('end', () => {
+      let body: Record<string, unknown> = {};
+      try { body = text ? JSON.parse(text) : {}; } catch (_) { /* empty */ }
+      const fleet = Array.isArray(body.devices) ? body.devices.map(String) : null;
+      const goal = typeof body.goal === 'string' ? body.goal : null;
+      const name = goal ? 'mouseflow_do' : `page:${String(body.skill || 'skill')}`;
+      if (!fleet) {
+        json(res, 200, { ok: true, id: 'q_dev_' + Date.now().toString(36) });
+        return;
+      }
+      const queued: { device: string; id: string }[] = [];
+      const refused: { device: string; why: string }[] = [];
+      for (const one of fleet) {
+        const label = MACHINE_NAMES[one] || MACHINE_LABELS[one] || one;
+        if (MACHINE_PAUSED[one]) {
+          refused.push({ device: one, why: `${label} is paused, so it takes no work. Resume it on Devices, or pick another machine. Nothing was queued.` });
+          continue;
+        }
+        const id = 'q_dev_' + Math.random().toString(36).slice(2, 8);
+        FLEET_JOBS.unshift({ id, device: one, name, goal, at: new Date().toISOString() });
+        queued.push({ device: one, id });
+      }
+      json(res, queued.length ? 200 : 409, { ok: queued.length > 0, queued, refused });
+    });
+    return;
+  }
   if (url.startsWith('/api/mcp?live=1')) {
     /* С `days` - история очереди: то, что прогоном не стало. Без него - живая лента, и у мока она пуста:
      * машины нет, и рисовать идущий прогон было бы враньём про экран, которого нет. */
@@ -1154,7 +1195,11 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
         id: 'q_dev_fence', state: 'failed', ok: false, said: 'the skill was deleted between the ask and the run',
         name: 'Weekly Jira export', goal: null,
         scheduleId: 'sch_dev_2', startedAt: '2026-08-30T15:00:00.000Z', finishedAt: '2026-08-30T15:00:02.000Z', steps: [],
-      }] : [],
+      }] : FLEET_JOBS.slice(0, 5).map((one) => ({
+        id: one.id, state: 'queued', ok: null, said: null, name: one.name, goal: one.goal, scheduleId: null,
+        source: 'you', startedAt: one.at, finishedAt: null, steps: [],
+        machine: { id: one.device, name: MACHINE_NAMES[one.device] || MACHINE_LABELS[one.device] || null },
+      })),
     });
   }
   /* Прогон со страницы объявляет себя очереди. У мока очереди нет; ответ «claimed» означает «тебя не

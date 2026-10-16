@@ -22,7 +22,9 @@ import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
 import { Said } from '@/components/Said';
-import { type Device, type RanInsights, type Schedule, devices, nameDevice, ranInsights, schedules } from '@/lib/api';
+import {
+  type Device, type RanInsights, type Schedule, MACHINE_ONLINE_MS, devices, nameDevice, ranInsights, schedules,
+} from '@/lib/api';
 import { Page } from '@/shell/Surface';
 import { when } from '@/features/create/run-history';
 import { dotClass } from '@/features/activity/status';
@@ -33,9 +35,9 @@ const CARD = 'rounded-xl border-stroke border bg-surface-card p-4';
 /** Метка токена, который ставит привязка агента. Другие метки - расширение («Chrome extension», «This
  *  browser») и токены, выданные руками («Device»): они не машины, которым дают команды. */
 const AGENT_LABEL = 'This computer';
-/* «На связи» - спрашивал работу в последнюю минуту. Агент спрашивает каждые 3 с, при сбоях отступает до
- * 60 с - больше минуты тишины значит, что он выключен, спит или не берёт работу. */
-const ONLINE_MS = 60_000;
+/* «На связи» - спрашивал работу в последние 90 с: то же окно, что у сервера (api/_queue.mjs), чтобы обзор и
+ * очередь не расходились в том, сколько машин свободно. */
+const ONLINE_MS = MACHINE_ONLINE_MS;
 /* Как часто перечитывать машины. Счётчик «на связи» - то единственное здесь, что меняется само. */
 const POLL_MS = 15_000;
 const WINDOWS = [7, 30, 90] as const;
@@ -298,7 +300,7 @@ export const OverviewView = () => {
           label="Online now"
           value={machines ? String(counts.online) : '…'}
           tone={machines ? (counts.online ? 'good' : null) : null}
-          sub="asked for work in the last minute"
+          sub="asked for work in the last 90 seconds"
         />
         <Tile
           label={`Seen in ${span} days`}
@@ -313,7 +315,10 @@ export const OverviewView = () => {
             <Typography variant="span" className={cn(LABEL, 'block')}>Machines</Typography>
             <Typography variant="h2" weight="semibold" className="mt-0.5 text-[1.2rem]">Who is listening</Typography>
           </div>
-          <Link to="/connect" className="text-[0.82rem] text-brand-primary hover:underline">Connect a machine</Link>
+          <span className="flex items-center gap-3 text-[0.82rem]">
+            <Link to="/devices" className="text-brand-primary hover:underline">Give them commands</Link>
+            <Link to="/connect" className="text-brand-primary hover:underline">Connect a machine</Link>
+          </span>
         </div>
         {machines && machines.length ? (
           <ul className="mt-3 flex flex-col gap-1.5">
