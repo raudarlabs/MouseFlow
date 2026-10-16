@@ -160,6 +160,21 @@ online while every goal failed at step one (agents now send `canSee`/`canAct` wi
 Overview, MCP and Telegram say it), and the Telegram menu did not know `/machines` (the bot now publishes
 `BOT_COMMANDS` itself with `setMyCommands`; `/status` lists the machines).
 
+**The Telegram bot made Hivelink's, 2026-10-16** (it had been another project's - "Hulk Eats": its keyboard
+under the input and a "Dashboard" button to a deployment that no longer exists):
+- **Its profile and menu are published by the bot itself** on the first message after a deploy that changed
+  them (`ensureCommands` in `api/telegram.js`, marked in `app_setting 'telegram.commands'`): name
+  *Hivelink*, short and long descriptions, `BOT_COMMANDS`, and the menu button — a Mini App at
+  `https://<this deployment>/tg`. The username (@TWOBSBOT) and the avatar can only be changed in BotFather.
+- **Its own keyboard** — Machines, Status, Stop, Help — replaces the old one on the next reply that carries
+  it (/start, /help, /machines, /status); a button sends its text and `commandOf` reads it as the command.
+- **The Mini App** (`web/src/features/tg/TgApp.tsx`, public path `/tg`): the machines with online / paused /
+  offline and what cannot see the screen, a goal sent to the picked machine or the first free one, and the
+  last eight jobs with Stop. No sign-in inside Telegram: each request carries `initData`, which Telegram
+  signs; `api/_tg-app.mjs` checks the signature, its age (a day at most) and who opened it, and the account
+  is the one that chat was paired with (`chat_sender`, `allowed`). The check is executed in
+  `api/_test-telegram.mjs` — forged user, foreign token, old string, no signature all refused.
+
 ## 4. Open questions for the owner
 
 1. Commands beyond skill / goal / stop / screenshot — shell commands? (new, and the riskiest)

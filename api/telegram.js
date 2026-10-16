@@ -33,9 +33,11 @@ import { GOAL_MAX, goalWith, looksLikeText } from './_attach.mjs';
 import { planFrom, planRequest } from './_plan.mjs';
 import { recognise, refusedAudio } from './_transcribe.mjs';
 import { callModel } from './_vision.mjs';
-import { callTelegram, fileUrl, sendChat, tellFeed } from './_telegram-out.mjs';
+import { callTelegram, fileUrl, sendChat, tellFeed, tellOutcome } from './_telegram-out.mjs';
+import { checkInitData } from './_tg-app.mjs';
 import {
-  BOT_COMMANDS, CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, MACHINE_KEY, SAY, TELEGRAM_TAB, WHERE_KEY, draftId, expired, feedLine, feedSource,
+  BOT_COMMANDS, BOT_PROFILE, CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, KEYBOARD, MACHINE_KEY, SAY, TELEGRAM_TAB,
+  WHERE_KEY, draftId, expired, feedLine, feedSource,
   holdAnswerOf, keyboardFor,
   outcomeMessage, planMessage, refusedDocument, routeOf, tagFor, updateOf, verdictOf,
 } from './_telegram.mjs';
@@ -100,6 +102,9 @@ async function greet(sql, update) {
   await say(update.chatId, SAY.stranger);
 }
 
+/* Ответ со своей клавиатурой - заменяет оставшуюся от прошлого бота у того, кто нажмёт что угодно. */
+const sayKeyed = (chatId, text) => say(chatId, text, { reply_markup: KEYBOARD });
+
 async function pair(sql, update, token) {
   const who = await byDeviceToken(sql, token);
   /* СНАЧАЛА УБРАТЬ ТОКЕН, ПОТОМ ОТВЕТИТЬ - и убрать в обоих случаях, верный он или нет. Неверный токен
@@ -123,18 +128,104 @@ async function pair(sql, update, token) {
  * (настройка развёртывания, не человека); сравнивается сам список, так что правка описания тоже уезжает.
  * Не удалось - ничего страшного: попробует со следующим сообщением, а ответ человеку от этого не зависит. */
 const COMMANDS_KEY = 'telegram.commands';
-async function ensureCommands(sql) {
+async function ensureCommands(sql, host) {
   try {
-    const wanted = JSON.stringify(BOT_COMMANDS);
+    /* Мини-приложение - на том же адресе, что ответил на этот вебхук: телеграм зовёт развёртывание, и
+     * кнопка меню должна вести в него же, а не в зашитый адрес. */
+    const app = host ? `https://${host}/tg` : null;
+    const wanted = JSON.stringify({ commands: BOT_COMMANDS, profile: BOT_PROFILE, app });
     const [row] = await sql`select value from app_setting where key = ${COMMANDS_KEY}`;
     if (row && row.value === wanted) return;
-    const put = await callTelegram('setMyCommands', { commands: BOT_COMMANDS });
-    if (!put.ok) return;
-    await sql`
-      insert into app_setting (key, value) values (${COMMANDS_KEY}, ${wanted})
-      on conflict (key) do update set value = excluded.value, updated_at = now()
-    `;
+    const steps = [
+      callTelegram('setMyCommands', { commands: BOT_COMMANDS }),
+      callTelegram('setMyName', { name: BOT_PROFILE.name }),
+      callTelegram('setMyShortDescription', { short_description: BOT_PROFILE.shortDescription }),
+      callTelegram('setMyDescription', { description: BOT_PROFILE.description }),
+      callTelegram('setChatMenuButton', {
+        menu_button: app
+          ? { type: 'web_app', text: BOT_PROFILE.menuText, web_app: { url: app } }
+          : { type: 'commands' },
+      }),
+    ];
+    const done = await Promise.all(steps);
+    /* setMyName телеграм ограничивает по частоте; остальное записано - а отметка ставится, только когда
+     * прошло всё, иначе следующее сообщение попробует снова. */
+    if (done.every((one) => one.ok)) {
+      await sql`
+        insert into app_setting (key, value) values (${COMMANDS_KEY}, ${wanted})
+        on conflict (key) do update set value = excluded.value, updated_at = now()
+      `;
+    }
   } catch (_) { /* the menu is a convenience; the answer to the person is not */ }
+}
+
+/* ---------------------------------------------------------------- мини-приложение (/tg)
+ *
+ * POST /api/telegram?app=1 с `{ initData, action, ... }`. Без секрета вебхука - его знает только телеграм,
+ * а этот запрос приходит со страницы; удостоверение здесь - подписанный initData (см. api/_tg-app.mjs), а
+ * чей аккаунт - та же привязка chat_sender, что у чата. */
+async function miniApp(req, res, sql) {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const seen = checkInitData(body.initData, process.env.TELEGRAM_BOT_TOKEN);
+  if (seen.why) return res.status(401).json({ ok: false, why: seen.why });
+  const [row] = await sql`
+    select user_id, chat_id, state from chat_sender where channel = ${CHANNEL} and sender_id = ${String(seen.user.id)}
+  `;
+  if (!row || row.state !== 'allowed' || !row.user_id) {
+    return res.status(403).json({ ok: false, why: 'This Telegram account is not paired yet. Send /pair with a '
+      + 'device token in the chat first - MouseFlow, your avatar, then Connections.' });
+  }
+  const userId = row.user_id;
+  const action = String(body.action || 'state');
+
+  if (action === 'send') {
+    const goal = String(body.goal || '').trim();
+    if (!goal) return res.status(400).json({ ok: false, why: 'Say what should be done, in a sentence.' });
+    if (goal.length > GOAL_MAX) return res.status(413).json({ ok: false, why: `That is ${goal.length - GOAL_MAX} characters too long.` });
+    const gate = (await modeOf(sql, userId)) === ONE_WAY ? ONE_WAY : null;
+    const put = await queueOne(sql, userId, {
+      flowId: DESKTOP_GOAL,
+      toolName: 'mouseflow_do',
+      /* Исход - в чат этого человека, как у задачи из чата: окно мини-приложения закроют раньше. */
+      args: { goal, telegram: { chatId: row.chat_id }, ...(gate ? { gate } : {}), via: 'telegram-app' },
+      device: body.device ? String(body.device).slice(0, 60) : null,
+    });
+    if (put.why) return res.status(409).json({ ok: false, why: put.why });
+    return res.status(200).json({ ok: true, id: put.id });
+  }
+
+  if (action === 'stop') {
+    const id = String(body.id || '');
+    const killed = await sql`
+      update run_queue set state = 'cancelled', finished_at = now(), ok = false, said = 'cancelled before it finished'
+      where id = ${id} and user_id = ${userId} and state in ('queued', 'claimed')
+      returning id, flow_id, tool_name, args, schedule_id, state
+    `;
+    for (const one of killed) await tellOutcome(sql, userId, one, false, 'cancelled before it finished');
+    return res.status(200).json({ ok: true, cancelled: killed.length > 0 });
+  }
+
+  /* СОСТОЯНИЕ: машины, выбранная /use, и последние работы - что идёт и чем кончилось. */
+  const machines = await machinesOf(sql, userId);
+  const chosen = await machineOf(sql, userId);
+  const jobs = await sql`
+    select id, state, ok, said, tool_name, args, created_at, finished_at,
+           coalesce(to_jsonb(q) ->> 'claimed_device', to_jsonb(q) ->> 'machine') as device
+    from run_queue q where user_id = ${userId} order by created_at desc limit 8
+  `;
+  return res.status(200).json({
+    ok: true,
+    you: { name: seen.user.first_name || seen.user.username || null },
+    chosen: chosen && machines.some((m) => m.id === chosen) ? chosen : null,
+    machines: machines.map((m) => ({ id: m.id, name: m.said, platform: m.platform, online: m.online,
+      paused: m.paused, cannot: cannotSay(m.caps) })),
+    jobs: jobs.map((j) => ({
+      id: j.id, state: j.state, ok: j.ok, said: j.said || null,
+      what: (j.args && typeof j.args.goal === 'string' && j.args.goal) || String(j.tool_name || '').replace(/^page:/, ''),
+      machine: (machines.find((m) => m.id === j.device) || {}).said || null,
+      at: j.finished_at || j.created_at,
+    })),
+  });
 }
 
 async function status(sql, update, userId) {
@@ -144,7 +235,7 @@ async function status(sql, update, userId) {
     const online = list.filter((m) => m.online && !m.paused);
     const lines = list.map((m) => `- ${m.said}: ${m.paused ? 'paused' : m.online ? 'online' : 'offline'}`
       + (cannotSay(m.caps) ? ` - ${cannotSay(m.caps)}` : ''));
-    return say(update.chatId, `${online.length} of ${list.length} computer${list.length === 1 ? '' : 's'} `
+    return sayKeyed(update.chatId, `${online.length} of ${list.length} computer${list.length === 1 ? '' : 's'} `
       + `taking work now:\n${lines.join('\n')}\n\n/machines - more, /use NAME - send tasks to one.`);
   }
   const seen = await workerSeen(sql, userId);
@@ -202,7 +293,7 @@ async function machines(sql, update, userId) {
   const lines = list.map((m) => `${m.id === chosen ? '> ' : '- '}${m.said}: `
     + `${m.paused ? 'paused' : m.online ? 'online' : 'offline'}${m.platform ? ` (${m.platform})` : ''}`
     + (cannotSay(m.caps) ? ` - ${cannotSay(m.caps)}` : ''));
-  return say(update.chatId, `${lines.join('\n')}\n\n`
+  return sayKeyed(update.chatId, `${lines.join('\n')}\n\n`
     + (chosen && list.some((m) => m.id === chosen)
       ? 'Tasks from here go to the one marked >. /use any - to whichever is free.'
       : 'Tasks from here go to whichever is free. /use NAME - to send them to one.'));
@@ -515,6 +606,18 @@ async function decide(sql, update, userId) {
 async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST' });
 
+  /* МИНИ-ПРИЛОЖЕНИЕ - до секрета вебхука: его запросы идут со страницы, а не от телеграма, и удостоверение
+   * у них своё - подписанный initData (см. miniApp выше). */
+  if (req.query && req.query.app) {
+    if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, why: 'no database' });
+    try {
+      return await miniApp(req, res, neon(process.env.DATABASE_URL));
+    } catch (err) {
+      await report(err, req, { route: 'telegram-app' });
+      return res.status(500).json({ ok: false, why: err.message });
+    }
+  }
+
   /* СЕКРЕТ ПЕРЕД ВСЕМ ОСТАЛЬНЫМ, включая чтение тела: адрес функции узнать легко, и это единственное, что
    * отличает телеграм от того, кто его узнал. Отсутствие секрета в окружении - тоже отказ: маршрут,
    * который «пока без проверки», это открытая дверь к чужой мыши. */
@@ -526,8 +629,9 @@ async function handler(req, res) {
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no database' });
 
   const sql = neon(process.env.DATABASE_URL);
-  /* Меню команд бота - до разбора: так оно обновляется с первым же сообщением после деплоя. */
-  await ensureCommands(sql);
+  /* Меню команд, облик бота и кнопка мини-приложения - до разбора: обновляются с первым же сообщением после
+   * деплоя. */
+  await ensureCommands(sql, String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim());
   const update = updateOf(req.body);
   if (update.kind === 'ignored') return ok(res, update.why);
 
@@ -555,7 +659,7 @@ async function handler(req, res) {
     if (route.act === 'refuse') { await say(update.chatId, route.say); return ok(res, 'refused'); }
     if (route.act === 'greet') { await greet(sql, update); return ok(res, 'greeted'); }
     if (route.act === 'pair') { await pair(sql, update, route.token); return ok(res, 'pairing'); }
-    if (route.act === 'help') { await say(update.chatId, SAY.help); return ok(res, 'help'); }
+    if (route.act === 'help') { await sayKeyed(update.chatId, SAY.help); return ok(res, 'help'); }
 
     /* Отсюда и ниже всё требует аккаунта, и routeOf уже это обеспечил - но проверка стоит здесь ещё раз,
      * потому что именно тут начинаются последствия. Пропуск в этой ветке стоит чужого прогона. */

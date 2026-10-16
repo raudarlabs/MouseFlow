@@ -748,7 +748,8 @@ check('/mcp is a route', /path: '\/mcp'/.test(main));
 const account = readFileSync(
   fileURLToPath(new URL('../web/src/shell/AccountProvider.tsx', import.meta.url)), 'utf8');
 check('and it is readable with no account, or it is a door that opens from inside',
-  /PUBLIC_PATHS = \['\/mcp'\]/.test(account) && /isPublicPath\(location\.pathname\)/.test(account));
+  /* И /tg (2026-10-16): мини-приложение в Telegram, где куки сайта нет; аккаунт оно узнаёт по initData. */
+  /PUBLIC_PATHS = \['\/mcp', '\/tg'\]/.test(account) && /isPublicPath\(location\.pathname\)/.test(account));
 
 /* ------------------------------------------------------------------------------- teams
  *

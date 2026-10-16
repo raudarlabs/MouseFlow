@@ -184,9 +184,36 @@ export const BOT_COMMANDS = [
   { command: 'help', description: 'What I can do' },
 ];
 
+/* ОБЛИК БОТА - имя, описания и кнопка меню (2026-10-16). Бот достался от другого проекта, и телеграм
+ * помнил его имя и его кнопку «Dashboard» на несуществующий деплой. Публикуется ботом самим, как меню. */
+export const BOT_PROFILE = {
+  name: 'Hivelink',
+  shortDescription: 'Tell your computers what to do - each one does it on its own screen.',
+  description: 'Hivelink runs tasks on your own computers. Pair this chat with your account, then send a '
+    + 'task in a sentence or by voice: you get a plan, press Approve, and the computer you chose does it '
+    + 'and reports back here. /machines shows your computers.',
+  menuText: 'Hivelink',
+};
+
+/* КЛАВИАТУРА ПОД ПОЛЕМ ВВОДА - своя вместо оставшейся от прошлого бота. Нажатие присылает текст кнопки, и
+ * routeOf читает его как команду; поэтому слова здесь и разбор ниже - одна таблица. */
+export const KEYBOARD_BUTTONS = {
+  '🖥 Machines': 'machines',
+  '📊 Status': 'status',
+  '⏹ Stop': 'stop',
+  '❓ Help': 'help',
+};
+export const KEYBOARD = {
+  keyboard: [[{ text: '🖥 Machines' }, { text: '📊 Status' }], [{ text: '⏹ Stop' }, { text: '❓ Help' }]],
+  resize_keyboard: true,
+  is_persistent: true,
+};
+
 /** `/pair mf_x` → `{ name: 'pair', rest: 'mf_x' }`. Не команда - null, и это не ошибка, а обычный случай. */
 export function commandOf(text) {
   const said = String(text || '').trim();
+  /* Кнопка своей клавиатуры - та же команда, что её слэш-форма. */
+  if (KEYBOARD_BUTTONS[said]) return { name: KEYBOARD_BUTTONS[said], rest: '' };
   if (!said.startsWith('/')) return null;
   /* `/status@my_bot` - то же самое: в группах телеграм дописывает имя бота, и команда, не узнавшая себя
    * из-за суффикса, отвечает «не понял» там, где человек всё сделал правильно. */

@@ -498,7 +498,7 @@ group('папки одного продукта не импортируют па
    * читающий из папки экрана P2, - это нитка, которую тогда придётся рвать под нагрузкой. Общее живёт в
    * lib/, components/ и shell/. Какая папка чья - по экрану, который она рисует. */
   const OWNER = {
-    create: 'do', saved: 'do', activity: 'do', panel: 'do', connect: 'do', tests: 'do', overview: 'do', ai: 'do', devices: 'do',
+    create: 'do', saved: 'do', activity: 'do', panel: 'do', connect: 'do', tests: 'do', overview: 'do', ai: 'do', devices: 'do', tg: 'do',
     record: 'make', skills: 'make', docs: 'make', insights: 'make', team: 'make', gallery: 'make',
     chat: 'make', mcp: 'make',
   };

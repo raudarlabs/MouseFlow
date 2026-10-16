@@ -484,5 +484,39 @@ group('/where: задачи из чата - во вкладке своего б�
   check('агент без своего браузера - сказано сразу, а не тишина', /if \(where === 'browser' && !\(await agentHasBrowser\(sql, userId\)\)\)/.test(door));
 }
 
+/* МИНИ-ПРИЛОЖЕНИЕ (2026-10-16): аккаунт узнаётся по initData, подписанному телеграмом, - и проверка подписи
+ * выполняется здесь, а не вычитывается: ошибка в ней - это чужие машины в чужом телефоне. */
+group('мини-приложение: initData проверяется подписью телеграма, свежестью и тем, кто открыл');
+{
+  const { checkInitData, signInitData } = await import('./_tg-app.mjs');
+  const token = '123456:TEST-token';
+  const now = 1_800_000_000;
+  const fields = { auth_date: String(now - 60), query_id: 'AAE', user: JSON.stringify({ id: 42, first_name: 'Vic' }) };
+  const good = signInitData(fields, token);
+  const ok = checkInitData(good, token, now);
+  check('подписанное телеграмом принимается, и в нём тот, кто открыл', !ok.why && ok.user.id === 42, JSON.stringify(ok));
+  check('чужим токеном - нет', !!checkInitData(good, '999:other', now).why);
+  const forged = good.replace(encodeURIComponent('"id":42'), encodeURIComponent('"id":43'));
+  check('подменённый пользователь - нет', forged !== good && !!checkInitData(forged, token, now).why);
+  check('без подписи - нет', !!checkInitData(new URLSearchParams(fields).toString(), token, now).why);
+  check('старше суток - нет, даже с верной подписью',
+    /too old/.test(checkInitData(signInitData({ ...fields, auth_date: String(now - 90_000) }, token), token, now).why || ''));
+  check('без токена бота на развёртывании - отказ словами, а не пропуск', !!checkInitData(good, '', now).why);
+  check('порядок полей не важен - телеграм сортирует сам',
+    !checkInitData(signInitData({ user: fields.user, query_id: 'AAE', auth_date: fields.auth_date }, token), token, now).why);
+
+  const route = readFileSync(new URL('./telegram.js', import.meta.url), 'utf8');
+  check('и аккаунт - по спаренному чату, как у сообщений', /sender_id = \$\{String\(seen\.user\.id\)\}/.test(route)
+    && /row\.state !== 'allowed'/.test(route));
+  check('запрос мини-приложения разбирается до секрета вебхука, и только он',
+    route.indexOf('if (req.query && req.query.app)') < route.indexOf('const want = process.env.TELEGRAM_WEBHOOK_SECRET;'));
+  check('бот публикует свой облик и кнопку меню на мини-приложение того же развёртывания',
+    /callTelegram\('setMyName'/.test(route) && /type: 'web_app', text: BOT_PROFILE\.menuText, web_app: \{ url: app \}/.test(route)
+      && /`https:\/\/\$\{host\}\/tg`/.test(route));
+  const words = readFileSync(new URL('./_telegram.mjs', import.meta.url), 'utf8');
+  check('своя клавиатура вместо оставшейся от прошлого бота, и её кнопки - команды',
+    /export const KEYBOARD = \{/.test(words) && /if \(KEYBOARD_BUTTONS\[said\]\) return \{ name: KEYBOARD_BUTTONS\[said\], rest: '' \};/.test(words));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
