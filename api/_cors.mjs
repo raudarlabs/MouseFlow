@@ -36,12 +36,28 @@ const OURS = new Set([
 const CANONICAL = 'https://mouseflowapp.vercel.app';
 
 /**
- * @param {import('http').IncomingMessage} req
- * @param {import('http').ServerResponse} res
- * @param {string} methods  какие методы этот маршрут действительно принимает
+ * Что поставить в Allow-Origin этому origin. Вынесено из cors() по двум причинам: решение проверяется
+ * исполнением, без заголовков, - и маршрут, которому чужой origin надо ОТКАЗАТЬ, а не только не дать ему
+ * прочитать ответ, спрашивает этот же ответ, а не держит свою копию. Своя копия - это и есть механизм,
+ * которым chats.js однажды разошёлся с шестью соседями (см. шапку).
+ *
+ * ГОСТИ - ЧУЖИЕ АДРЕСА ОДНОГО МАРШРУТА. Первым стал лендинг hivelink.si для /api/waitlist (2026-10-16):
+ * отдельный статический проект, форма которого шлёт адрес сюда кросс-доменно. В OURS его не кладут, и это
+ * главное: OURS открывает чтение ответов КАЖДОГО маршрута, а лендингу нужен один. Страница, которую
+ * собирают и выкладывают отдельно и в которую однажды встанет чей-нибудь счётчик, не должна уметь читать
+ * ответы маршрутов аккаунта - даже без кук и даже там, где читать сегодня нечего: такая гарантия держится
+ * на том, что её не выдают, а не на том, что за ней пока пусто.
+ *
+ * МАРШРУТ С ГОСТЯМИ ОТВЕЧАЕТ ЗАКРЫТЫМ СПИСКОМ: свои адреса и гости, без отражения расширений. Расширение
+ * такой маршрут не зовёт, а список, в котором есть «и любой chrome-extension://», уже не читается как
+ * «ровно эти».
+ *
+ * @param {string} origin
+ * @param {Set<string> | null} guests  чужие origin, которым ЭТОТ маршрут разрешает читать ответ
  */
-export function cors(req, res, methods = 'GET, POST, OPTIONS') {
-  const origin = String((req.headers && req.headers.origin) || '');
+export function allowOrigin(origin, guests = null) {
+  const said = String(origin || '');
+  if (guests) return OURS.has(said) || guests.has(said) ? said : CANONICAL;
   /* Расширение отражается: его origin - chrome-extension://<id>, он у каждой установки свой, и
    * перечислить их нельзя.
    *
@@ -50,9 +66,20 @@ export function cors(req, res, methods = 'GET, POST, OPTIONS') {
    * проверить которое можно только установленным расширением, а выигрыша нет: отражение само по себе
    * ничего не разрешает, пока Allow-Credentials не стоит нигде. Менять то, что нельзя проверить, ради
    * аккуратности - это ровно тот обмен, который здесь не делают. */
-  const allow = /^chrome-extension:\/\//.test(origin) || OURS.has(origin)
-    ? origin
+  return /^chrome-extension:\/\//.test(said) || OURS.has(said)
+    ? said
     : CANONICAL;
+}
+
+/**
+ * @param {import('http').IncomingMessage} req
+ * @param {import('http').ServerResponse} res
+ * @param {string} methods  какие методы этот маршрут действительно принимает
+ * @param {Set<string> | null} guests  см. allowOrigin; у всех маршрутов, кроме одного, их нет
+ */
+export function cors(req, res, methods = 'GET, POST, OPTIONS', guests = null) {
+  const origin = String((req.headers && req.headers.origin) || '');
+  const allow = allowOrigin(origin, guests);
   res.setHeader('Access-Control-Allow-Origin', allow);
   /* Ответ зависит от Origin - без этого кэш отдал бы одному origin ответ, приготовленный для другого. */
   res.setHeader('Vary', 'Origin');

@@ -325,6 +325,24 @@ Every rate limiter is **honest about itself**: a serverless instance holds its o
 is the stated number times however many instances are warm. It stops a stuck client and casual abuse, not a
 determined one.
 
+## The waitlist: the one door with no sign-in
+
+`POST /api/waitlist` takes an email address from the hivelink.si landing, cross-origin, from anybody
+([14 — HTTP API](14-http-api.md#apiwaitlist)). What stands in for a sign-in:
+
+| | |
+|---|---|
+| **CORS for this route only** | `https://hivelink.si` and `https://www.hivelink.si` are guests of this one route, never added to the app's own origins: a separately built static page that will one day carry somebody's analytics snippet must not be able to read any account route's answer, even without cookies. No `Allow-Credentials`, `Vary: Origin`, no reflection of arbitrary origins, and no extension origins on this route. A foreign `Origin` is refused with 400, not only denied the read. |
+| **JSON only** | A cross-site form or `no-cors` request cannot claim `application/json`, so it cannot submit. |
+| **No enumeration** | New, duplicate and honeypot answers are the same 200 with the same body; errors never echo the address; the ceiling counts attempts, so *when* 429 arrives says nothing either. |
+| **Per-IP ceiling, in the database** | 5 attempts per hour per IP (IPv6: per /64), counted in `waitlist_try` across instances — not a per-instance `Map`. A ceiling, not a lock: two simultaneous requests can let a sixth through, and it fails **open** if the count itself fails, like `api/_spend.mjs`. On Vercel the IP comes from headers the platform overwrites; **off Vercel those headers are client-controlled** and the ceiling is only as good as whatever sits in front. |
+| **IPs are not stored** | Only `HMAC-SHA256(key, "hivelink-waitlist-ip\n" + bucket)`, for two hours. An unkeyed hash of an IPv4 address is reversed by trying all four billion. The key is `WAITLIST_IP_KEY`, or `DATABASE_URL` when that is unset — whoever holds the database string could then reverse the last hour's hashes, but already holds the list itself. |
+| **Honeypot** | A non-empty `website` field gets the ordinary 200 and nothing is written; it still spends an attempt, so a bot sees what a person sees. |
+| **Size** | 2 KB body, 254-char address, 200-char `ref` (cut, control characters removed). |
+
+This is an address list kept for one purpose — telling people when they can get in. It is not joined to
+anything, and no route reads it back.
+
 ## Deleting your data
 
 **Settings → My account → Delete my data** (`DELETE /api/account?erase=1`). Flows and runs are hard-deleted,
