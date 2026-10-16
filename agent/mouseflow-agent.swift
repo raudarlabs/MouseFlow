@@ -8485,6 +8485,27 @@ final class SetupWindow: NSObject, NSWindowDelegate {
             reset.waitUntilExit()
         }
         if #available(macOS 10.15, *) { _ = CGRequestScreenCaptureAccess() }
+        /* НА macOS 15 И НОВЕЕ CGRequestScreenCaptureAccess У ФОНОВОГО ПРИЛОЖЕНИЯ ЧАСТО МОЛЧИТ - увидено на
+         * macOS 26 у владельца 2026-10-16: кнопка нажималась, и не происходило ничего. Системный вопрос надёжно
+         * вызывает попытка спросить ScreenCaptureKit о содержимом экрана - она же и вносит приложение в
+         * список «Screen & System Audio Recording». */
+        if #available(macOS 12.3, *) {
+            SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, _ in }
+        }
+        /* И ЕСЛИ macOS ВСЁ РАВНО ПРОМОЛЧАЛА - через две секунды открыть нужный раздел и показать приложение в
+         * Finder: в списке его включают, а если его там нет, «+» и выбрать его (или перетащить из Finder).
+         * Окно, после нажатия на которое не происходит ничего, человек читает как поломку. */
+        /* Проба - дочерний процесс до пяти секунд, поэтому в фоне: окно не должно замирать. */
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard PermissionWatch.probe()?.screenRecording != true else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.openScreen()
+                NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+                self.footer.stringValue = "In System Settings, switch on MouseFlow Agent under Screen & System Audio "
+                    + "Recording. If it is not in the list, press + and choose it - Finder is showing where it is."
+            }
+        }
     }
 
     @objc private func openAccessibility() {

@@ -6633,8 +6633,12 @@ group('the Mac agent asks for its two permissions in a window, one after the oth
   check('Allow for the screen resets only this app\'s entry, only while it is not granted, then asks',
     /reset\.arguments = \["reset", "ScreenCapture", bundle\]/.test(swift)
       && /if let bundle = Bundle\.main\.bundleIdentifier, !Permission\.screenRecording/.test(swift)
-      && /_ = CGRequestScreenCaptureAccess\(\) \}\s*\}/.test(swift));
+      && swift.indexOf('reset.waitUntilExit()') < swift.indexOf('SCShareableContent.getExcludingDesktopWindows(false'));
   check('its ticks come from a fresh probe, not from the running process', /let now = PermissionWatch\.probe\(\)/.test(swift));
+  /* Увидено на macOS 26 у владельца: CGRequestScreenCaptureAccess молчал, и кнопка не делала ничего. */
+  check('and when macOS stays silent, ScreenCaptureKit asks, then Settings and Finder open by themselves',
+    /SCShareableContent\.getExcludingDesktopWindows\(false, onScreenWindowsOnly: true\)/.test(swift)
+      && /NSWorkspace\.shared\.activateFileViewerSelecting\(\[Bundle\.main\.bundleURL\]\)/.test(swift));
   check('it opens by itself when something is missing, and the menu keeps a way back to it',
     /if SetupWindow\.needed && Bundle\.main\.bundleIdentifier != nil \{ SetupWindow\.shared\.show\(\) \}/.test(swift)
       && /"Set Up Permissions…"/.test(swift) && /setupItem\?\.isHidden = !SetupWindow\.needed/.test(swift));
