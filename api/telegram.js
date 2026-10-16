@@ -27,7 +27,7 @@ import { neon } from '@neondatabase/serverless';
 import { byDeviceToken } from './_session.js';
 import { report, wrap } from './_report.js';
 import { overSpend } from './_spend.mjs';
-import { DESKTOP_GOAL, findMachine, machinesOf, modeOf, queueOne, setMode, workerSeen } from './_queue.mjs';
+import { DESKTOP_GOAL, cannotSay, findMachine, machinesOf, modeOf, queueOne, setMode, workerSeen } from './_queue.mjs';
 import { ONE_WAY } from './_brain.mjs';
 import { GOAL_MAX, goalWith, looksLikeText } from './_attach.mjs';
 import { planFrom, planRequest } from './_plan.mjs';
@@ -35,7 +35,7 @@ import { recognise, refusedAudio } from './_transcribe.mjs';
 import { callModel } from './_vision.mjs';
 import { callTelegram, fileUrl, sendChat, tellFeed } from './_telegram-out.mjs';
 import {
-  CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, MACHINE_KEY, SAY, TELEGRAM_TAB, WHERE_KEY, draftId, expired, feedLine, feedSource,
+  BOT_COMMANDS, CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, MACHINE_KEY, SAY, TELEGRAM_TAB, WHERE_KEY, draftId, expired, feedLine, feedSource,
   holdAnswerOf, keyboardFor,
   outcomeMessage, planMessage, refusedDocument, routeOf, tagFor, updateOf, verdictOf,
 } from './_telegram.mjs';
@@ -119,7 +119,34 @@ async function pair(sql, update, token) {
   return say(update.chatId, SAY.paired);
 }
 
+/* МЕНЮ КОМАНД - публикуется ботом самим, один раз на каждую редакцию BOT_COMMANDS. Отметка - в app_setting
+ * (настройка развёртывания, не человека); сравнивается сам список, так что правка описания тоже уезжает.
+ * Не удалось - ничего страшного: попробует со следующим сообщением, а ответ человеку от этого не зависит. */
+const COMMANDS_KEY = 'telegram.commands';
+async function ensureCommands(sql) {
+  try {
+    const wanted = JSON.stringify(BOT_COMMANDS);
+    const [row] = await sql`select value from app_setting where key = ${COMMANDS_KEY}`;
+    if (row && row.value === wanted) return;
+    const put = await callTelegram('setMyCommands', { commands: BOT_COMMANDS });
+    if (!put.ok) return;
+    await sql`
+      insert into app_setting (key, value) values (${COMMANDS_KEY}, ${wanted})
+      on conflict (key) do update set value = excluded.value, updated_at = now()
+    `;
+  } catch (_) { /* the menu is a convenience; the answer to the person is not */ }
+}
+
 async function status(sql, update, userId) {
+  /* МАШИНЫ - ПЕРВЫМИ, когда они есть (Hivelink): «жива ли машина» на аккаунте с несколькими - это «какие». */
+  const list = await machinesOf(sql, userId).catch(() => []);
+  if (list.length) {
+    const online = list.filter((m) => m.online && !m.paused);
+    const lines = list.map((m) => `- ${m.said}: ${m.paused ? 'paused' : m.online ? 'online' : 'offline'}`
+      + (cannotSay(m.caps) ? ` - ${cannotSay(m.caps)}` : ''));
+    return say(update.chatId, `${online.length} of ${list.length} computer${list.length === 1 ? '' : 's'} `
+      + `taking work now:\n${lines.join('\n')}\n\n/machines - more, /use NAME - send tasks to one.`);
+  }
   const seen = await workerSeen(sql, userId);
   if (seen === undefined) return say(update.chatId, 'I cannot tell right now - this deployment could not answer.');
   if (seen === null) {
@@ -173,7 +200,8 @@ async function machines(sql, update, userId) {
   }
   const chosen = await machineOf(sql, userId);
   const lines = list.map((m) => `${m.id === chosen ? '> ' : '- '}${m.said}: `
-    + `${m.paused ? 'paused' : m.online ? 'online' : 'offline'}${m.platform ? ` (${m.platform})` : ''}`);
+    + `${m.paused ? 'paused' : m.online ? 'online' : 'offline'}${m.platform ? ` (${m.platform})` : ''}`
+    + (cannotSay(m.caps) ? ` - ${cannotSay(m.caps)}` : ''));
   return say(update.chatId, `${lines.join('\n')}\n\n`
     + (chosen && list.some((m) => m.id === chosen)
       ? 'Tasks from here go to the one marked >. /use any - to whichever is free.'
@@ -498,6 +526,8 @@ async function handler(req, res) {
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no database' });
 
   const sql = neon(process.env.DATABASE_URL);
+  /* Меню команд бота - до разбора: так оно обновляется с первым же сообщением после деплоя. */
+  await ensureCommands(sql);
   const update = updateOf(req.body);
   if (update.kind === 'ignored') return ok(res, update.why);
 

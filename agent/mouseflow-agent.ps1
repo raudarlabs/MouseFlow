@@ -6434,7 +6434,9 @@ namespace MouseFlow
                     "{\"worker\":\"" + Agent.JsonText(Environment.MachineName)
                     /* Что это за машина - для списка машин в аккаунте (H3). */
                     + "\",\"platform\":\"windows\",\"version\":\"" + Agent.Version
-                    + "\",\"kind\":\"agent\",\"steps\":true,\"wait\":"
+                    /* Видит ли экран и может ли действовать - как /health; на Windows видит всегда. */
+                    + "\",\"canSee\":true,\"canAct\":" + (Agent.RecordOnly ? "false" : "true")
+                    + ",\"kind\":\"agent\",\"steps\":true,\"wait\":"
                     + ClaimWaitSeconds.ToString(CultureInfo.InvariantCulture) + "}", out status);
 
                 if (status == 401 || status == 403)

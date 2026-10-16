@@ -170,7 +170,9 @@ account was attached to be given work; the menu-bar / tray switch is still the s
 - **The refusal is one sentence for every reason** — unknown, expired, used up — so a guesser learns nothing.
 - `base` is `--base`, else the pinned origin, else the product's address.
 - From H3 the claim also carries `platform` and `version`, so the account's list of machines can say what
-  each one runs.
+  each one runs — and from 2026-10-16 `canSee` and `canAct`, the same two facts as `/health`, so a machine
+  that is online but cannot take a screenshot is shown as such instead of failing every goal at step one.
+  The deployment keeps them per machine in `user_pref` (`device.caps.<id>`), written only when they change.
 
 What the agent has to understand from a claimed job is deliberately small: `#record.start`, `#record.stop`,
 and a replay `body` in the format it already speaks, with an optional `activate` instruction for the window.

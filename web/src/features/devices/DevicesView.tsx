@@ -24,7 +24,8 @@ import { ArmedButton } from '@/components/ArmedButton';
 import { Said, type SaidNote } from '@/components/Said';
 import {
   type Device, type EnrollCode, type Flow, type LiveJob, cancelJob, commandMachines, devices, dropEnrollCode,
-  enrollCodes, isMachine, liveJobs, machineName, machineOnline, makeEnrollCode, nameDevice, pauseDevice, revokeDevice,
+  enrollCodes, isMachine, liveJobs, machineCannot, machineName, machineOnline, makeEnrollCode, nameDevice, pauseDevice,
+  revokeDevice,
 } from '@/lib/api';
 import {
   AGENT_WANTS, macEnrollCommand, macInstallCommand, olderThan, windowsEnrollCommand, windowsInstallCommand,
@@ -370,16 +371,27 @@ const AddMachines = ({ onNote }: { onNote: (note: SaidNote) => void }) => {
 const ThisComputer = () => {
   const { health } = useAgent();
   if (!health || health.linked === undefined) return null;
-  if (health.linked && health.taking) return null;
+  /* И ПОДКЛЮЧЁННЫЙ, НО СЛЕПОЙ: агент этого компьютера сам говорит canSee по loopback - так это видно сразу, и
+   * на агенте, собранном до того, как он начал сообщать об этом серверу (пересборка на Mac сбрасывает
+   * разрешения, и ради одной строки её не стоит делать). */
+  const blind = health.linked && health.taking && health.canSee === false;
+  if (health.linked && health.taking && !blind) return null;
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border-fb-attention/40 border bg-fb-attention/[0.06] px-4 py-3">
       <Typography variant="p" className="min-w-[16rem] flex-1 text-[0.85rem] text-ink-body">
-        {health.linked
-          ? 'The agent on this computer is attached but not taking work. If it is missing from the list below, '
-            + 'its token was removed from the account: open Connections, press Detach, then Attach this computer.'
-          : 'The agent on this computer is running but not attached to this account, so it is not in the list.'}
+        {blind
+          ? (health.platform === 'windows'
+            ? 'This computer is attached and taking work, but it cannot see the screen, so every goal sent to it '
+              + 'fails at its first step. If it is locked or a remote session was disconnected, there is no desktop to look at.'
+            : 'This computer is attached and taking work, but its agent cannot see the screen, so every goal sent '
+              + 'to it fails at its first step. Allow Screen Recording for MouseFlow Agent in System Settings → '
+              + 'Privacy & Security; the agent picks it up within seconds.')
+          : health.linked
+            ? 'The agent on this computer is attached but not taking work. If it is missing from the list below, '
+              + 'its token was removed from the account: open Connections, press Detach, then Attach this computer.'
+            : 'The agent on this computer is running but not attached to this account, so it is not in the list.'}
       </Typography>
-      <Button size="sm" variant="secondary" onClick={() => openSettings('connections')}>Open Connections</Button>
+      {!blind && <Button size="sm" variant="secondary" onClick={() => openSettings('connections')}>Open Connections</Button>}
     </div>
   );
 };
@@ -539,6 +551,12 @@ export const DevicesView = () => {
                         {status !== 'online' && (
                           <span className="block text-[0.74rem] text-ink-inactive">
                             {one.lastUsedAt ? `seen ${when(one.lastUsedAt)}` : 'never connected'}
+                          </span>
+                        )}
+                        {/* НА СВЯЗИ, НО ЦЕЛЬ НЕ СДЕЛАЕТ - сказано у статуса, а не узнаётся по упавшему прогону. */}
+                        {machineCannot(one) && (
+                          <span className="mt-0.5 block whitespace-normal text-[0.74rem] text-fb-attention" title={machineCannot(one)!.fix}>
+                            {machineCannot(one)!.short}
                           </span>
                         )}
                       </td>

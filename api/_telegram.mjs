@@ -170,6 +170,20 @@ export function updateOf(body) {
   };
 }
 
+/* МЕНЮ КОМАНД БОТА - то, что телеграм показывает по «/» и кнопке меню (2026-10-16). Было заведено руками в
+ * BotFather, и новые команды (/machines, /use) в нём не появлялись: человек не знал, что они есть. Теперь
+ * список здесь, и бот публикует его сам (setMyCommands в api/telegram.js), когда список изменился. */
+export const BOT_COMMANDS = [
+  { command: 'machines', description: 'Your computers - which are online and what each is doing' },
+  { command: 'use', description: 'Send tasks to one computer: /use Office-3 (or /use any)' },
+  { command: 'status', description: 'Is a computer of yours awake and taking work' },
+  { command: 'stop', description: 'Stop whatever is running' },
+  { command: 'mode', description: 'Run straight through, or ask before what cannot be undone' },
+  { command: 'feed', description: 'This chat as a log of everything your machines do' },
+  { command: 'where', description: 'Run tasks in the MouseFlow browser or on the screen' },
+  { command: 'help', description: 'What I can do' },
+];
+
 /** `/pair mf_x` → `{ name: 'pair', rest: 'mf_x' }`. Не команда - null, и это не ошибка, а обычный случай. */
 export function commandOf(text) {
   const said = String(text || '').trim();

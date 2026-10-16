@@ -479,7 +479,17 @@ group('Devices: «Attach this computer» opens Connections, and a detached local
     /onClick=\{\(\) => openSettings\('connections'\)\}/.test(view) && !/<Link to="\/connect"[^>]*>Attach this computer/.test(view));
   check('и окно слушает это событие', /window\.addEventListener\(OPEN_SETTINGS_EVENT, open\)/.test(read('src/shell/AppLayout.tsx')));
   check('агент этого компьютера, подключённый, но не берущий работу, - назван со способом починить',
-    /if \(health\.linked && health\.taking\) return null;/.test(view) && /press Detach, then Attach this computer/.test(view));
+    /if \(health\.linked && health\.taking && !blind\) return null;/.test(view) && /press Detach, then Attach this computer/.test(view));
+}
+
+group('a machine that cannot do a goal is named on Devices and Overview, this computer included');
+{
+  const view = read('src/features/devices/DevicesView.tsx');
+  check('у статуса машины - «не видит экран» и что нажать', /machineCannot\(one\) && \(/.test(view)
+    && /Allow Screen Recording for MouseFlow Agent/.test(read('src/lib/api.ts')));
+  check('и на обзоре тоже', /machineCannot\(one\)!\.short\}: \{machineCannot\(one\)!\.fix\}/.test(read('src/features/overview/OverviewView.tsx')));
+  check('а этот компьютер говорит сам, по loopback, - без пересборки агента',
+    /const blind = health\.linked && health\.taking && health\.canSee === false;/.test(view));
 }
 
 group('папки одного продукта не импортируют папки другого');

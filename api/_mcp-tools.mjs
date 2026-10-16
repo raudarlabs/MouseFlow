@@ -19,7 +19,7 @@ import { help } from './_help.mjs';
 import { firstAt, readRule, ruleOf, ruleSaid, whenSaid } from './_schedule.mjs';
 import { checksOf } from './_expect.mjs';
 import {
-  BROWSER_GOAL, DESKTOP_GOAL, WHERE, findMachine, jobId, machinesOf, queueOne, scheduleId, workerSeen,
+  BROWSER_GOAL, DESKTOP_GOAL, WHERE, cannotSay, findMachine, jobId, machinesOf, queueOne, scheduleId, workerSeen,
 } from './_queue.mjs';
 import {
   CASE_KEY, EXPECT_KEY, REF_KEY, REF_MAX, VERDICTS, checkedReport, checksFor, expectLine, expectsOf, readExpects,
@@ -1234,7 +1234,9 @@ export async function callTool(sql, who, params, req) {
     const lines = list.map((m) => {
       const job = running.find((j) => j.device === m.id || j.pinned === m.id);
       const what = job ? `${job.state === 'queued' ? 'waiting' : 'running'}: ${(job.args && job.args.goal) || job.tool_name}` : null;
-      const state = m.paused ? 'paused from the account' : m.online ? 'online' : 'offline';
+      const cannot = cannotSay(m.caps);
+      const state = (m.paused ? 'paused from the account' : m.online ? 'online' : 'offline')
+        + (cannot ? `, but it ${cannot} - a goal sent to it fails at its first step` : '');
       const kind = [m.platform, m.version].filter(Boolean).join(' ');
       return `- ${m.said}${kind ? ` (${kind})` : ''} - ${state}${what ? ` - ${what}` : ''} [id ${m.id}]`;
     });

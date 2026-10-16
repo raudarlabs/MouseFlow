@@ -46,7 +46,8 @@ concrete thing named for the owner to check.
 - [x] **Hivelink H5 — machines from MCP and Telegram, a quiet account polled less — built 2026-10-16.**
       `mouseflow_machines` + `machine`; `/machines`, `/use NAME`; `next` on idle claims. [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
 - [x] **`db/025_device.sql` applied 2026-10-16** (owner's go-ahead), read back from `information_schema`.
-- [ ] **Hivelink — what is owed:** the first real Windows run (installer + code);
+- [x] **The first real Windows run — 2026-10-16** (owner): a command sent from the Mac ran on a Windows PC.
+- [ ] **Hivelink — what is owed:**
       the signed Windows installer and the notarised Mac app (certificates, the owner's).
 
 - [x] **The night the 04:30 task did not run — found and fixed 2026-10-01.** The cause was **our own test

@@ -153,6 +153,13 @@ permissions, so it cannot be done safely from the account until the agent is Dev
 - Not done: a push channel instead of polling (worth it only if the 15 s quiet poll is still too costly when
   measured), and teams of admins over one fleet (Teams belongs to the other product today).
 
+**After H5, 2026-10-16:** the owner sent a command from the Mac and it ran on a Windows PC — the Windows
+agent's first real run. Found on the live account and fixed the same day: a revoked token left the Mac
+looking attached (the code now re-attaches; Devices names it), a Mac without Screen Recording looked
+online while every goal failed at step one (agents now send `canSee`/`canAct` with each claim; Devices,
+Overview, MCP and Telegram say it), and the Telegram menu did not know `/machines` (the bot now publishes
+`BOT_COMMANDS` itself with `setMyCommands`; `/status` lists the machines).
+
 ## 4. Open questions for the owner
 
 1. Commands beyond skill / goal / stop / screenshot — shell commands? (new, and the riskiest)

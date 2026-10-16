@@ -23,7 +23,8 @@ import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
 import { Said } from '@/components/Said';
 import {
-  type Device, type RanInsights, type Schedule, MACHINE_ONLINE_MS, devices, nameDevice, ranInsights, schedules,
+  type Device, type RanInsights, type Schedule, MACHINE_ONLINE_MS, devices, machineCannot, nameDevice, ranInsights,
+  schedules,
 } from '@/lib/api';
 import { Page } from '@/shell/Surface';
 import { when } from '@/features/create/run-history';
@@ -200,6 +201,12 @@ const MachineRow = ({ one, fallback, online, onNamed }: {
           {one.platform ? `${one.platform}${one.version ? ` ${one.version}` : ''} · ` : ''}attached {when(one.createdAt)}
         </span>
       </div>
+      {/* На связи, но цель не сделает (2026-10-16) - со словами, что нажать. */}
+      {machineCannot(one) && (
+        <Typography variant="p" className="text-[0.76rem] text-fb-attention">
+          {machineCannot(one)!.short}: {machineCannot(one)!.fix}
+        </Typography>
+      )}
       {why && <Said note={{ text: why, kind: 'bad' }} variant="inline" />}
     </li>
   );

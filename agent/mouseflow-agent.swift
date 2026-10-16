@@ -5334,6 +5334,11 @@ enum Courier {
                                   /* Что это за машина - для списка машин в аккаунте (H3). */
                                   "platform": "macos",
                                   "version": VERSION,
+                                  /* И МОЖЕТ ЛИ ОНА СДЕЛАТЬ ЦЕЛЬ: видит ли экран и может ли действовать - те же два
+                                   * факта, что /health, чтобы Devices не называл «online» машину без Screen
+                                   * Recording, на которой любая цель падает на первом шаге (найдено 2026-10-16). */
+                                  "canSee": Permission.screenRecording,
+                                  "canAct": Permission.accessibility && !recordOnly,
                                   "wait": claimWaitSeconds]
         guard let body = try? JSONSerialization.data(withJSONObject: ask),
               let (status, data) = request(url, token: link.token, body: body) else {

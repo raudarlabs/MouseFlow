@@ -19,7 +19,7 @@ import { FAILS_BEFORE_PAUSE, decide, ruleOf, whenSaid } from './_schedule.mjs';
 import { checksOf } from './_expect.mjs';
 import { ARTIFACT_KEEP_DAYS, artifactId, dropWhich, tooBig } from './_artifact.mjs';
 import { overSpend, spentWhy } from './_spend.mjs';
-import { BROWSER_GOAL, DESKTOP_GOAL, jobId, roomForOne, scheduleId } from './_queue.mjs';
+import { BROWSER_GOAL, CAPS_PREFIX, DESKTOP_GOAL, jobId, roomForOne, scheduleId } from './_queue.mjs';
 import { RUN_KEY, caseGoal, caseIdOf, expectsOf, stripCase } from './_case.mjs';
 import { PAYLOAD_MAX_BYTES } from './_payload.mjs';
 /* Исход работы, пришедшей из чата, отвечает туда же. Обе формы - в api/_telegram-out.mjs, потому что
@@ -341,6 +341,18 @@ export async function workerRoute(action, req, res, sql, who) {
           where id = ${me} and user_id = ${who.id}
         `;
       } catch (_) { /* 025 not applied yet */ }
+      /* МОЖЕТ ЛИ ОНА СДЕЛАТЬ ЦЕЛЬ - видит ли экран и может ли действовать (агент присылает с 2026-10-16). Без
+       * миграции: строка user_pref на машину, и строка ПИШЕТСЯ только когда факты изменились - опрос каждые
+       * три секунды не превращается в запись каждые три секунды. Агент постарше полей не шлёт, и тогда о
+       * нём сказано «не знаем», а не «не может». */
+      if (typeof (req.body && req.body.canSee) === 'boolean' || typeof (req.body && req.body.canAct) === 'boolean') {
+        const caps = JSON.stringify({ canSee: req.body.canSee === true, canAct: req.body.canAct === true });
+        await sql`
+          insert into user_pref (user_id, key, value) values (${who.id}, ${CAPS_PREFIX + me}, ${caps})
+          on conflict (user_id, key) do update set value = excluded.value, updated_at = now()
+          where user_pref.value <> excluded.value
+        `.catch(() => {});
+      }
       /* ОДНА РАБОТА НА МАШИНУ И ЗДЕСЬ: машина, у которой уже есть взятая работа, вторую не получает - ни
        * от расписания, ни от соседней постановки. Через to_jsonb: до 025 колонки нет, и условие ложно. */
       const holding = await sql`

@@ -6571,6 +6571,40 @@ group('a revoked token does not count as attached: the code re-attaches it, on b
     /if \(who\.via !== 'session'\) return fail\(res, 403, 'only a signed-in browser can list devices'\);/.test(read('../api/sync.js')));
 }
 
+/* МАШИНА НА СВЯЗИ, КОТОРАЯ ЦЕЛЬ НЕ СДЕЛАЕТ (найдено 2026-10-16: Mac без Screen Recording). */
+group('a machine that is online but cannot see or act says so - to Devices, MCP and Telegram');
+{
+  const swift = read('../agent/mouseflow-agent.swift');
+  const ps = read('../agent/mouseflow-agent.ps1');
+  const worker = read('../api/_mcp-worker.mjs');
+  const queue = read('../api/_queue.mjs');
+  check('both agents send canSee and canAct with every claim',
+    /"canSee": Permission\.screenRecording,/.test(swift) && /"canAct": Permission\.accessibility && !recordOnly,/.test(swift)
+      && /canSee\\":true,\\"canAct\\":" \+ \(Agent\.RecordOnly \? "false" : "true"\)/.test(ps));
+  check('the deployment keeps them per machine and writes only when they change',
+    /\$\{CAPS_PREFIX \+ me\}/.test(worker) && /where user_pref\.value <> excluded\.value/.test(worker));
+  check('an agent that did not say is "not known", not "cannot"', /if \(!caps\) return null;|\(!caps \? null/.test(queue));
+  check('MCP and Telegram say it beside the machine',
+    /a goal sent to it fails at its first step/.test(read('../api/_mcp-tools.mjs')) && /cannotSay\(m\.caps\)/.test(read('../api/telegram.js')));
+  check('and the page never receives them as preferences', /key not like 'device\.caps\.%'/.test(read('../api/sync.js')));
+}
+
+/* МЕНЮ КОМАНД БОТА ПУБЛИКУЕТ САМ БОТ (2026-10-16): заведённое руками в BotFather не знало о /machines. */
+group('the bot publishes its own command menu, and /status names the machines');
+{
+  const tg = read('../api/telegram.js');
+  const words = read('../api/_telegram.mjs');
+  check('the menu is one list, and it carries the machine commands',
+    /export const BOT_COMMANDS = \[/.test(words) && /command: 'machines'/.test(words) && /command: 'use'/.test(words));
+  check('it is published with setMyCommands only when the list changed, and a failure costs nothing',
+    /callTelegram\('setMyCommands', \{ commands: BOT_COMMANDS \}\)/.test(tg) && /if \(row && row\.value === wanted\) return;/.test(tg)
+      && tg.indexOf('await ensureCommands(sql);') < tg.indexOf('const update = updateOf(req.body);'));
+  check('every command in the menu is one the bot answers',
+    [...words.matchAll(/command: '([a-z]+)'/g)].map((m) => m[1])
+      .every((c) => c === 'help' || new RegExp(`command\\.name === '${c}'`).test(words)));
+  check('/status lists the machines when there are any', /taking work now:/.test(tg) && /machinesOf\(sql, userId\)\.catch/.test(tg));
+}
+
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by
  * here, and a keep-alive socket that outlives them keeps the loop open - which turns a suite that has
  * finished and said so into one that appears to hang, and `npm test` never returns. Everything this file

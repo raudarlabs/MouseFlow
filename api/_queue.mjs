@@ -79,6 +79,22 @@ export const AGENT_LABEL = 'This computer';
  * он есть на любом развёртывании и пишется на каждом запросе с токеном - для «жив ли» этого достаточно. */
 export const DEVICE_ONLINE_MS = 90_000;
 
+/* Что машина может: `{ canSee, canAct }` под `device.caps.<id>` в user_pref - пишет claim, читают список машин,
+ * MCP и мессенджер. Нет строки - агент старше и не сказал, а не «не может». */
+export const CAPS_PREFIX = 'device.caps.';
+export const capsOf = (raw) => {
+  try {
+    const v = JSON.parse(String(raw || ''));
+    return { canSee: v.canSee === true, canAct: v.canAct === true };
+  } catch (_) {
+    return null;
+  }
+};
+/** Почему машина, которая на связи, всё равно не сделает цель - словами, или null. */
+export const cannotSay = (caps) => (!caps ? null
+  : !caps.canSee ? 'cannot see the screen (Screen Recording is not allowed for the agent)'
+    : !caps.canAct ? 'cannot act (Accessibility is not allowed, or it is record-only)' : null);
+
 /** Сколько машин аккаунта сейчас на связи. 0 - ни одной, и это тоже ответ. */
 export async function onlineAgents(sql, userId) {
   try {
@@ -114,7 +130,8 @@ export async function machinesOf(sql, userId) {
     select id, created_at, last_used_at,
            to_jsonb(device_token) ->> 'name' as name, to_jsonb(device_token) ->> 'hostname' as hostname,
            to_jsonb(device_token) ->> 'platform' as platform, to_jsonb(device_token) ->> 'agent_version' as version,
-           coalesce(to_jsonb(device_token) ->> 'paused', 'false') = 'true' as paused
+           coalesce(to_jsonb(device_token) ->> 'paused', 'false') = 'true' as paused,
+           (select p.value from user_pref p where p.user_id = device_token.user_id and p.key = ${CAPS_PREFIX} || device_token.id) as caps
     from device_token
     where user_id = ${userId} and revoked_at is null and label = ${AGENT_LABEL}
     order by created_at limit 50
@@ -130,6 +147,7 @@ export async function machinesOf(sql, userId) {
     paused: !!r.paused,
     online: !!r.last_used_at && now - new Date(r.last_used_at).getTime() < DEVICE_ONLINE_MS,
     lastUsedAt: r.last_used_at || null,
+    caps: capsOf(r.caps),
   }));
 }
 

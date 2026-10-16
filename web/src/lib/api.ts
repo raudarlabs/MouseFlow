@@ -127,7 +127,33 @@ export interface Device {
   jobs?: { days: number; done: number; failed: number; running: string | null };
   /** На паузе из аккаунта (H2): сервер не выдаёт ей работу. */
   paused?: boolean;
+  /** Может ли сделать цель: видит ли экран, может ли действовать. null/нет - агент не сказал. */
+  caps?: { canSee: boolean; canAct: boolean } | null;
 }
+
+/* ПОЧЕМУ МАШИНА НА СВЯЗИ НЕ СДЕЛАЕТ ЦЕЛЬ - словами и с тем, что нажать. Найдено 2026-10-16: Mac был «online»,
+ * а каждая цель падала на первом шаге - у агента не было Screen Recording. Только когда агент СКАЗАЛ: молчание
+ * старого агента - не «не может». */
+export const machineCannot = (one: Device): { short: string; fix: string } | null => {
+  if (!one.caps) return null;
+  if (!one.caps.canSee) {
+    return {
+      short: 'cannot see the screen',
+      fix: one.platform === 'windows'
+        ? 'It cannot take screenshots. If the PC is locked or a remote session was disconnected, there is no desktop to look at.'
+        : 'Allow Screen Recording for MouseFlow Agent in System Settings → Privacy & Security; the agent picks it up within seconds.',
+    };
+  }
+  if (!one.caps.canAct) {
+    return {
+      short: 'cannot act',
+      fix: one.platform === 'windows'
+        ? 'It was started with -RecordOnly, so it watches and never clicks.'
+        : 'Allow Accessibility for MouseFlow Agent in System Settings → Privacy & Security — or it is a record-only build.',
+    };
+  }
+  return null;
+};
 
 /** Машина ли это, которой дают команды, - токен агента, а не расширения и не выданный руками. */
 export const AGENT_LABEL = 'This computer';
