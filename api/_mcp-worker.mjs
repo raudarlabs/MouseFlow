@@ -302,7 +302,15 @@ export async function workerRoute(action, req, res, sql, who) {
       /* Что машина сказала о себе - в её строку. До применения 025 колонок нет, и это молча ничего не
        * делает: сведения - удобство, а не условие работы. */
       try {
-        await sql`update device_token set seen_at = now(), hostname = ${by} where id = ${me} and user_id = ${who.id}`;
+        /* Платформу и версию агент присылает в claim с H3 (`platform`, `version`); старший - не присылает, и
+         * тогда остаётся то, что было. */
+        const platform = req.body && req.body.platform ? String(req.body.platform).slice(0, 20) : null;
+        const version = req.body && req.body.version ? String(req.body.version).slice(0, 20) : null;
+        await sql`
+          update device_token set seen_at = now(), hostname = ${by},
+                 platform = coalesce(${platform}, platform), agent_version = coalesce(${version}, agent_version)
+          where id = ${me} and user_id = ${who.id}
+        `;
       } catch (_) { /* 025 not applied yet */ }
       /* ОДНА РАБОТА НА МАШИНУ И ЗДЕСЬ: машина, у которой уже есть взятая работа, вторую не получает - ни
        * от расписания, ни от соседней постановки. Через to_jsonb: до 025 колонки нет, и условие ложно. */

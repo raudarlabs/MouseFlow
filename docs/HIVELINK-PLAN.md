@@ -99,6 +99,17 @@ machine with `.env.local`). As built:
   `… --enroll CODE --name "Office-3"`; the agent trades it for its own token at `POST /api/devices?enroll`.
 - Or the agent shows a code in the tray / menu bar and the person types it in the account.
 
+**Built 2026-10-16 — and it needs no migration.** Codes live in `user_pref` as `enroll.<sha256>` →
+`{uses, expires, made}` (`api/_enroll.mjs`): only the hash is stored, account deletion already takes them,
+and spending one is a compare-and-swap so two agents cannot share the last use. Both agents declare
+`canEnroll` on `/health`; no version bump, because the flag answers for itself and nobody has to reinstall.
+Devices → **Add machines** makes a code for 1–50 machines for a day to a week and shows the macOS and Windows
+commands with it, plus the codes still open (withdrawable). Verified on a real build of the macOS agent
+against a stand-in server: a wrong code exits 1 with the server's words; a good one writes `account.json`
+0600 with taking on; a second run does not spend the code; a loose binary refuses. **The Windows half was
+not run** — no PowerShell on this Mac — and its first real enrolment is owed. Not built: the reverse flow
+(the agent shows a code and the person types it in the account).
+
 ### H4 — packaging and updates
 - Windows: a signed installer (.NET 10, SPLIT-PLAN §6.3) or at least a script that saves the agent to a
   file and registers autostart. macOS: the signed `.dmg` exists and waits for notarisation.

@@ -55,6 +55,9 @@ export interface AgentHealth {
    * string, and the app has to offer a short recording rather than a day-long one it cannot take delivery
    * of. Absent on every older agent, which is the answer. */
   canDrain?: boolean;
+  /* Подключается ли по коду из аккаунта (--enroll / -Enroll, Hivelink H3). Отсутствие - агент старше, и
+   * команду установки с кодом ему не предлагают: он принял бы флаг молча и остался неподключённым. */
+  canEnroll?: boolean;
   /* Which implementation answered. Absent on any agent older than the macOS one, and only ever used to
    * decide which install command to show - never to decide what the agent can do, which is what the can*
    * flags are for. */
@@ -828,6 +831,23 @@ export function macInstallCommand(port: number): string {
   const origin = location.origin;
   const portArg = port !== 8787 ? ` --port ${port}` : '';
   return `curl -fsSL ${origin}/agent/install-mac.sh | bash -s -- --origin ${origin}${portArg}`;
+}
+
+/* ПОДКЛЮЧЕНИЕ ПО КОДУ (Hivelink H3): та же установка плюс код из Devices и имя машины - и машина сама
+ * появляется в аккаунте, без браузера на ней. Имя без кавычек и обратных кавычек: оно вставляется в строку
+ * оболочки, и кавычка в имени ломала бы команду, а не имя. */
+const shellName = (name: string) => name.replace(/["'`$\\]/g, '').trim().slice(0, 60);
+export function macEnrollCommand(code: string, name: string): string {
+  const origin = location.origin;
+  const named = shellName(name);
+  return `curl -fsSL ${origin}/agent/install-mac.sh | bash -s -- --origin ${origin} --enroll ${code}`
+    + (named ? ` --name "${named}"` : '');
+}
+export function windowsEnrollCommand(code: string, name: string): string {
+  const origin = location.origin;
+  const named = shellName(name);
+  return `& ([scriptblock]::Create((irm ${origin}/agent/mouseflow-agent.ps1))) -AllowOrigin ${origin} -Enroll ${code}`
+    + (named ? ` -Name "${named}"` : '');
 }
 
 /* The label the installer registers with launchd. Stopping and starting go through it rather than through

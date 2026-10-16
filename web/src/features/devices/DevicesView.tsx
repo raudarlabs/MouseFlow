@@ -15,7 +15,7 @@
  * машине - только когда сервер его отдаёт (после миграции 025), иначе так и сказано.
  */
 import { Link } from '@tanstack/react-router';
-import { Monitor, Pause, Pencil, Play, Send, Square, Trash2 } from 'lucide-react';
+import { Copy, KeyRound, Monitor, Pause, Pencil, Play, Plus, Send, Square, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
@@ -23,9 +23,10 @@ import { cn } from '@insightis/ui/cn';
 import { ArmedButton } from '@/components/ArmedButton';
 import { Said, type SaidNote } from '@/components/Said';
 import {
-  type Device, type Flow, type LiveJob, cancelJob, commandMachines, devices, isMachine, liveJobs, machineName,
-  machineOnline, nameDevice, pauseDevice, revokeDevice,
+  type Device, type EnrollCode, type Flow, type LiveJob, cancelJob, commandMachines, devices, dropEnrollCode,
+  enrollCodes, isMachine, liveJobs, machineName, machineOnline, makeEnrollCode, nameDevice, pauseDevice, revokeDevice,
 } from '@/lib/api';
+import { macEnrollCommand, windowsEnrollCommand } from '@/lib/agent';
 import { refreshLive } from '@/lib/live';
 import { useAccount } from '@/shell/AccountProvider';
 import { Page } from '@/shell/Surface';
@@ -234,6 +235,128 @@ const Composer = ({ targets, names, onSent }: {
   );
 };
 
+/* ДОБАВИТЬ МАШИНЫ БЕЗ БРАУЗЕРА НА НИХ (Hivelink H3). Код выпускается здесь один раз - на одну машину или на
+ * партию, - и команда установки с ним подключает каждую сама: на машине не надо входить в аккаунт. Код
+ * показывается один раз (сервер хранит только хэш), поэтому его можно скопировать сразу и нельзя потом. */
+const USES = [1, 5, 10, 25, 50] as const;
+const HOURS = [{ h: 24, said: '24 hours' }, { h: 72, said: '3 days' }, { h: 168, said: 'a week' }] as const;
+
+const AddMachines = ({ onNote }: { onNote: (note: SaidNote) => void }) => {
+  const [open, setOpen] = useState(false);
+  const [uses, setUses] = useState<number>(1);
+  const [hours, setHours] = useState<number>(24);
+  const [name, setName] = useState('');
+  const [made, setMade] = useState<{ code: string; uses: number; expiresAt: string } | null>(null);
+  const [codes, setCodes] = useState<EnrollCode[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const loadCodes = useCallback(async () => {
+    try { setCodes((await enrollCodes()).codes); } catch (_) { setCodes([]); }
+  }, []);
+  useEffect(() => { if (open) void loadCodes(); }, [open, loadCodes]);
+
+  const make = async () => {
+    setBusy(true);
+    try {
+      const answer = await makeEnrollCode(uses, hours);
+      setMade(answer);
+      void loadCodes();
+    } catch (err) {
+      onNote({ text: err instanceof Error ? err.message : 'the code was not made', kind: 'bad' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const copy = async (text: string) => {
+    try { await navigator.clipboard.writeText(text); onNote({ text: 'Copied.', kind: 'good' }); } catch (_) { /* selectable anyway */ }
+  };
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="secondary" leftSlot={<Plus className="size-4" />} onClick={() => setOpen(true)}>
+        Add machines
+      </Button>
+    );
+  }
+  return (
+    <section className={cn(CARD, 'w-full')}>
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <Typography variant="span" className={cn(LABEL, 'block')}>Add machines</Typography>
+          <Typography variant="h2" weight="semibold" className="mt-0.5 text-[1.2rem]">One code, as many machines as you say</Typography>
+        </div>
+        <Button size="xs" variant="ghost" onClick={() => { setOpen(false); setMade(null); }}>Close</Button>
+      </div>
+      <Typography variant="p" className="mt-1 max-w-[76ch] text-[0.84rem] text-ink-inactive">
+        Run the command on each computer. It installs the agent and attaches it to this account with the code —
+        nobody has to sign in on that machine. A machine that is already attached does not use the code up.
+      </Typography>
+
+      {!made ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.84rem] text-ink-secondary">
+          For
+          <select value={uses} onChange={(ev) => setUses(Number(ev.target.value))} aria-label="How many machines" className={cn(FIELD, 'h-8')}>
+            {USES.map((n) => <option key={n} value={n}>{n} machine{n === 1 ? '' : 's'}</option>)}
+          </select>
+          valid for
+          <select value={hours} onChange={(ev) => setHours(Number(ev.target.value))} aria-label="How long" className={cn(FIELD, 'h-8')}>
+            {HOURS.map((one) => <option key={one.h} value={one.h}>{one.said}</option>)}
+          </select>
+          <Button size="sm" leftSlot={<KeyRound className="size-4" />} isLoading={busy} onClick={() => void make()}>Make a code</Button>
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <code className="rounded-md border-stroke border bg-surface-card2 px-3 py-1.5 font-mono text-[1.1rem] tracking-wider text-ink-primary">
+              {made.code}
+            </code>
+            <Typography variant="span" className="text-[0.8rem] text-ink-inactive">
+              for {made.uses} machine{made.uses === 1 ? '' : 's'}, until {new Date(made.expiresAt).toLocaleString()} — shown once
+            </Typography>
+          </div>
+          <label className="flex flex-wrap items-center gap-2 text-[0.84rem] text-ink-secondary">
+            Name in the command (optional — the machine can be named later)
+            <input value={name} onChange={(ev) => setName(ev.target.value)} placeholder="Office-3" maxLength={60}
+              aria-label="Machine name for the command" className={cn(FIELD, 'w-[14rem]')} />
+          </label>
+          {[
+            { label: 'macOS — in Terminal', text: macEnrollCommand(made.code, name), note: 'Installs it as a login item, so it is back after every restart. Needs Xcode Command Line Tools; the installer names them if they are missing.' },
+            { label: 'Windows — in PowerShell', text: windowsEnrollCommand(made.code, name), note: 'Runs while that window is open. Starting at login on Windows comes with the signed installer.' },
+          ].map((one) => (
+            <div key={one.label}>
+              <Typography variant="span" weight="semibold" className="block text-[0.84rem]">{one.label}</Typography>
+              <div className="mt-1 flex items-center gap-2 rounded-md border-stroke border bg-surface-card2 p-1.5">
+                <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap px-1 font-mono text-[0.76rem] text-ink-primary">{one.text}</code>
+                <Button variant="ghost" size="sm" leftSlot={<Copy className="size-4" />} onClick={() => void copy(one.text)}>Copy</Button>
+              </div>
+              <Typography variant="p" className="mt-0.5 text-[0.74rem] text-ink-inactive">{one.note}</Typography>
+            </div>
+          ))}
+          <div><Button size="xs" variant="ghost" onClick={() => setMade(null)}>Make another code</Button></div>
+        </div>
+      )}
+
+      {codes && codes.length > 0 && (
+        <div className="mt-4">
+          <Typography variant="span" className={cn(LABEL, 'block')}>Codes still open</Typography>
+          <ul className="mt-1 flex flex-col gap-1">
+            {codes.map((one) => (
+              <li key={one.id} className="flex flex-wrap items-center gap-3 text-[0.8rem] text-ink-secondary">
+                <span>{one.uses} machine{one.uses === 1 ? '' : 's'} left</span>
+                <span className="text-ink-inactive">until {one.expiresAt ? new Date(one.expiresAt).toLocaleString() : '—'}</span>
+                <Button size="xs" variant="ghost" onClick={async () => {
+                  try { await dropEnrollCode(one.id); void loadCodes(); onNote({ text: 'That code no longer attaches anything.', kind: 'good' }); }
+                  catch (err) { onNote({ text: err instanceof Error ? err.message : 'it was not withdrawn', kind: 'bad' }); }
+                }}>Withdraw</Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+};
+
 export const DevicesView = () => {
   const [rows, setRows] = useState<Device[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -308,7 +431,13 @@ export const DevicesView = () => {
             is running and taking work; nothing can reach into it from here.
           </Typography>
         </div>
-        <Link to="/connect" className="text-[0.85rem] text-brand-primary hover:underline">Attach another machine</Link>
+        <div className="flex items-center gap-3">
+          <Link to="/connect" className="text-[0.82rem] text-brand-primary hover:underline">Attach this computer</Link>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-start gap-2">
+        <AddMachines onNote={(said) => { setNote(said); void load(); }} />
       </div>
 
       <Said note={note} onDismiss={() => setNote(null)} />
@@ -337,7 +466,8 @@ export const DevicesView = () => {
           <div className="py-8 text-center">
             <Monitor className="mx-auto size-6 text-ink-inactive" />
             <Typography variant="p" className="mt-2 text-[0.88rem] text-ink-inactive">
-              No machine is attached yet. Install the agent on a computer and attach it from{' '}
+              No machine is attached yet. Press <span className="text-ink-body">Add machines</span> for a code and a
+              command to run on each computer, or attach this one from{' '}
               <Link to="/connect" className="text-brand-primary hover:underline">Connections</Link>.
             </Typography>
           </div>

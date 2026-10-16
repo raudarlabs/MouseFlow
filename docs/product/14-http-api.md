@@ -99,6 +99,10 @@ The account: flows, runs and device tokens.
 | `POST /api/sync?issue=1` | **session** | Mint a device token, shown once |
 | `GET /api/sync?tokens=1` | **session** | List your paired devices |
 | `DELETE /api/sync?token=<id>` | **session** | Revoke one |
+| `POST /api/sync?enroll=1` | **session** | Make an enrolment code — `{ uses ≤ 50, hours ≤ 168 }`; the code is in this answer only |
+| `GET /api/sync?enroll=1` | **session** | Codes still open: uses left and expiry, never the code |
+| `DELETE /api/sync?enroll=<id>` | **session** | Withdraw a code |
+| `POST /api/sync?redeem=1` | **none — the code** | An agent trades a code for its own device token: `{ code, name?, hostname?, platform?, version? }` → `201 { token, device, base }`, or one `404` for every reason |
 | `PATCH /api/sync?token=<id>` | **session** | Name a machine — `{ name }`, empty removes it; `409` when another machine has that name — or pause it, `{ paused: true\|false }`; `503` before migration 025 |
 
 The extension holds skills in its own storage and the page holds its own; neither can see the other, because

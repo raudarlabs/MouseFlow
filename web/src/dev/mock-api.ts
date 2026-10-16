@@ -573,6 +573,7 @@ const json = (res: Parameters<Connect.NextHandleFunction>[1], status: number, bo
 const MACHINE_NAMES: Record<string, string | null | undefined> = {};
 /* Пауза машин и работы, отправленные им со страницы Devices (H2) - запоминаются, как имена. */
 const MACHINE_PAUSED: Record<string, boolean> = {};
+const ENROLL_CODES: { id: string; uses: number; expiresAt: string; madeAt: string }[] = [];
 const FLEET_JOBS: { id: string; device: string; name: string; goal: string | null; at: string }[] = [];
 const MACHINE_LABELS: Record<string, string> = { dev_a1: 'Office-1', dev_a2: 'Vics-MacBook-Air', dev_a3: 'This computer #3' };
 
@@ -684,6 +685,32 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
       json(res, 200, { ok: true, id, name });
     });
     return;
+  }
+  /* КОДЫ ПОДКЛЮЧЕНИЯ (H3): выпущенный запоминается, отозванный уходит из списка. */
+  if (url.startsWith('/api/sync?enroll=')) {
+    if (method === 'POST') {
+      let text = '';
+      req.on('data', (chunk) => { text += chunk; });
+      req.on('end', () => {
+        let body: Record<string, unknown> = {};
+        try { body = text ? JSON.parse(text) : {}; } catch (_) { /* empty */ }
+        const uses = Math.max(1, Math.min(50, Number(body.uses) || 1));
+        const hours = Math.max(1, Math.min(168, Number(body.hours) || 24));
+        const expiresAt = new Date(Date.now() + hours * 3_600_000).toISOString();
+        const id = Math.random().toString(16).slice(2, 14).padEnd(12, '0');
+        ENROLL_CODES.unshift({ id, uses, expiresAt, madeAt: new Date().toISOString() });
+        json(res, 201, { ok: true, code: 'HL-DEV7K-' + id.slice(0, 5).toUpperCase().replace(/[01]/g, 'Q'), uses, expiresAt });
+      });
+      return;
+    }
+    if (method === 'DELETE') {
+      const id = decodeURIComponent(url.split('enroll=')[1] || '');
+      const at = ENROLL_CODES.findIndex((one) => one.id === id);
+      if (at < 0) return json(res, 404, { error: { type: 'sync_error', message: 'no such code on this account' } });
+      ENROLL_CODES.splice(at, 1);
+      return json(res, 200, { ok: true });
+    }
+    return json(res, 200, { ok: true, codes: ENROLL_CODES });
   }
   if (url.startsWith('/api/sync?tokens=1')) {
     return json(res, 200, {

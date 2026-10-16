@@ -131,6 +131,15 @@ var supportDir = FileManager.default.homeDirectoryForCurrentUser.path + "/Librar
  * дисциплине: забыть флаг легко, а цена - чужая работа, взятая чужой копией. */
 var attachLoose = false
 var watchdogMode = false
+/* ПОДКЛЮЧЕНИЕ ПО КОДУ (Hivelink H3). Код выпускают в аккаунте (Devices → Add machines), установщик передаёт
+ * его сюда, и агент сам меняет его на свой токен - на машине не нужно открывать приложение. `--name` - имя
+ * машины в аккаунте, `--base` - чей это аккаунт, если не того origin'а, которому агент отвечает.
+ * `--enroll-only` - обменять и выйти: так установщик подключает машину, не поднимая второй агент рядом с
+ * уже работающим. */
+var enrollCode = ""
+var enrollName = ""
+var enrollBase = ""
+var enrollOnly = false
 
 do {
     var args = Array(CommandLine.arguments.dropFirst())
@@ -161,6 +170,14 @@ do {
             watchdogMode = true
         case "--account":
             attachLoose = true
+        case "--enroll":
+            if let v = args.first { enrollCode = v; args.removeFirst() }
+        case "--name":
+            if let v = args.first { enrollName = v; args.removeFirst() }
+        case "--base":
+            if let v = args.first { enrollBase = v; args.removeFirst() }
+        case "--enroll-only":
+            enrollOnly = true
         case "--move-throttle-ms":
             if let v = args.first, let n = Int(v) { moveThrottleMsDefault = n; args.removeFirst() }
         case "--move-min-px":
@@ -182,6 +199,10 @@ do {
               --allow-origin URL    echoed in Access-Control-Allow-Origin
               --require-key         demand X-MouseFlow-Key on everything but /health
               --record-only         watch and read only; refuse every action that changes the machine
+              --enroll CODE         attach to an account with a code from Devices -> Add machines
+              --name NAME           what this machine is called in that account (with --enroll)
+              --base URL            the account's address, when it is not the origin this agent answers
+              --enroll-only         attach with --enroll and exit, without starting the agent
               --move-throttle-ms N  minimum gap between recorded moves (default 10)
               --move-min-px N       minimum cursor travel before a move is recorded (default 3)
             """)
@@ -209,6 +230,14 @@ let packagedBuild = (Bundle.main.object(forInfoDictionaryKey: "MFPackaged") as? 
 if (Bundle.main.object(forInfoDictionaryKey: "MFRecordOnly") as? Bool) == true { recordOnly = true }
 if allowOrigin.isEmpty, let baked = Bundle.main.object(forInfoDictionaryKey: "MFAllowOrigin") as? String {
     allowOrigin = baked
+}
+
+/* ПОДКЛЮЧЕНИЕ ПО КОДУ - до сокета (Hivelink H3): с --enroll-only агент только обменивает код и выходит, и
+ * порт ему не нужен - на нём может уже сидеть работающий агент этой же машины. */
+if !enrollCode.isEmpty {
+    Account.load()
+    let ok = Enroll.run(code: enrollCode, name: enrollName, base: enrollBase)
+    if enrollOnly { exit(ok ? 0 : 1) }
 }
 
 /* КЛЮЧ - ДО ТОГО, как поднимется сокет: агент, успевший принять хоть один запрос без ключа, - это окно,
@@ -5047,6 +5076,71 @@ enum Account {
     }
 }
 
+/* Код подключения -> собственный токен этой машины (Hivelink H3). Сервер: `POST {base}/api/sync?redeem=1`
+ * без авторизации - у машины её ещё нет; код и есть удостоверение. Уже подключённая машина код не тратит:
+ * повторный запуск установщика не должен заводить в аккаунте вторую копию той же машины. */
+enum Enroll {
+    /// Чей это аккаунт: явный --base, иначе origin, которому агент отвечает, иначе адрес продукта.
+    static func baseFor(_ asked: String) -> String {
+        let pick: String
+        if !asked.isEmpty {
+            pick = asked
+        } else if allowOrigin.hasPrefix("https://") || allowOrigin.hasPrefix("http://") {
+            pick = allowOrigin.split(separator: ",").first.map(String.init) ?? allowOrigin
+        } else {
+            pick = SHIPPED_ORIGINS[0]
+        }
+        return pick.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    @discardableResult
+    static func run(code: String, name: String, base asked: String) -> Bool {
+        if Bundle.main.bundleIdentifier == nil && !attachLoose {
+            log("--enroll ignored: a loose binary, not the installed app (pass --account to attach it anyway)")
+            return false
+        }
+        if Account.link != nil {
+            log("already attached to an account - the enrolment code was not spent")
+            return true
+        }
+        let base = baseFor(asked)
+        guard let url = URL(string: base + "/api/sync?redeem=1") else {
+            log("--enroll: \(base) is not an address")
+            return false
+        }
+        let ask: [String: Any] = ["code": code,
+                                  "name": name,
+                                  "hostname": Host.current().localizedName ?? "",
+                                  "platform": "macos",
+                                  "version": VERSION]
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ask)
+        req.timeoutInterval = 30
+        let done = DispatchSemaphore(value: 0)
+        var status = 0
+        var data = Data()
+        URLSession.shared.dataTask(with: req) { body, response, _ in
+            status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            data = body ?? Data()
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 35)
+        let raw = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard status == 201, let token = raw?["token"] as? String, token.hasPrefix("mf_") else {
+            let said = ((raw?["error"] as? [String: Any])?["message"] as? String) ?? "no answer (HTTP \(status))"
+            log("--enroll failed: \(said)")
+            return false
+        }
+        /* Подключили - и сразу берём работу: машину для того и подключали из аккаунта, чтобы давать ей
+         * команды. Выключатель в меню остаётся, и он сильнее. */
+        Account.set(token: token, base: base, taking: true)
+        log("attached to the account at \(base)\(name.isEmpty ? "" : " as \"\(name)\"") - taking work")
+        return true
+    }
+}
+
 /* The one outward-facing loop: ask for work, do it, say how it went.
  *
  * Long-polling rather than a fast poll - the endpoint holds the request open for up to half a minute with
@@ -5208,6 +5302,9 @@ enum Courier {
                                   "steps": true,
                                   /* Свой браузер есть - значит, цель «во вкладке» можно отдать сюда. */
                                   "ownBrowser": OwnBrowser.executable != nil && !recordOnly,
+                                  /* Что это за машина - для списка машин в аккаунте (H3). */
+                                  "platform": "macos",
+                                  "version": VERSION,
                                   "wait": claimWaitSeconds]
         guard let body = try? JSONSerialization.data(withJSONObject: ask),
               let (status, data) = request(url, token: link.token, body: body) else {
@@ -6941,6 +7038,9 @@ func route(method: String, path: String, query: String, body: String) -> Respons
         json += ",\"keyRequired\":\(jsonBool(keyRequired))"
         json += ",\"canKeys\":\(jsonBool(eventTap != nil))"
         json += ",\"canDrain\":true"
+        /* Подключается по коду из аккаунта (--enroll, Hivelink H3) - Devices показывает команду установки с
+         * кодом только тем, кто это умеет. */
+        json += ",\"canEnroll\":true"
         /* Несёт ли клик прямоугольники окна и элемента - по ним повтор пересчитывает точку после переезда
          * окна. Следует Accessibility по той же причине, что canName: без разрешения дерево не отвечает
          * ничем, а якорь элемента читается из него. Прямоугольник окна пришёл бы и так (CGWindowList

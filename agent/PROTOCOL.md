@@ -146,6 +146,23 @@ Three rules that are part of the contract rather than of one implementation:
   carry is a credential somebody mislays.
 - **A refused token switches taking off.** Retrying a revoked credential for ever is a log nobody reads.
 
+**Or by a code, with no browser on the machine (Hivelink H3, `canEnroll`).** The account makes an enrolment
+code once (`HL-XXXXX-XXXXX`, for N machines, for up to a week); the installer hands it to the agent —
+`--enroll CODE --name NAME [--base URL] [--enroll-only]` on macOS, `-Enroll CODE -Name NAME [-Base URL]
+[-EnrollOnly]` on Windows — and the agent trades it for its own device token at `POST {base}/api/sync?redeem=1`
+with `{code, name, hostname, platform, version}` and no credential: the code is the only one it has. The
+token is written exactly as `POST /account` writes it, with taking **on** — a machine attached from the
+account was attached to be given work; the menu-bar / tray switch is still the stronger one. Rules:
+
+- **An attached machine does not spend a code.** Re-running an installer must not put a second copy of the
+  same machine in the account.
+- **Before the socket.** `--enroll-only` trades and exits without listening, because the port may already
+  be held by the agent this machine is running.
+- **The refusal is one sentence for every reason** — unknown, expired, used up — so a guesser learns nothing.
+- `base` is `--base`, else the pinned origin, else the product's address.
+- From H3 the claim also carries `platform` and `version`, so the account's list of machines can say what
+  each one runs.
+
 What the agent has to understand from a claimed job is deliberately small: `#record.start`, `#record.stop`,
 and a replay `body` in the format it already speaks, with an optional `activate` instruction for the window.
 Everything that makes a skill a skill — its events, its parameters, its tool definition — stays on the

@@ -159,7 +159,16 @@ param(
     # Оговорка та же, что у macOS-половины, и здесь она даже прямее: Windows не спрашивает разрешения на
     # SendInput вовсе. Значит гарантия имеет форму КОДА - этого флага и списка ниже, - а не операционной
     # системы, и говорить о ней надо именно так.
-    [switch]$RecordOnly
+    [switch]$RecordOnly,
+    # ПОДКЛЮЧЕНИЕ ПО КОДУ (Hivelink H3). Код выпускают в аккаунте (Devices -> Add machines), и агент сам
+    # меняет его на свой токен - на этой машине не нужно открывать приложение и входить. -Name - как машину
+    # назвать в аккаунте, -Base - адрес аккаунта, если это не тот origin, которому агент отвечает.
+    # -EnrollOnly - обменять код и выйти, не поднимая агента: так подключают машину, на которой агент уже
+    # работает.
+    [string]$Enroll = '',
+    [string]$Name = '',
+    [string]$Base = '',
+    [switch]$EnrollOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -5661,6 +5670,7 @@ namespace MouseFlow
                        one string - and the app must offer a short recording rather than a day-long one it
                        cannot actually take delivery of. */
                     + ",\"canDrain\":true"
+                    + ",\"canEnroll\":true"
                     /* Несёт ли клик прямоугольники окна и элемента, по которым повтор пересчитывает точку
                        после переезда окна. Флагом, а не версией, по той же причине, что у canName: запись,
                        сделанная старым агентом, якоря не имеет, и повтор обязан честно сказать «сыграно как
@@ -6422,6 +6432,8 @@ namespace MouseFlow
                    being given goals instead of taking one and answering that it does not understand. */
                 string answer = Post(root + "/api/mcp?worker=claim", token,
                     "{\"worker\":\"" + Agent.JsonText(Environment.MachineName)
+                    /* Что это за машина - для списка машин в аккаунте (H3). */
+                    + "\",\"platform\":\"windows\",\"version\":\"" + Agent.Version
                     + "\",\"kind\":\"agent\",\"steps\":true,\"wait\":"
                     + ClaimWaitSeconds.ToString(CultureInfo.InvariantCulture) + "}", out status);
 
@@ -7467,6 +7479,48 @@ namespace MouseFlow
 
 }
 '@
+
+# ПОДКЛЮЧЕНИЕ ПО КОДУ - до хука и сокета (Hivelink H3): с -EnrollOnly агент только обменивает код и выходит,
+# а на порту может уже сидеть работающий агент этой же машины. Уже подключённая машина код не тратит -
+# повторный запуск установщика не должен заводить в аккаунте вторую копию той же машины. Отказ сервера один
+# на все причины и печатается его словами.
+if ($Enroll) {
+    [MouseFlow.Account]::Load()
+    $enrolled = $false
+    if ([MouseFlow.Account]::Linked) {
+        Write-Host "  enrol       already attached to an account - the code was not spent"
+        $enrolled = $true
+    } else {
+        $accountBase = if ($Base) { $Base } elseif ($AllowOrigin -match '^https?://') { ($AllowOrigin -split ',')[0] } else { 'https://mouseflowapp.vercel.app' }
+        $accountBase = $accountBase.Trim().TrimEnd('/')
+        $ask = @{
+            code     = $Enroll
+            name     = $Name
+            hostname = $env:COMPUTERNAME
+            platform = 'windows'
+            version  = [MouseFlow.Agent]::Version
+        } | ConvertTo-Json -Compress
+        try {
+            $made = Invoke-RestMethod -Method Post -Uri "$accountBase/api/sync?redeem=1" -ContentType 'application/json' -Body $ask -TimeoutSec 30
+            if ($made.token -and ([string]$made.token).StartsWith('mf_')) {
+                # Подключили - и сразу берём работу: машину для того и подключали из аккаунта. Выключатель в
+                # трее остаётся, и он сильнее.
+                [MouseFlow.Account]::Set([string]$made.token, $accountBase, $true)
+                $shown = if ($Name) { " as `"$Name`"" } else { '' }
+                Write-Host "  enrol       attached to the account at $accountBase$shown - taking work" -ForegroundColor Green
+                $enrolled = $true
+            } else {
+                Write-Host "  enrol       FAILED: the account answered without a token" -ForegroundColor Yellow
+            }
+        } catch {
+            $said = $_.ErrorDetails.Message
+            try { $said = ($said | ConvertFrom-Json).error.message } catch { }
+            if (-not $said) { $said = $_.Exception.Message }
+            Write-Host "  enrol       FAILED: $said" -ForegroundColor Yellow
+        }
+    }
+    if ($EnrollOnly) { if ($enrolled) { exit 0 } else { exit 1 } }
+}
 
 [MouseFlow.Agent]::Configure($MoveThrottleMs, $MoveMinPx)
 [MouseFlow.Agent]::AllowOrigin = $AllowOrigin

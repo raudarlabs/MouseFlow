@@ -6456,6 +6456,46 @@ group('Hivelink H2: pause from the account, one command to many machines, schedu
       && /machine: q\.on_device && String\(q\.on_device\)\.startsWith\('dev_'\)/.test(live));
 }
 
+/* HIVELINK H3 - МАШИНА ПОДКЛЮЧАЕТСЯ ПО КОДУ, БЕЗ БРАУЗЕРА НА НЕЙ. */
+group('Hivelink H3: an enrolment code, traded once per machine by the agent itself');
+{
+  const enroll = read('../api/_enroll.mjs');
+  const sync = read('../api/sync.js');
+  const swift = read('../agent/mouseflow-agent.swift');
+  const ps = read('../agent/mouseflow-agent.ps1');
+  const installer = read('../agent/install-mac.sh');
+  const protocol = read('../agent/PROTOCOL.md');
+
+  check('only the hash of a code is stored, under user_pref, so erasing the account takes it',
+    /ENROLL_PREFIX \+ sha\(normalCode\(code\)\)/.test(enroll) && /insert into user_pref/.test(enroll)
+      && !/insert into user_pref[^`]*\$\{code\}/.test(enroll));
+  check('spending is compare-and-swap - two agents cannot share the last use',
+    /and value = \$\{found\[0\]\.value\}/.test(enroll) && /if \(swapped\.length\) return/.test(enroll));
+  check('a code is capped: at most 50 machines and a week',
+    /ENROLL_USES_MAX = 50/.test(enroll) && /ENROLL_HOURS_MAX = 168/.test(enroll));
+  check('the trade happens before anybody is asked who they are, and its refusal is one sentence',
+    sync.indexOf('if (query.redeem && req.method === \'POST\')') < sync.indexOf('who = await whoIsCalling(req, sql);')
+      && (sync.match(/that code is not valid, has expired, or has been used up/g) || []).length === 1);
+  check('the traded token is an agent token, the same label the page gives',
+    /values \(\$\{id\}, \$\{spent\.userId\}, \$\{hashToken\(token\)\}, 'This computer'\)/.test(sync));
+  check('codes never reach the page as preferences, and cannot be written as one',
+    /key not like 'enroll\.%'/.test(sync) && /key\.toLowerCase\(\)\.startsWith\('enroll\.'\)/.test(sync));
+
+  check('both agents declare canEnroll on /health', /"canEnroll\\":true/.test(swift) && /canEnroll\\":true/.test(ps)
+    && /`canEnroll`/.test(protocol));
+  check('both agents take the code and the name', /case "--enroll":/.test(swift) && /case "--name":/.test(swift)
+    && /\[string\]\$Enroll = ''/.test(ps) && /\[string\]\$Name = ''/.test(ps));
+  check('an attached machine does not spend a code, on either agent',
+    /already attached to an account - the enrolment code was not spent/.test(swift)
+      && /already attached to an account - the code was not spent/.test(ps));
+  check('the trade comes before the socket, so --enroll-only never fights a running agent',
+    swift.indexOf('if enrollOnly { exit(ok ? 0 : 1) }') < swift.indexOf('Courier.begin()')
+      && ps.indexOf('if ($EnrollOnly)') < ps.indexOf('[MouseFlow.Agent]::StartHookPump()'));
+  check('the installer trades the code with the bundled binary and keeps it out of the plist',
+    /"\$binary" --enroll "\$enroll" --name "\$machine_name" --base "\$origin" --enroll-only/.test(installer)
+      && !/write_login_item[^\n]*enroll/.test(installer));
+}
+
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by
  * here, and a keep-alive socket that outlives them keeps the loop open - which turns a suite that has
  * finished and said so into one that appears to hang, and `npm test` never returns. Everything this file

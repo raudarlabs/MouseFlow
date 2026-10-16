@@ -710,6 +710,19 @@ export const commandMachines = async (body: {
   throw new Error((answer && answer.error && answer.error.message) || `the command was not sent (${res.status})`);
 };
 
+/* КОДЫ ПОДКЛЮЧЕНИЯ (Hivelink H3): выпустить, перечислить живые, отозвать. Самого кода в списке нет - сервер
+ * хранит только его хэш; код показывается один раз, при выпуске. */
+export interface EnrollCode { id: string; uses: number; expiresAt: string | null; madeAt: string | null }
+export const enrollCodes = () => call<{ ok: true; codes: EnrollCode[] }>('/api/sync?enroll=1');
+export const makeEnrollCode = (uses: number, hours: number) =>
+  call<{ ok: true; code: string; uses: number; expiresAt: string }>('/api/sync?enroll=1', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ uses, hours }),
+  });
+export const dropEnrollCode = (id: string) =>
+  call<{ ok: true }>(`/api/sync?enroll=${encodeURIComponent(id)}`, { method: 'DELETE' });
+
 /** Дать машине имя (Hivelink H1). Пустое снимает имя. */
 export const nameDevice = (id: string, name: string) =>
   call<{ ok: true; id: string; name: string | null }>(`/api/sync?token=${encodeURIComponent(id)}`, {

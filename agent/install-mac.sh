@@ -50,6 +50,10 @@ main() {
   # бы задать только руками при запуске, а агент здесь ставится ЭЛЕМЕНТОМ ВХОДА: launchd поднимает его с
   # аргументами из plist, и режим, которого там нет, исчезал бы при первом же входе в систему.
   local record_only="no"
+  # ПОДКЛЮЧЕНИЕ ПО КОДУ (Hivelink H3): код из Devices -> Add machines и имя машины. Агент меняет код на свой
+  # токен один раз, здесь же, и в plist его нет - код одноразовый, и хранить его в автозапуске незачем.
+  local enroll=""
+  local machine_name=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -59,6 +63,8 @@ main() {
       --no-login) at_login="no"; shift ;;
       --foreground) foreground="yes"; shift ;;
       --record-only) record_only="yes"; shift ;;
+      --enroll) enroll="${2:-}"; shift 2 ;;
+      --name) machine_name="${2:-}"; shift 2 ;;
       --fix-permissions) action="fix"; shift ;;
       --doctor) action="doctor"; shift ;;
       --uninstall) action="uninstall"; shift ;;
@@ -73,6 +79,9 @@ mouseflow install-mac.sh
   --record-only       install it as an agent that watches and reads but never clicks, types
                       or moves. Refused actions say so in words. This is the build's own rule,
                       not something macOS enforces - the same Accessibility permission allows both
+  --enroll CODE       attach this Mac to an account with a code from Devices -> Add machines,
+                      so nobody has to open the app on it
+  --name NAME         what this Mac is called in that account (with --enroll)
   --no-run            install and stop, do not start it now
   --foreground        run it in this window so its output is visible. Note: launched
                       this way it inherits Terminal's permissions rather than having
@@ -278,6 +287,18 @@ NEEDS_TOOLS
       echo "Same Developer ID as last time — the permissions you granted stay valid."
     fi
   }
+
+  # ---------------------------------------------------------------- enrolment
+  # ДО ЗАПУСКА: агент, поднявшийся следующим, уже прочитает файл аккаунта и сразу начнёт брать работу.
+  # Бинарником из бандла - у свободного бинарника агент к аккаунту не подключается (см. Account.load).
+  if [ -n "$enroll" ]; then
+    if "$binary" --enroll "$enroll" --name "$machine_name" --base "$origin" --enroll-only; then
+      echo "Attached to your account${machine_name:+ as \"${machine_name}\"} — it takes work as soon as it starts."
+    else
+      echo "Could not attach with that code (see the line above). The agent is installed; attach it from" >&2
+      echo "the app's Connections screen instead, or make a new code on Devices and run this again." >&2
+    fi
+  fi
 
   # ---------------------------------------------------------------- login item
   if [ "$at_login" = "yes" ]; then

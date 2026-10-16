@@ -30,7 +30,10 @@ reporting "started".
 | `--help`, `-h` | The above |
 
 The agent binary itself takes `--port`, `--allow-origin`, `--move-throttle-ms`, `--move-min-px`,
-`--require-key`, `--record-only`, `--help`, and `--probe` (see the permission watcher below).
+`--require-key`, `--record-only`, `--enroll CODE`, `--name NAME`, `--base URL`, `--enroll-only`, `--help`, and
+`--probe` (see the permission watcher below). The installer takes `--enroll CODE` and `--name NAME` too, and
+trades the code once, before the login item starts — the code never goes into the plist (Hivelink H3; see
+`agent/PROTOCOL.md`, "Or by a code").
 
 `--record-only` is also an installer flag, and it has to be: the agent is a **login item**, so launchd
 starts it with whatever stands in the plist. A mode the installer parsed and did not write there would

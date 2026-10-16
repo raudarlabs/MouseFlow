@@ -35,6 +35,8 @@ import { report, wrap } from './_report.js';
  * ровно в том месте, где это стоило дороже всего: chats.js отражал ЛЮБОЙ origin и выдавал
  * Allow-Credentials, то есть чужая страница читала разговоры человека его же кукой. */
 import { cors } from './_cors.mjs';
+/* Коды подключения машин без браузера на них (Hivelink H3). */
+import { dropCode, listCodes, makeCode, spendCode } from './_enroll.mjs';
 
 const FLOWS_MAX = 300;        // per push
 const RUNS_MAX = 100;
@@ -53,6 +55,17 @@ async function handler(req, res) {
   const sql = neon(process.env.DATABASE_URL);
   const query = req.query || {};
 
+  /* ОБМЕН КОДА НА ТОКЕН - ДО ПРОВЕРКИ, КТО ЗВОНИТ (Hivelink H3). У агента, который подключается, токена ещё
+   * нет - ради него он и пришёл; код и есть его единственное удостоверение. */
+  if (query.redeem && req.method === 'POST') {
+    try {
+      return await redeemCode(req, res, sql);
+    } catch (err) {
+      await report(err, req, { route: 'sync' });
+      return fail(res, 500, err.message);
+    }
+  }
+
   let who;
   try {
     who = await whoIsCalling(req, sql);
@@ -68,6 +81,20 @@ async function handler(req, res) {
     if (query.issue) {
       if (who.via !== 'session') return fail(res, 403, 'only a signed-in browser can pair a device');
       return await issueToken(req, res, sql, who);
+    }
+    /* КОДЫ ПОДКЛЮЧЕНИЯ (H3): выпустить, перечислить, отозвать - только из браузера, как токены. */
+    if (query.enroll) {
+      if (who.via !== 'session') return fail(res, 403, 'only a signed-in browser can make enrolment codes');
+      if (req.method === 'POST') {
+        const made = await makeCode(sql, who.id, req.body || {});
+        return res.status(201).json({ ok: true, ...made });
+      }
+      if (req.method === 'DELETE') {
+        const gone = await dropCode(sql, who.id, String(query.enroll));
+        if (!gone) return fail(res, 404, 'no such code on this account');
+        return res.status(200).json({ ok: true });
+      }
+      return res.status(200).json({ ok: true, codes: await listCodes(sql, who.id) });
     }
     if (query.tokens) {
       if (who.via !== 'session') return fail(res, 403, 'only a signed-in browser can list devices');
@@ -118,6 +145,43 @@ async function issueToken(req, res, sql, who) {
   });
 }
 
+/* Агент меняет код подключения на собственный токен (Hivelink H3).
+ *
+ * Тело: `{ code, name?, hostname?, platform?, version? }`. Ответ - токен, показанный один раз, как при
+ * привязке со страницы, и `base`, куда его носить. Метка - та же, что у привязки со страницы («This
+ * computer»): по ней Overview, Devices и очередь узнают машину. Имя и сведения о машине - в её строку,
+ * молча, если 025 ещё не применена: подключение важнее подписи. Отказ один на все причины («нет такого»,
+ * «истёк», «кончился»): разные слова подсказали бы тому, кто перебирает коды, что он близко. */
+async function redeemCode(req, res, sql) {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const spent = await spendCode(sql, body.code);
+  if (!spent) {
+    return fail(res, 404, 'that code is not valid, has expired, or has been used up - make a new one on Devices');
+  }
+  const token = DEVICE_TOKEN_PREFIX + randomBytes(32).toString('base64url');
+  const id = 'dev_' + randomBytes(6).toString('hex');
+  await sql`
+    insert into device_token (id, user_id, token_hash, label)
+    values (${id}, ${spent.userId}, ${hashToken(token)}, 'This computer')
+  `;
+  const name = text(String(body.name || '').replace(/\s+/g, ' ').trim(), 60) || null;
+  try {
+    await sql`
+      update device_token set name = ${name}, hostname = ${text(body.hostname, 60)},
+             platform = ${text(body.platform, 20)}, agent_version = ${text(body.version, 20)}
+      where id = ${id}
+    `;
+  } catch (_) { /* 025 not applied yet - the machine is attached, only unnamed */ }
+  const host = String((req.headers && (req.headers['x-forwarded-host'] || req.headers.host)) || '').split(',')[0].trim();
+  return res.status(201).json({
+    ok: true,
+    token,
+    device: { id, label: 'This computer', name },
+    base: host ? `https://${host}` : null,
+    left: spent.left,
+  });
+}
+
 /* One preference, written by the person it belongs to.
  *
  * Deliberately narrow: a key and a short string, both bounded. This is a place for "the tour has been
@@ -127,6 +191,8 @@ async function setPref(req, res, sql, who) {
   const key = String(body.key || '').slice(0, 60);
   const value = String(body.value == null ? '' : body.value).slice(0, 200);
   if (!/^[a-z0-9_.-]+$/i.test(key)) return fail(res, 400, 'which preference?');
+  /* Код подключения выпускает только ?enroll=: записанный как предпочтение, он жил бы без срока и счёта. */
+  if (key.toLowerCase().startsWith('enroll.')) return fail(res, 400, 'which preference?');
   await sql`
     insert into user_pref (user_id, key, value) values (${who.id}, ${key}, ${value})
     on conflict (user_id, key) do update set value = excluded.value, updated_at = now()
@@ -317,7 +383,8 @@ async function pull(res, sql, who) {
    * in this response and must never be able to take the rest of it down. */
   let prefs = [];
   try {
-    prefs = await sql`select key, value from user_pref where user_id = ${who.id}`;
+    /* Без кодов подключения (H3): это не предпочтения, а удостоверения машин, и странице они не нужны. */
+    prefs = await sql`select key, value from user_pref where user_id = ${who.id} and key not like 'enroll.%'`;
   } catch (_) {
     /* No table yet, or no permission. Absent preferences mean the defaults, which is what a deployment
      * that has never had them should do. */

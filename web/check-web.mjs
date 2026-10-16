@@ -449,6 +449,19 @@ group('Hivelink H2: Devices - name, pause, remove, and a command to one machine 
       && /\.\.\.\(device \? \{ device \} : \{\}\)/.test(read('src/features/tests/Schedules.tsx')));
 }
 
+group('Hivelink H3: Devices makes a code and gives each platform its command');
+{
+  const view = read('src/features/devices/DevicesView.tsx');
+  const agent = read('src/lib/agent.ts');
+  check('код выпускается на Devices, на число машин и срок', /makeEnrollCode\(uses, hours\)/.test(view)
+    && /const USES = \[1, 5, 10, 25, 50\] as const;/.test(view));
+  check('и команды обеих платформ несут код и имя',
+    /--enroll \$\{code\}/.test(agent) && /-Enroll \$\{code\}/.test(agent)
+      && /macEnrollCommand\(made\.code, name\)/.test(view) && /windowsEnrollCommand\(made\.code, name\)/.test(view));
+  check('имя в команде не может сломать строку оболочки', /name\.replace\(\/\["'`\$\\\\\]\/g, ''\)/.test(agent));
+  check('код показывается один раз - и это сказано', /shown once/.test(view));
+}
+
 group('папки одного продукта не импортируют папки другого');
 {
   /* Шаг 0 плана разделения (docs/SEPARATION-PLAN.md): продукты разойдутся по аккаунтам, и код экрана P1,

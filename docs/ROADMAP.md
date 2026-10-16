@@ -37,8 +37,10 @@ concrete thing named for the owner to check.
 - [x] **Hivelink H2 — Devices and commands — built 2026-10-16.** `/devices`: name, pause, remove, Stop, and a
       goal or a skill sent to one machine or several; Skills and schedules on a chosen machine; Machine in Logs.
       [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
-- [ ] **Hivelink H3–H5 — enrolment without a browser on each machine, packaging and updates, MCP/Telegram.**
-      [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+- [x] **Hivelink H3 — a machine attaches with a code, no browser on it — built 2026-10-16.** Devices → Add
+      machines; `--enroll`/`-Enroll` on both agents (`canEnroll`), no migration. **The Windows half has not run
+      for real yet.** [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+- [ ] **Hivelink H4–H5 — packaging and updates, scale and safety, MCP/Telegram.** [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
 
 - [x] **The night the 04:30 task did not run — found and fixed 2026-10-01.** The cause was **our own test
       suite**: since 2026-09-23 a check in `agent/check-swift.mjs` ran the installer's `write_login_item`
