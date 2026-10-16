@@ -17,7 +17,7 @@
  * Reloading the page clears the thread and loses nothing that matters.
  */
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { ChevronDown, CircleDot, Crosshair, FileText, Globe, Mic, MicOff, Monitor, Paperclip, Send, Sparkles, Square, X } from 'lucide-react';
+import { ChevronDown, CircleDot, Crosshair, FileText, Globe, Mic, MicOff, Paperclip, Send, Settings2, Sparkles, Square, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@insightis/ui/Button';
 import {
@@ -28,6 +28,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@insightis/ui/DropdownMenu';
+import { Popover, PopoverContent, PopoverTrigger } from '@insightis/ui/Popover';
 import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
 import {
@@ -44,8 +45,10 @@ import { AGENT_WANTS, browserMachine, localMachine, shot, windows } from '@/lib/
 import { BROWSER_NOTE } from '../../../../api/_brain.mjs';
 import { askExtension, watchBridge } from '@/lib/bridge';
 import {
-  type LiveJob, keepArtifact, liveEnd, liveJobs, liveStart, liveStep, push, scheduleAdd, scheduleRemove,
+  type Device, type LiveJob, commandMachines, devices, isMachine, keepArtifact, liveEnd, liveJobs, liveStart, liveStep,
+  machineName, push, scheduleAdd, scheduleRemove,
 } from '@/lib/api';
+import { HERE, MachinePick } from './MachinePick';
 import {
   type GateAnswer,
   MAX_WAVES,
@@ -143,15 +146,23 @@ interface Turn {
   pinned?: string | null;
   /** Прогон, которого эта страница НЕ начинала: машина взяла его сама - по расписанию или из чата. */
   byItself?: { scheduleId: string | null };
+  /** Отправлено отсюда на другой компьютер - его имя (2026-10-16). */
+  on?: string | null;
   /** Цель отложена, и вот расписание, которым: чтобы отменить можно было ЗДЕСЬ, а не на другой странице. */
   scheduled?: { id: string; nextSaid: string };
 }
 
+/* КОРОТКО И В ОДНУ СТРОКУ (владелец, 2026-10-16: «примеры вразнобой длинные и одна под одной - мрак»).
+ * Подсказка - это намёк на то, что можно попросить, а не готовая задача; нажатие кладёт текст в поле, и
+ * дописывают его там. */
 const SUGGESTIONS = [
-  'open my inbox, find the message from Ann about the invoice and reply that it is approved',
-  'download this month’s invoices from the billing page and put them in Downloads',
-  'in the spreadsheet on screen, fill the total column and save it',
+  'Reply to Ann: invoice approved',
+  'Download this month’s invoices',
+  'Fill the totals in this sheet',
 ];
+
+/* На каком компьютере - запоминается в этом браузере. HERE - тот, на котором открыта вкладка. */
+const MACHINE_KEY = 'mouseflow.create.machine';
 
 export const CreateView = () => {
   const [state] = useConsole();
@@ -268,6 +279,27 @@ export const CreateView = () => {
     setGoal((now) => (now.trim() ? `${now.replace(/\s+$/, '')} ${said}` : said));
   });
   const [turns, setTurns] = useState<Turn[]>([]);
+  /* НА КАКОМ КОМПЬЮТЕРЕ (2026-10-16). HERE - эта вкладка ведёт прогон сама, по loopback; иначе - id машины
+   * аккаунта, и работа уходит в очередь. Машины - те же токены агентов, что на Devices. */
+  const [machine, setMachine] = useState<string>(() => {
+    try { return localStorage.getItem(MACHINE_KEY) || HERE; } catch (_) { return HERE; }
+  });
+  const [machines, setMachines] = useState<Device[]>([]);
+  useEffect(() => {
+    let live = true;
+    const load = () => devices()
+      .then((body) => { if (live) setMachines(body.devices.filter(isMachine).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))); })
+      .catch(() => {});
+    void load();
+    const timer = setInterval(load, 30_000);
+    return () => { live = false; clearInterval(timer); };
+  }, []);
+  const pickMachine = (id: string) => {
+    setMachine(id);
+    try { localStorage.setItem(MACHINE_KEY, id); } catch (_) { /* a convenience */ }
+  };
+  /** Работы, отправленные ОТСЮДА на другой компьютер: их ведёт лента, а не этот цикл. */
+  const remoteJobs = useRef<Set<string>>(new Set());
   const [blocked, setBlocked] = useState<string | null>('Looking for what can carry this out…');
   const [running, setRunning] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -453,7 +485,9 @@ export const CreateView = () => {
         /* СВОЙ ПРОГОН. Он уже на экране живой карточкой; вторая, «by itself», была бы ложью о том, кто его
          * начал. Но его ОТМЕНА приходит именно этим путём: Stop на Activity ставит state = cancelled, и цикл
          * здесь останавливается на следующем действии - той же ручкой, что и кнопка Stop на этой странице. */
-        if (job.source === 'you') {
+        /* ОТПРАВЛЕННОЕ ОТСЮДА НА ДРУГОЙ КОМПЬЮТЕР - тоже «you», но вести его некому, кроме этой ленты. */
+        const sentFromHere = remoteJobs.current.has(job.id);
+        if (job.source === 'you' && !sentFromHere) {
           if (job.id === currentRun.current && job.state === 'cancelled' && !abort.current) {
             abort.current = true;
             updateLive((t) => ({ ...t, feed: [...t.feed, { type: 'text', text: 'Stopped from the Activity page.' }] }));
@@ -470,7 +504,7 @@ export const CreateView = () => {
         const before = seenJobs.current.get(job.id);
         /* Законченное до того, как страница его увидела идущим, - не показывается: это история, и она уже
          * в списке справа. Карточка - для того, что происходит или только что произошло НА ГЛАЗАХ. */
-        if (before === undefined && finished) { seenJobs.current.set(job.id, job.state); continue; }
+        if (before === undefined && finished && !sentFromHere) { seenJobs.current.set(job.id, job.state); continue; }
         seenJobs.current.set(job.id, job.state);
 
         const turnState: Turn['state'] = !finished ? 'running' : job.ok ? 'ok' : 'failed';
@@ -486,17 +520,19 @@ export const CreateView = () => {
               feed,
               state: turnState,
               note,
-              byItself: { scheduleId: job.scheduleId },
+              ...(sentFromHere ? { on: job.machine?.name ?? null } : { byItself: { scheduleId: job.scheduleId } }),
             }];
           }
           /* Цель обновляется, когда пришла лучшая: работа, увиденная ещё в очереди, могла прийти без неё. */
           return prev.map((t) => (t.id === turnId
-            ? { ...t, feed, state: turnState, note, goal: job.goal ?? t.goal } : t));
+            /* Отправленное отсюда, ещё не взятое, - шагов нет, и строка «Sent to …» остаётся, пока их нет. */
+            ? { ...t, feed: feed.length || !sentFromHere ? feed : t.feed, state: turnState, note,
+              goal: job.goal ?? t.goal, ...(sentFromHere && job.machine?.name ? { on: job.machine.name } : {}) } : t));
         });
 
         /* Кончилось на глазах - сказать вслух и перечитать историю. Один раз: состояние сравнивается с тем,
          * что было увидено раньше, а не с «finished». */
-        if (finished && before !== undefined && before !== job.state) {
+        if (finished && (before !== undefined || sentFromHere) && before !== job.state) {
           void announceFinished({
             outcome: job.ok ? 'ok' : 'failed',
             said: job.said,
@@ -863,6 +899,12 @@ export const CreateView = () => {
    * третьей, о которой тот файл писал, и она же была неверной на тринадцать пикселей. */
   const page = usePageChrome();
 
+  /* ДРУГОЙ КОМПЬЮТЕР выбран - и он ещё на аккаунте. Отозванный выбор читается как «этот». */
+  const remoteMachine = target === 'desktop' && machine !== HERE ? machines.find((m) => m.id === machine) ?? null : null;
+  const remote = !!remoteMachine;
+  /* Отказ «агента здесь нет» - про ЭТОТ компьютер; другой его не касается. */
+  const blockedNow = remote ? null : blocked;
+
   const engine = target === 'desktop'
     ? health ? `agent ${health.version}${stale ? ' · out of date' : ''}` : 'agent offline'
     : extension.present ? `extension ${extension.version ?? ''}` : 'extension not found';
@@ -901,7 +943,38 @@ export const CreateView = () => {
   const wants: StartWith = planned ? 'run' : startWith;
 
   /* То, что делает кнопка, и то, что делает Enter, - одно выражение. Пока их было два, они разошлись. */
-  const act = () => (wants === 'run' ? send() : makePlan());
+  /* НА ДРУГОМ КОМПЬЮТЕРЕ: работа - в очередь (та же, что у Devices и Telegram), карточка - сразу, шаги
+   * приезжают с опросом живой ленты. Поле освобождается: этот прогон ведёт не вкладка, и следующую задачу
+   * можно писать, пока он идёт. */
+  const sendRemote = async () => {
+    const text = asked;
+    if (!text || !remoteMachine) return;
+    setPlanProblem(null);
+    try {
+      const answer = await commandMachines({ devices: [remoteMachine.id], goal: text });
+      const put = answer.queued[0];
+      if (!put) { setPlanProblem(answer.refused[0]?.why ?? 'it was not sent'); return; }
+      remoteJobs.current.add(put.id);
+      const name = machineName(remoteMachine);
+      setTurns((prev) => [...prev, {
+        id: `q_${put.id}`,
+        goal: text,
+        target: 'desktop',
+        at: new Date().toISOString(),
+        feed: [{ type: 'text', text: `Sent to ${name}. It starts as soon as that computer picks it up.` }],
+        state: 'running',
+        on: name,
+        plan: plan && plan.for === text ? plan.plan : undefined,
+      }]);
+      setGoal('');
+      setFiles([]);
+      setPlan(null);
+    } catch (err) {
+      setPlanProblem(err instanceof Error ? err.message : 'it was not sent');
+    }
+  };
+
+  const act = () => (wants === 'run' ? (remote ? sendRemote() : send()) : makePlan());
 
   return (
     /* ОДНА КОЛОНКА - РАЗГОВОР (владелец, 2026-09-28). Раньше слева от него стояла история прогонов: решение
@@ -940,8 +1013,8 @@ export const CreateView = () => {
             accent="done for you?"
             note={
               target === 'desktop'
-                ? 'It works from a picture of your screen, so it reaches Excel, Explorer or any window — not only a browser tab. Each step sends that picture to the model.'
-                : 'The extension drives a tab in this browser. It aims at page elements rather than positions, so it survives the page moving underneath it — but it cannot leave the browser.'
+                ? 'Pick a computer below and say what to do — it works from a picture of that screen, in any app.'
+                : 'The extension drives a tab in this browser; it cannot leave the browser.'
             }
           />
         ) : (
@@ -956,7 +1029,7 @@ export const CreateView = () => {
                 <UserTurn
                   meta={`${turn.byItself
                     ? (turn.byItself.scheduleId ? 'by itself, from a schedule' : 'by itself, asked from a chat')
-                    : turn.target === 'desktop' ? 'on this computer' : 'in this browser'} · ${
+                    : turn.on ? `on ${turn.on}` : turn.target === 'desktop' ? 'on this computer' : 'in this browser'} · ${
                     new Date(turn.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                   }`}
                 >
@@ -1136,11 +1209,11 @@ export const CreateView = () => {
         <div ref={threadEnd} />
       </Thread>
 
-      {blocked && (
+      {blockedNow && (
         <div className="shrink-0 px-4 pb-2">
           <div className="mx-auto w-full max-w-[46rem]">
             <div className="flex flex-wrap items-center gap-3 rounded-md border-stroke border bg-surface-card2 px-3 py-2.5 text-[0.86rem] text-ink-secondary">
-              <span className="max-w-[64ch]">{blocked}</span>
+              <span className="max-w-[64ch]">{blockedNow}</span>
               <Button variant="ghost" size="sm" onClick={() => void check()}>Check again</Button>
               {/* КНОПКА НАЗЫВАЕТСЯ ТЕМ ЖЕ СЛОВОМ, ЧТО И ТЕКСТ НАД НЕЙ, и стоит там же, где текст её зовёт.
                 *
@@ -1281,109 +1354,9 @@ export const CreateView = () => {
       )}
 
       <Composer
-        /* Справка под полем: бюджет шагов, версия агента, куда уходит речь. Ни одно из этого не решение,
-         * которое принимают, набирая задачу - а в строке управления они выдавливали кнопку на второй ряд.
-         *
-         * Про Enter здесь больше ничего не написано, и это не упущение: пока разницу между кнопкой и
-         * клавишей приходилось объяснять словами, разница и была багом. Теперь объяснять нечего - Enter
-         * делает то, что написано на кнопке, а что там написано, выбирают стрелкой рядом с ней. */
-        hint={(
-          <>
-            <span className="flex items-center gap-1.5">
-              <Monitor className="size-3.5" />
-              <span className="font-mono">{engine}</span>
-            </span>
-            <span>
-              {target === 'desktop'
-                ? `${WAVE_TURNS} steps a wave, up to ${MAX_WAVES}`
-                : 'aims at elements, not positions'}
-            </span>
-            {/* ГДЕ ОКАЗЫВАЕТСЯ ЗВУК, сказанное до нажатия. Chrome по умолчанию отправляет речь на свои
-              * серверы, а этот продукт обещает говорить, что уходит с машины - значит и это тоже.
-              * Скачиваемый пакет предлагается как кнопка, потому что это единственное, что отделяет
-              * человека от распознавания, которое никуда не отправляет. */}
-            {dictation.supported && !running && (
-              <span className="flex items-center gap-1.5">
-                <Mic className="size-3.5" />
-                {/* ДВА РАСПОЗНАВАТЕЛЯ, И НАДПИСЬ ГОВОРИТ, КОТОРЫЙ СЕЙЧАС (SPLIT-PLAN §7, шаг 13).
-                  * Фраза берётся из api/_transcribe.mjs - той же, которую отдаёт маршрут: два текста
-                  * про то, куда уходит голос, - это одно обещание и одна ложь. И рядом стоит
-                  * переключатель, потому что выбор без выхода из него - это не выбор. */}
-                {dictation.via === 'openai' ? (
-                  <>
-                    {`${WHERE_AUDIO_GOES} · ${langName(dictation.lang)}`}
-                    <button
-                      type="button"
-                      onClick={() => dictation.setVia('browser')}
-                      className="underline underline-offset-2 hover:text-ink-body"
-                    >
-                      use this browser instead
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {dictation.where === 'on-this-computer'
-                      ? `${STAYS_HERE} · ${langName(dictation.lang)}`
-                      : dictation.where === 'downloadable' ? (
-                        <>
-                          {`dictation would go to Google · ${langName(dictation.lang)}`}
-                          <button
-                            type="button"
-                            onClick={() => void dictation.install()}
-                            className="underline underline-offset-2 hover:text-ink-body"
-                          >
-                            keep it on this computer
-                          </button>
-                        </>
-                      ) : 'dictation is sent to Google to be recognised'}
-                    <button
-                      type="button"
-                      onClick={() => dictation.setVia('openai')}
-                      className="underline underline-offset-2 hover:text-ink-body"
-                    >
-                      use OpenAI instead
-                    </button>
-                  </>
-                )}
-                {/* ЯЗЫК ВЫБИРАЕТСЯ, а не берётся из браузера молча. `navigator.language` - это список
-                  * предпочитаемых языков, а не язык, на котором говорят вслух: на первой же живой машине
-                  * интерфейс был русский, а оттуда пришёл английский, и русская речь распозналась как
-                  * английская. Выбор запоминается на этой машине. */}
-                <select
-                  value={dictation.lang}
-                  onChange={(ev) => dictation.setLang(ev.target.value)}
-                  aria-label="Language to dictate in"
-                  className={cn(
-                    'rounded border-stroke border bg-surface-card2 px-1 py-0.5 text-[0.72rem]',
-                    'text-ink-body',
-                  )}
-                >
-                  {dictation.choices.map((tag) => (
-                    <option key={tag} value={tag}>{langName(tag)}</option>
-                  ))}
-                </select>
-              </span>
-            )}
-            {/* A run is meant to be left alone - the agent drives the real desktop, so the tab is behind
-              * other windows on purpose. A finish is therefore announced: the tab title changes and, if the
-              * browser was allowed to, a system notification appears; clicking it brings this tab forward.
-              *
-              * This switch is the louder option, and off by default. A notification takes nothing away; an
-              * activated window takes the focus - and doing that while somebody is typing in another
-              * application is worse than a notification they missed. */}
-            {target === 'desktop' && (
-              <label className="inline-flex cursor-pointer items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={bringForward}
-                  onChange={(ev) => wantsForward(ev.target.checked)}
-                  className="size-3.5 accent-brand-primary"
-                />
-                switch to this tab when it finishes
-              </label>
-            )}
-          </>
-        )}
+        /* СПРАВКИ ПОД ПОЛЕМ БОЛЬШЕ НЕТ (владелец, 2026-10-16: «много лишнего текста внизу»). Версия агента
+         * - в выборе компьютера, бюджет шагов не решение, которое принимают, набирая задачу, а куда уходит
+         * голос и на каком языке - в меню ⚙ и в подсказке у микрофона, до нажатия, как и было обещано. */
         /* ЧТО УЖЕ ПРИЛОЖЕНО - внутри рамки, над полем: это часть того, что сейчас отправят, а не справка о
           * нём. Каждый файл снимается по отдельности, и рядом сказано, сколько он весил НА ДИСКЕ, а не
           * сколько от него взяли: человек, приложивший файл на мегабайт, должен видеть, что он был на
@@ -1516,6 +1489,17 @@ export const CreateView = () => {
                 the same goal typed against the browser and against the desktop is two different requests.
                 Продукт, предлагающий одного исполнителя, не показывает его вовсе: сегментный контрол с
                 одной кнопкой - это не выбор, а мебель. */}
+            {/* НА КАКОМ КОМПЬЮТЕРЕ - первым после вложений: это решение принимают до того, как нажать. */}
+            {target === 'desktop' && (
+              <MachinePick
+                value={remote ? machine : HERE}
+                onChange={pickMachine}
+                machines={machines}
+                hereOnline={!!health}
+                disabled={running}
+              />
+            )}
+
             {runners.length > 1 && (
             <Segmented<Target>
               value={target}
@@ -1538,7 +1522,7 @@ export const CreateView = () => {
                 *
                 * Только для desktop: расширение целится в элементы страницы, и «это окно» для него не та
                 * единица, в которой оно работает. */}
-            {ownBrowser && (
+            {ownBrowser && !remote && (
               <button
                 type="button"
                 aria-pressed={browserOpen}
@@ -1556,7 +1540,7 @@ export const CreateView = () => {
               </button>
             )}
 
-            {target === 'desktop' && (
+            {target === 'desktop' && !remote && (
               <button
                 type="button"
                 disabled={running}
@@ -1579,6 +1563,71 @@ export const CreateView = () => {
             {/* Действие - у правого края. Раньше его отжимала туда справка, стоявшая между ним и тумблерами;
                 справка ушла под поле, и кнопка съехала к настройкам, то есть перестала быть там, где её
                 ищут. Обёртка на все три состояния сразу, чтобы четвёртое не пришлось вспоминать. */}
+            {/* ⚙ - ВСЁ, ЧТО РАНЬШЕ СТОЯЛО МЕЛКИМ ШРИФТОМ ПОД ПОЛЕМ: куда уходит голос и на каком языке, и
+              * возвращать ли эту вкладку, когда прогон кончится. Это настройки, а не часть задачи. */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" aria-label="Settings for this chat" className="px-2">
+                  <Settings2 className="size-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="start" className="w-[22rem] p-3">
+                <div className="flex flex-col gap-3 text-[0.8rem] text-ink-body">
+                  {dictation.supported && (
+                    <div className="flex flex-col gap-1.5">
+                      <span className="font-semibold text-ink-primary">Dictation</span>
+                      <span className="text-ink-inactive">
+                        {dictation.via === 'openai' ? WHERE_AUDIO_GOES
+                          : dictation.where === 'on-this-computer' ? STAYS_HERE
+                            : dictation.where === 'downloadable' ? 'Dictation would go to Google.'
+                              : 'Dictation is sent to Google to be recognised.'}
+                      </span>
+                      <span className="flex flex-wrap items-center gap-2">
+                        {dictation.via === 'openai' ? (
+                          <button type="button" onClick={() => dictation.setVia('browser')}
+                            className="underline underline-offset-2 hover:text-ink-primary">use this browser instead</button>
+                        ) : (
+                          <>
+                            {dictation.where === 'downloadable' && (
+                              <button type="button" onClick={() => void dictation.install()}
+                                className="underline underline-offset-2 hover:text-ink-primary">keep it on this computer</button>
+                            )}
+                            <button type="button" onClick={() => dictation.setVia('openai')}
+                              className="underline underline-offset-2 hover:text-ink-primary">use OpenAI instead</button>
+                          </>
+                        )}
+                        <select
+                          value={dictation.lang}
+                          onChange={(ev) => dictation.setLang(ev.target.value)}
+                          aria-label="Language to dictate in"
+                          className="rounded border-stroke border bg-surface-card2 px-1 py-0.5 text-[0.76rem] text-ink-body"
+                        >
+                          {dictation.choices.map((tag) => <option key={tag} value={tag}>{langName(tag)}</option>)}
+                        </select>
+                      </span>
+                    </div>
+                  )}
+                  {target === 'desktop' && !remote && (
+                    <label className="inline-flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={bringForward}
+                        onChange={(ev) => wantsForward(ev.target.checked)}
+                        className="size-3.5 accent-brand-primary"
+                      />
+                      Switch to this tab when a run finishes
+                    </label>
+                  )}
+                  {target === 'desktop' && (
+                    <span className="text-ink-inactive">
+                      {remote ? `Runs on ${machineName(remoteMachine!)}; its steps show up here as it goes.` : engine}
+                      {` · up to ${WAVE_TURNS * MAX_WAVES} steps, the history compacted every ${WAVE_TURNS}`}
+                    </span>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+
             <span className="ms-auto flex items-center gap-2">
             {running ? (
               <Button
@@ -1602,7 +1651,7 @@ export const CreateView = () => {
                   size="sm"
                   leftSlot={wants === 'run' ? <Send className="size-4" /> : <Sparkles className="size-4" />}
                   isLoading={planning}
-                  disabled={!!blocked || !asked || left < 0}
+                  disabled={!!blockedNow || !asked || left < 0}
                   onClick={() => void act()}
                   className={cn(!planned && 'rounded-e-none')}
                 >
@@ -1615,7 +1664,7 @@ export const CreateView = () => {
                       <Button
                         size="sm"
                         aria-label="Choose what this button does"
-                        disabled={!!blocked}
+                        disabled={!!blockedNow}
                         /* Тонкая грань между половинками, иначе это читается как одна широкая кнопка. */
                         className="rounded-s-none border-s border-s-black/25 px-1.5"
                       >
@@ -1652,6 +1701,8 @@ export const CreateView = () => {
                 size="sm"
                 aria-pressed={dictation.listening}
                 aria-label={dictation.listening ? 'Stop dictating' : 'Dictate the goal'}
+                /* Куда уходит голос - до нажатия, в подсказке; подробнее и переключатель - в ⚙. */
+                title={dictation.via === 'openai' ? WHERE_AUDIO_GOES : STAYS_HERE}
                 leftSlot={dictation.listening
                   ? <MicOff className="size-4" />
                   : <Mic className="size-4" />}
