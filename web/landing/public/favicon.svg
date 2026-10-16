@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2 2 44 44">
+  <!-- The Hivelink mark, as web/src/components/brand/HiveMark.tsx draws it: two linked hexagons, honey and
+       ice, each cut where the other crosses it. A tab strip can be light or dark, so this follows the
+       browser the way the app follows its theme: the concept's honey, frost and ice on dark, and the app's
+       light-theme mark - deep amber, steel to deep ice, a midnight dot - on light, where frost would be a
+       gap. Static hex, because a favicon cannot read the page's tokens; they are the palette's values. -->
+  <style>
+    .h0 { stop-color: #855B00 } .h1 { stop-color: #8F5800 }
+    .i0 { stop-color: #5E7DB4 } .i1 { stop-color: #29588E }
+    .hf { fill: #8F5800 } .if { fill: #29588E } .dot { fill: #0D1424 }
+    @media (prefers-color-scheme: dark) {
+      .h0 { stop-color: #FFD27A } .h1 { stop-color: #FFB627 }
+      .i0 { stop-color: #F4FAFF } .i1 { stop-color: #8FD3FF }
+      .hf { fill: #FFB627 } .if { fill: #8FD3FF } .dot { fill: #EEF5FF }
+    }
+  </style>
+  <defs>
+    <linearGradient id="h" x1="6" y1="10" x2="30" y2="38" gradientUnits="userSpaceOnUse"><stop class="h0" offset="0"/><stop class="h1" offset="1"/></linearGradient>
+    <linearGradient id="i" x1="20" y1="10" x2="42" y2="38" gradientUnits="userSpaceOnUse"><stop class="i0" offset="0"/><stop class="i1" offset="1"/></linearGradient>
+    <mask id="ci" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48"><rect width="48" height="48" fill="#fff"/><path d="M20.3 12.85 27.7 17.1" stroke="#000" stroke-width="8.4" stroke-linecap="round"/></mask>
+    <mask id="ch" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48"><rect width="48" height="48" fill="#fff"/><path d="M20.3 30.9 27.7 35.15" stroke="#000" stroke-width="8.4" stroke-linecap="round"/></mask>
+  </defs>
+  <path class="if" d="M30 11.5 40.8 17.75v12.5L30 36.5 19.2 30.25v-12.5Z" fill-opacity=".1" stroke="url(#i)" stroke-width="4" stroke-linejoin="round" mask="url(#ci)"/>
+  <path class="hf" d="M18 11.5 28.8 17.75v12.5L18 36.5 7.2 30.25v-12.5Z" fill-opacity=".1" stroke="url(#h)" stroke-width="4" stroke-linejoin="round" mask="url(#ch)"/>
+  <circle class="dot" cx="24" cy="24" r="2.7"/>
+</svg>

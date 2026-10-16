@@ -1,0 +1,132 @@
+/* The brand's illustration colours and motion - the glass hive, the glass cell, the terminal card.
+ *
+ * WHY A FILE OF ITS OWN. The palette (mouseflow-palette.css) is the interface's: surfaces, inks, one accent,
+ * each with a job a component reads. The hive needs a handful of colours no component has a job for - the
+ * concept's frost, ice, ice-2 and steel for the glass, its honey, amber, amber-deep and queen-ink for the
+ * warm core - and it needs them as INPUTS to arithmetic: every cell's faces are a mix of two or three of
+ * them, weighted by how much of the queen's light reaches it (see hive-geometry.ts). They are named here
+ * once, and GlassHive.tsx and GlassCell.tsx mix them with color-mix() instead of writing a hex in JSX.
+ *
+ * READ FROM THE RAMPS, not restated: the concept's illustration values ARE the palette's primitives (frost
+ * is --ice-50, honey is --tertiary-500, amber-deep --tertiary-800 ...), so a change to a ramp carries the
+ * art with it. Primitives rather than semantics on purpose: --brand-primary is re-lit to a deep amber on
+ * light paper, and a hive drawn for the admin's light theme would then lose its honey - the glass is the
+ * same glass in either theme; only the page under it changes. The two values that have no ramp step - the
+ * shadow under a glyph and the near-black under a cell - are the page's own blue pushed towards black.
+ *
+ * Triplets, like every colour in the design system, so `hsl(var(--hive-ice) / .3)` works in CSS and
+ * `hsl(var(--hive-ice))` inside color-mix() works in an SVG style attribute.
+ */
+:root {
+  --hive-frost: var(--ice-50); /* #f4faff */
+  --hive-ice: var(--ice-100); /* #cfe8ff */
+  --hive-ice-hi: var(--ice-200); /* #a9dbff — the terminal's flags */
+  --hive-ice-2: var(--ice-300); /* #8fd3ff */
+  --hive-steel: var(--ice-500); /* #5e7db4 */
+  --hive-honey: var(--tertiary-500); /* #ffd27a */
+  --hive-amber: 39.7 100% 57.6%; /* #ffb627 — --brand-500's dark value, pinned: light mode re-lights 500 */
+  --hive-amber-deep: 37 90.4% 44.7%; /* #d98a0b — --tertiary-800's dark value, pinned for the same reason */
+  --hive-queen-ink: var(--tertiary-900); /* #6b4106 */
+  --hive-page: var(--grey-950); /* #070b14 */
+  --hive-ink: var(--grey-50); /* #eef5ff */
+  --hive-shade: 221.5 48% 2.6%; /* #030509 — the page halfway to black: a glyph's shadow on glass */
+}
+
+/* ── Motion. All of it is CSS, so the server-rendered hive is already the finished picture and the client
+   adds nothing but time. The cells breathe on the concept's 7.4 s period (2π / 0.00085 per ms), each from
+   its own phase; the links carry a bright dash towards the queen, every third one back the other way. ── */
+.glass-hive .hive-bob {
+  animation: hive-bob 7.39s ease-in-out infinite;
+}
+
+@keyframes hive-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(calc(var(--bob, 0) * -1px));
+  }
+  75% {
+    transform: translateY(calc(var(--bob, 0) * 1px));
+  }
+}
+
+.glass-hive .hive-pulse {
+  animation: hive-flow 3.6s linear infinite;
+}
+
+.glass-hive .hive-pulse-back {
+  animation-duration: 4.8s;
+  animation-direction: reverse;
+}
+
+@keyframes hive-flow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+.hive-breathe {
+  animation: hive-breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes hive-breathe {
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Reduced motion gets the still picture, and no pulses at all: a dash frozen mid-link reads as a glitch. */
+@media (prefers-reduced-motion: reduce) {
+  .glass-hive .hive-bob,
+  .glass-hive .hive-pulse,
+  .hive-breathe {
+    animation: none;
+  }
+  .glass-hive .hive-pulse {
+    opacity: 0;
+  }
+}
+
+/* ── The terminal card: frosted glass over the hive. Its colours are the hive's, its type the system's. ── */
+.hive-term {
+  border-radius: 18px;
+  overflow: hidden;
+  background: linear-gradient(180deg, hsl(var(--surface-chips) / 0.62), hsl(var(--surface-card) / 0.62));
+  border: 1px solid hsl(var(--hive-ice) / 0.18);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.1),
+    0 40px 80px -30px hsl(var(--hive-shade) / 0.85);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+}
+
+/* ── Pointing at the hive. The hit prisms are invisible but take the pointer even though they have no
+   fill; the terminal card is closed until a machine is pointed at, and fades rather than pops, so moving
+   from one cell to the next reads as the card changing its mind, not as a flicker. ── */
+.glass-hive .hive-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.hive-term {
+  opacity: 0;
+  transform: translateY(8px) scale(0.985);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.hive-term.hive-term-on {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hive-term {
+    transition: none;
+    transform: none;
+  }
+}

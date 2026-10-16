@@ -13,6 +13,8 @@ web/dist/
 # Две сборки на один продукт - см. web/scripts/two-products.mjs.
 web/dist-do/
 web/dist-make/
+# The landing, hivelink.si - built by web/scripts/build-landing.mjs (web/landing/README.md).
+web/dist-landing/
 web/public/agent/
 
 # Built by web/vite.extension.config.ts — Chrome loads this, git does not carry it.

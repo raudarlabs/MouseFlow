@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The landing, hivelink.si. __SITE_URL__ is replaced at build time by vite.landing.config.ts with SITE_URL
+     (default https://hivelink.si, no trailing slash): canonical and Open Graph URLs must be absolute, and a
+     preview deployment should not claim to be the canonical site unless it is told to. -->
+<title>Hivelink — Every machine. One hive. Coming soon</title>
+<meta name="description" content="Hivelink builds your hive from AI agents, one on each of your Windows and Mac computers. Tell the hive what to do in plain words; every agent does the job on its own screen, in any app, and brings back proof.">
+<link rel="canonical" href="__SITE_URL__/">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#070B14">
+<meta name="color-scheme" content="dark">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hivelink">
+<meta property="og:url" content="__SITE_URL__/">
+<meta property="og:title" content="Hivelink — Every machine. One hive.">
+<meta property="og:description" content="Your hive of AI agents, one on every Windows and Mac. Tell the hive what to do in plain words; each bee does the job on its own screen and brings back proof. Coming soon.">
+<meta property="og:image" content="__SITE_URL__/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Hivelink — Every machine. One hive. A glass honeycomb of linked computers around one honey cell.">
+<meta property="og:locale" content="en_US">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Hivelink — Every machine. One hive.">
+<meta name="twitter:description" content="Your hive of AI agents, one on every Windows and Mac. Tell the hive what to do in plain words; each bee does the job on its own screen and brings back proof. Coming soon.">
+<meta name="twitter:image" content="__SITE_URL__/og.png">
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- The app's three faces, the same request as web/index.html: Sora for headings, Manrope for text,
+     JetBrains Mono for labels and code. -->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400..800&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<!-- What the page is, for search engines: the product and who makes it. No ratings, no prices - there are
+     none yet, and structured data that invents them is worse than none. -->
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"Organization","@id":"__SITE_URL__/#organization","name":"Hivelink","url":"__SITE_URL__/","logo":"__SITE_URL__/apple-touch-icon.png"},
+{"@type":"SoftwareApplication","@id":"__SITE_URL__/#software","name":"Hivelink","url":"__SITE_URL__/","image":"__SITE_URL__/og.png","applicationCategory":"BusinessApplication","operatingSystem":"Windows, macOS","publisher":{"@id":"__SITE_URL__/#organization"},"description":"A small local AI agent for each of your Windows and macOS computers. Tell a machine, or many, what to do in plain words; each one does the job on its own screen, in any app, and logs proof of every run. Runs that worked become Skills you can rerun, schedule and check. Connect your own AI over MCP."}
+]}
+</script>
+</head>
+<body>
+<div id="root"><!--landing-ssr--></div>
+<script type="module" src="/src/landing/main.tsx"></script>
+</body>
+</html>

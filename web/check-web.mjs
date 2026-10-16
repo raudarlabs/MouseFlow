@@ -561,5 +561,173 @@ group('прогон в Create идёт во вкладке, когда брау�
     /\/browser\/shot\?\$\{at\}&w=/.test(lib) && /'\/browser\/do', \{ tab, body \}/.test(lib) && /windows: async \(\) => \(\{ ok: true as const, windows: \[\] \}\)/.test(lib));
 }
 
+/* ------------------------------------------------------------------ лендинг hivelink.si */
+
+/* Лендинг собран из тех же частей, что и админка (решение владельца 2026-10-16: одна дизайн-система).
+ * Проверки держат именно это: те же алиасы дизайн-системы, те же компоненты, цвета только токенами, а
+ * у формы - контракт /api/waitlist, общий с API, и никакого «успеха» без ответа сервера. */
+group('лендинг: те же части, что у админки');
+{
+  const aliases = (t) => (t.match(/const DESIGN_SYSTEM = \[[\s\S]*?\n\];/) || [''])[0];
+  const landingConfig = read('vite.landing.config.ts');
+  check('алиасы дизайн-системы те же, что в vite.config.ts',
+    aliases(landingConfig) !== '' && aliases(landingConfig) === aliases(viteConfig));
+  const landingFiles = ['src/landing/Landing.tsx', 'src/landing/WaitlistForm.tsx', 'src/landing/main.tsx',
+    'src/landing/entry-server.tsx', 'src/landing/og.tsx'];
+  const brandFiles = ['src/components/brand/GlassHive.tsx', 'src/components/brand/GlassCell.tsx',
+    'src/components/brand/HiveTerminal.tsx', 'src/components/brand/hive-ink.ts', 'src/components/brand/hive-geometry.ts',
+    'src/components/brand/hive-machines.ts'];
+  const src = Object.fromEntries([...landingFiles, ...brandFiles].map((f) => [f, read(f)]));
+  const form = src['src/landing/WaitlistForm.tsx'];
+  const page = src['src/landing/Landing.tsx'];
+  check('кнопка формы - Button дизайн-системы, поле - его Input',
+    /from '@insightis\/ui\/Button'/.test(form) && /<Button[\s\S]*?type="submit"/.test(form)
+      && /from '@insightis\/ui\/Input'/.test(form) && /<Input\b/.test(form));
+  check('загрузка - собственным isLoading кнопки', /isLoading=\{busy\}/.test(form));
+  check('на странице - общий HiveMark, Badge, Card, Typography',
+    /from '@\/components\/brand\/HiveMark'/.test(page) && /<HiveMark/.test(page)
+      && /<Badge/.test(page) && /<Card/.test(page) && /<Typography/.test(page));
+  check('HiveMark.tsx не переписан под лендинг', /export const HiveMark/.test(read('src/components/brand/HiveMark.tsx')));
+  /* Шестнадцатеричный цвет или rgba() в JSX - это вторая палитра. Цвета иллюстрации названы один раз,
+   * в brand.css, и смешиваются через hive-ink.ts. */
+  const literal = Object.entries(src)
+    .map(([f, t]) => [f, t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '')])
+    .filter(([, t]) => /#[0-9a-fA-F]{3,8}\b(?![-\w])|rgba?\(/.test(t))
+    .map(([f]) => f);
+  check('в разметке лендинга и бренда нет цветов литералами', literal.length === 0, literal.join(', '));
+  /* Tailwind лендинга смотрит только в свои файлы и в перечисленные компоненты - компонент, которого нет
+   * в списке, отрисуется без своих классов. */
+  const list = (landingConfig.match(/const LANDING_UI = \[([^\]]*)\]/) || ['', ''])[1];
+  const used = new Set();
+  for (const t of Object.values(src)) for (const m of t.matchAll(/from '@insightis\/ui\/([A-Z]\w*)'/g)) used.add(m[1]);
+  const missing = [...used].filter((c) => !list.includes(`'${c}'`));
+  check('каждый компонент дизайн-системы на лендинге есть в его списке для Tailwind', used.size > 0 && missing.length === 0, missing.join(', '));
+  const brandCss = read('src/components/brand/brand.css');
+  check('цвета иллюстрации названы один раз, в brand.css',
+    ['frost', 'ice', 'ice-2', 'steel', 'honey', 'amber', 'amber-deep', 'queen-ink', 'page', 'ink', 'shade']
+      .every((n) => new RegExp(`--hive-${n}:`).test(brandCss)));
+  check('движение - CSS, и prefers-reduced-motion его останавливает',
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation: none/.test(brandCss)
+      && !/requestAnimationFrame|setInterval/.test(src['src/components/brand/GlassHive.tsx']));
+}
+
+group('лендинг: улей детерминирован и рисуется на сервере');
+{
+  const hive = await import('./src/components/brand/hive-geometry.ts');
+  const again = await import('./src/components/brand/hive-geometry.ts?again');
+  check('та же геометрия при каждой загрузке', JSON.stringify(hive.HIVE) === JSON.stringify(again.HIVE));
+  check('ячейки, королева, связи и три подписанные машины',
+    hive.HIVE.cells.length === 30 && hive.HIVE.queen.d === 0 && hive.HIVE.links.length === 10
+      && hive.HIVE.tags.map((t) => t.label).sort().join() === 'finance-pc,mac-studio,office-3',
+    show({ cells: hive.HIVE.cells.length, links: hive.HIVE.links.length }));
+  const files = ['src/components/brand/hive-geometry.ts', 'src/components/brand/GlassHive.tsx',
+    'src/components/brand/GlassCell.tsx', 'src/components/brand/HiveTerminal.tsx', 'src/landing/Landing.tsx',
+    'src/landing/WaitlistForm.tsx'];
+  const impure = files.filter((f) => /Math\.random|Date\.now|new Date\(/.test(read(f).replace(/\/\*[\s\S]*?\*\//g, '')));
+  check('при рендере нет Math.random и часов', impure.length === 0, impure.join(', '));
+  const term = read('src/components/brand/HiveTerminal.tsx');
+  const { HIVE_MACHINES } = await import('./src/components/brand/hive-machines.ts');
+  const deviceKeys = hive.HIVE.cells.filter((c) => c.device).map((c) => c.key).sort();
+  check('терминал говорит о тех же машинах, что подписаны на улье',
+    /hivelink do/.test(term) && /proof in Logs/.test(term)
+      && hive.HIVE.tags.every((t) => HIVE_MACHINES[t.key] && HIVE_MACHINES[t.key].name === t.label),
+    show(hive.HIVE.tags.map((t) => [t.key, t.label, HIVE_MACHINES[t.key] && HIVE_MACHINES[t.key].name])));
+  /* Каждая сота с машиной отвечает на наведение своей карточкой - соты без записи в hive-machines.ts
+   * открыли бы пустой терминал. И только Windows и macOS: других агентов нет. */
+  check('у каждой машины на улье есть своя последняя задача',
+    JSON.stringify(Object.keys(HIVE_MACHINES).sort()) === JSON.stringify(deviceKeys)
+      && Object.values(HIVE_MACHINES).every((m) => m.os === 'Windows' || m.os === 'macOS'),
+    show({ machines: Object.keys(HIVE_MACHINES).sort(), cells: deviceKeys }));
+  check('карточка закрыта, пока на машину не навели',
+    /hive-term-on/.test(term) && /\.hive-term \{[\s\S]*?opacity: 0;/.test(read('src/components/brand/brand.css'))
+      && /useState<string \| null>\(null\)/.test(read('src/landing/Landing.tsx')));
+  check('кнопка в шапке ведёт к той же форме и называется так же',
+    /href="#waitlist" onClick=\{callWaitlist\}/.test(read('src/landing/Landing.tsx'))
+      && />\s*Join the waitlist\s*<\/Button>/.test(read('src/landing/WaitlistForm.tsx')));
+  const server = read('src/landing/entry-server.tsx');
+  const client = read('src/landing/main.tsx');
+  check('сервер рендерит строкой, клиент гидрирует ту же разметку',
+    /renderToString\(/.test(server) && /hydrateRoot\(root, app\)/.test(client)
+      && /<StrictMode>\s*<Landing endpoint=\{WAITLIST_ENDPOINT\} \/>/.test(server)
+      && /<StrictMode>\s*<Landing endpoint=\{WAITLIST_ENDPOINT\} \/>/.test(client));
+  const build = read('scripts/build-landing.mjs');
+  check('сборка вставляет разметку и проверяет, что в ней H1, текст и форма',
+    /'<!--landing-ssr-->'/.test(build) && read('landing/index.html').includes('<div id="root"><!--landing-ssr--></div>')
+      && /the headline/.test(build) && /the form/.test(build) && /robots\.txt/.test(build) && /sitemap\.xml/.test(build));
+}
+
+group('лендинг: форма держит контракт /api/waitlist');
+{
+  const wl = await import('./src/landing/waitlist.ts');
+  check('адрес по умолчанию - маршрут приложения, переопределяется VITE_WAITLIST_ENDPOINT',
+    wl.DEFAULT_WAITLIST_ENDPOINT === 'https://mouseflowapp.vercel.app/api/waitlist'
+      && /import\.meta\.env\.VITE_WAITLIST_ENDPOINT/.test(read('src/landing/endpoint.ts')));
+  const seen = [];
+  const stub = (status, body) => async (url, init) => {
+    seen.push({ url, init });
+    return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
+  };
+  const req = { email: 'a@b.co', website: '', ref: 'x'.repeat(500) };
+  const ok = await wl.joinWaitlist('https://api.test/w', req, stub(200, { ok: true }));
+  const sent = JSON.parse(seen[0].init.body);
+  check('POST JSON: email, website, source "landing", ref не длиннее 200',
+    seen[0].init.method === 'POST' && seen[0].init.headers['Content-Type'] === 'application/json'
+      && Object.keys(sent).sort().join() === 'email,ref,source,website'
+      && sent.source === 'landing' && sent.website === '' && sent.ref.length === 200 && seen[0].init.credentials === 'omit',
+    show(sent).slice(0, 120));
+  const outcomes = {
+    ok,
+    okFalse: await wl.joinWaitlist('u', req, stub(200, { ok: false })),
+    html: await wl.joinWaitlist('u', req, stub(200, '<html>proxy</html>')),
+    invalid: await wl.joinWaitlist('u', req, stub(400, { ok: false, error: 'invalid_email' })),
+    bad: await wl.joinWaitlist('u', req, stub(400, { ok: false, error: 'bad_request' })),
+    big: await wl.joinWaitlist('u', req, stub(413, '')),
+    rate: await wl.joinWaitlist('u', req, stub(429, { ok: false, error: 'rate_limited' })),
+    down: await wl.joinWaitlist('u', req, stub(503, '')),
+    net: await wl.joinWaitlist('u', req, async () => { throw new TypeError('offline'); }),
+  };
+  check('успех - только 2xx с ok:true; всё прочее - не успех',
+    outcomes.ok === 'ok' && outcomes.okFalse === 'failed' && outcomes.html === 'failed' && outcomes.invalid === 'invalid_email'
+      && outcomes.bad === 'failed' && outcomes.big === 'failed' && outcomes.rate === 'rate_limited'
+      && outcomes.down === 'failed' && outcomes.net === 'failed', show(outcomes));
+  check('ref - utm и только хост источника',
+    wl.refSummary('?utm_source=hn&utm_campaign=launch&x=1', 'https://news.example.com/item?id=9&token=s', 'hivelink.si')
+      === 'utm_source=hn;utm_campaign=launch;from=news.example.com'
+      && wl.refSummary('', 'https://www.hivelink.si/', 'hivelink.si') === ''
+      && wl.refSummary('?utm_source=' + 'y'.repeat(400), '', 'hivelink.si').length <= 200);
+  const form = read('src/landing/WaitlistForm.tsx');
+  check('ловушка "website", подпись, aria-live, метод POST без адреса в URL',
+    /name="website"/.test(form) && /tabIndex=\{-1\}/.test(form) && /<label htmlFor=\{emailId\}/.test(form)
+      && /aria-live="polite"/.test(form) && /method="post"/.test(form) && !/action=/.test(form));
+}
+
+group('лендинг: SEO и выкладка');
+{
+  const html = read('landing/index.html');
+  check('lang, title, description, theme-color, canonical, og и twitter',
+    /<html lang="en" class="dark">/.test(html) && /<title>Hivelink/.test(html) && /name="description"/.test(html)
+      && /name="theme-color" content="#070B14"/.test(html) && /rel="canonical" href="__SITE_URL__\/"/.test(html)
+      && /property="og:url" content="__SITE_URL__\/"/.test(html) && /property="og:image" content="__SITE_URL__\/og\.png"/.test(html)
+      && /name="twitter:card" content="summary_large_image"/.test(html));
+  const ld = JSON.parse((html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/) || ['', '{}'])[1]);
+  const types = (ld['@graph'] || []).map((n) => n['@type']).sort().join();
+  check('JSON-LD: SoftwareApplication и Organization, без оценок и цен',
+    types === 'Organization,SoftwareApplication' && !/aggregateRating|offers|review/i.test(JSON.stringify(ld)), types);
+  const site = await import('./src/landing/site-url.mjs');
+  check('SITE_URL по умолчанию hivelink.si, переопределяется окружением',
+    site.siteUrl({}) === 'https://hivelink.si' && site.siteUrl({ SITE_URL: 'https://preview.example/ ' }) === 'https://preview.example');
+  check('значок вкладки - тот же файл, что у приложения',
+    read('landing/public/favicon.svg') === read('public/favicon.svg'));
+  check('картинка для ссылок и иконка на месте',
+    existsSync(join(here, 'landing/public/og.png')) && existsSync(join(here, 'landing/public/apple-touch-icon.png')));
+  const pkg = JSON.parse(read('package.json'));
+  check('npm run build:landing и dev:landing',
+    /build-landing\.mjs/.test(pkg.scripts['build:landing'] || '') && /vite\.landing\.config\.ts/.test(pkg.scripts['dev:landing'] || ''));
+  check('dist-landing не попадает в git', /^web\/dist-landing\/$/m.test(readFileSync(join(here, '../.gitignore'), 'utf8')));
+  const readme = read('landing/README.md');
+  check('README говорит, как выкладывать', /Root Directory/.test(readme) && /build:landing/.test(readme)
+    && /dist-landing/.test(readme) && /SITE_URL/.test(readme) && /VITE_WAITLIST_ENDPOINT/.test(readme));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

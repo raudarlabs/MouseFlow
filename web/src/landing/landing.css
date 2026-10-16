@@ -1,0 +1,736 @@
+/* The landing's stylesheet: the app's design system first, then the brand's illustration colours, then
+ * the page furniture only the landing has - its backdrop, the glass surfaces and the layout.
+ *
+ * THE SAME SYSTEM AS THE ADMIN. globals.css is the app's own: the vendored design system's tokens, the
+ * Arctic Honey palette over them, the three faces. The landing adds no colour of its own - everything
+ * below is a token (`hsl(var(--ink-body))`) or one of the brand's --hive-* illustration colours from
+ * brand.css, mixed or faded. Where the concept wrote `rgba(255,255,255,.08)` for a glass highlight this
+ * writes frost at 8%, which is the same light and stays tied to the palette.
+ *
+ * Unlayered and after the imports on purpose: these rules come after Tailwind's utilities in the output,
+ * so a landing class beats the vendored component's default size on the same element (the Badge's
+ * h-7, the Typography h1's text-3xl) without !important, while the component keeps its behaviour, focus
+ * ring and states. Tailwind appends its RESPONSIVE utilities (md:text-4xl on the Typography h1) at the very
+ * end of the sheet, after these, so the rules that override a vendored component's type are written
+ * `.landing .landing-h1` - one class more, not !important. The layout follows the concept's breakpoints - 768 and 1200 - because its composition
+ * was drawn at those.
+ *
+ * DARK ONLY. index.html sets class="dark" on <html>, so the design system resolves its dark semantics, and
+ * nothing here has a light variant.
+ */
+@import '../globals.css';
+@import '../components/brand/brand.css';
+
+.landing {
+  --gutter: 20px;
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+  min-height: 100%;
+  background: hsl(var(--surface-page));
+  color: hsl(var(--ink-primary));
+}
+
+/* No smooth scrolling: it also animates a script's scrollTo(), and the header link is a jump of one
+   screen, which needs no animation to be understood. */
+html {
+  color-scheme: dark;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: clip;
+  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---------- backdrop: cold light from above and the corner, a small warm one where the queen is ---------- */
+.landing-bg {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: max(100svh, 760px);
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 42% at 50% 24%, hsl(var(--hive-ice-2) / 0.14), transparent 70%),
+    radial-gradient(24% 14% at 50% 21%, hsl(var(--hive-amber) / 0.1), transparent 70%),
+    radial-gradient(60% 40% at 84% 34%, hsl(var(--hive-ice-2) / 0.11), transparent 70%),
+    radial-gradient(80% 50% at 0% 0%, hsl(var(--hive-steel) / 0.3), transparent 70%),
+    linear-gradient(180deg, hsl(var(--surface-card)) 0%, color-mix(in srgb, hsl(var(--surface-card)), hsl(var(--surface-page)) 60%) 60%, hsl(var(--surface-page)) 100%);
+}
+
+.landing-bg svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  -webkit-mask-image: radial-gradient(60% 50% at 50% 30%, #000 0%, transparent 100%);
+  mask-image: radial-gradient(60% 50% at 50% 30%, #000 0%, transparent 100%);
+}
+
+/* ---------- header ---------- */
+.landing-hero-wrap {
+  position: relative;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--gutter);
+}
+
+.landing-top {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  height: 64px;
+}
+
+.landing-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: hsl(var(--ink-primary));
+  text-decoration: none;
+  border-radius: 10px;
+}
+
+.landing-brand:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 4px;
+}
+
+.landing-brand-mark {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  filter: drop-shadow(0 4px 14px hsl(var(--hive-ice-2) / 0.3));
+}
+
+.landing-brand b {
+  font-weight: 600;
+  font-size: 21px;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.landing-brand-sm .landing-brand-mark {
+  width: 26px;
+  height: 26px;
+}
+
+.landing-brand-sm b {
+  font-size: 17px;
+}
+
+.landing-soon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+}
+
+.landing-top-cta {
+  display: none;
+}
+
+.landing-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: hsl(var(--brand-primary));
+  box-shadow:
+    0 0 0 3px hsl(var(--brand-primary) / 0.16),
+    0 0 14px 2px hsl(var(--brand-primary) / 0.8);
+  animation: hive-breathe 3.2s ease-in-out infinite;
+}
+
+/* ---------- hero ---------- */
+.landing-hero {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.landing-art {
+  order: -1;
+  position: relative;
+  height: clamp(250px, 37svh, 360px);
+  margin: -6px calc(-1 * var(--gutter)) 0;
+  -webkit-mask-image: linear-gradient(180deg, #000 82%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 82%, transparent 100%);
+}
+
+/* The hive is drawn for the desktop's wide frame. On a phone the concept cropped into its middle - 78% of
+ * the width, 86% of the height, a little below centre - so the queen and her ring fill the strip; the same
+ * crop here is the SVG drawn larger than its box rather than a second viewBox, which would need the window
+ * at render time. */
+.landing-hive {
+  position: absolute;
+  display: block;
+  width: 128.2%;
+  height: 116.3%;
+  left: -14.1%;
+  top: -8.9%;
+}
+
+.landing-hive .hive-tags {
+  display: none;
+}
+
+/* On a phone the card opens over the bottom of the hive strip when a cell is tapped. */
+.landing-term {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 8px;
+  z-index: 2;
+}
+
+/* The header's "Join the waitlist" lands here: one honey glow round the field, then gone. */
+.landing-field-call {
+  animation: landing-call 1.4s ease-out 1;
+}
+@keyframes landing-call {
+  0% { box-shadow: 0 0 0 0 hsl(var(--brand-primary) / 0.65); }
+  35% { box-shadow: 0 0 0 6px hsl(var(--brand-primary) / 0.28); }
+  100% { box-shadow: 0 0 0 14px hsl(var(--brand-primary) / 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing-field-call {
+    animation: none;
+    box-shadow: 0 0 0 2px hsl(var(--brand-primary) / 0.7);
+  }
+}
+
+.landing-copy {
+  position: relative;
+  z-index: 2;
+  padding: 0 0 28px;
+}
+
+.landing-pill {
+  height: auto;
+  gap: 9px;
+  padding: 7px 14px 7px 11px;
+  border: 1px solid hsl(var(--hive-ice) / 0.18);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.08), hsl(var(--hive-frost) / 0.03));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.08);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: hsl(var(--ink-highlight));
+  white-space: nowrap;
+}
+
+.landing-pill > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.landing-pill-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: hsl(var(--ink-highlight) / 0.5);
+}
+
+.landing .landing-h1 {
+  font-family: theme('fontFamily.display');
+  font-weight: 600;
+  font-size: clamp(38px, 10.6vw, 47px);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  margin: 16px 0 14px;
+  text-wrap: balance;
+  color: hsl(var(--ink-primary));
+}
+
+.landing-grad {
+  background: linear-gradient(100deg, hsl(var(--hive-frost)) 0%, hsl(var(--hive-ice)) 40%, hsl(var(--hive-ice-2)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  padding-right: 0.04em;
+}
+
+.landing .landing-sub {
+  font-size: 16px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+  max-width: 34em;
+  text-wrap: pretty;
+}
+
+.landing .landing-sub b {
+  color: hsl(var(--ink-primary));
+  font-weight: 600;
+}
+
+.landing-wait {
+  margin-top: 22px;
+}
+
+/* The glass field around the system's Input and Button. */
+.landing-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.085), hsl(var(--hive-frost) / 0.035));
+  border: 1px solid hsl(var(--hive-ice) / 0.2);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.1),
+    0 24px 60px -28px hsl(var(--hive-ice-2) / 0.45);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  transition:
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+
+.landing-field:focus-within {
+  border-color: hsl(var(--hive-ice-2) / 0.65);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.1),
+    0 0 0 4px hsl(var(--hive-ice-2) / 0.16),
+    0 24px 60px -28px hsl(var(--hive-ice-2) / 0.6);
+}
+
+.landing-field-problem,
+.landing-field-problem:focus-within {
+  border-color: hsl(var(--fb-red-text) / 0.7);
+}
+
+@media (max-width: 389px) {
+  .landing-field {
+    gap: 4px;
+  }
+}
+
+/* The system's primary button, at the landing's size, with the concept's warm glow under it. */
+.landing-cta {
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.55),
+    0 10px 28px -8px hsl(var(--brand-primary) / 0.55);
+}
+
+.landing-cta:active {
+  transform: scale(0.97);
+}
+
+.landing-os {
+  display: none;
+}
+
+/* ---------- value props ---------- */
+.landing-props {
+  position: relative;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 72px var(--gutter) 40px;
+}
+
+.landing-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+}
+
+.landing-eyebrow::before {
+  content: '';
+  width: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, hsl(var(--hive-ice-2)), transparent);
+}
+
+.landing .landing-h2 {
+  font-weight: 600;
+  font-size: clamp(28px, 7.6vw, 34px);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  margin: 14px 0 0;
+  max-width: 16em;
+  text-wrap: balance;
+  color: hsl(var(--ink-primary));
+}
+
+.landing .landing-props-lead {
+  margin-top: 14px;
+  color: hsl(var(--ink-body));
+  font-size: 15.5px;
+  line-height: 1.6;
+  max-width: 36em;
+  text-wrap: pretty;
+}
+
+.landing-cards {
+  display: grid;
+  gap: 14px;
+  margin-top: 32px;
+}
+
+.landing-card {
+  --glow: hsl(var(--hive-ice-2) / 0.22);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 26px;
+  padding: 22px 22px 24px;
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.07), hsl(var(--hive-frost) / 0.025) 60%, hsl(var(--hive-frost) / 0.02));
+  border-color: hsl(var(--hive-ice) / 0.1);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.08),
+    0 30px 60px -40px hsl(var(--hive-shade) / 0.8);
+}
+
+.landing-card:nth-child(2) {
+  --glow: hsl(var(--hive-ice) / 0.15);
+}
+
+.landing-card:nth-child(3) {
+  --glow: hsl(var(--hive-steel) / 0.3);
+}
+
+.landing-card::before {
+  content: '';
+  position: absolute;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  right: -90px;
+  top: -120px;
+  background: radial-gradient(closest-side, var(--glow), transparent);
+  pointer-events: none;
+}
+
+.landing-card-top {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.landing-cell-ico {
+  width: 68px;
+  height: 68px;
+  margin: -4px 0 0 -6px;
+}
+
+.landing-num {
+  font-size: 12px;
+  color: hsl(var(--ink-inactive));
+  letter-spacing: 0.1em;
+  padding-top: 4px;
+}
+
+.landing .landing-h3 {
+  position: relative;
+  font-family: theme('fontFamily.display');
+  font-weight: 600;
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  margin: 14px 0 8px;
+  text-wrap: balance;
+  color: hsl(var(--ink-primary));
+}
+
+.landing .landing-card-body {
+  position: relative;
+  font-size: 15px;
+  line-height: 1.6;
+  color: hsl(var(--ink-body));
+  text-wrap: pretty;
+}
+
+.landing-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 16px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: hsl(var(--ink-primary));
+  background: hsl(var(--hive-page) / 0.55);
+  border: 1px solid hsl(var(--hive-ice) / 0.1);
+}
+
+.landing-chip-p {
+  color: hsl(var(--hive-ice-2));
+}
+
+.landing-chip-k {
+  color: hsl(var(--ink-inactive));
+}
+
+/* ---------- footer ---------- */
+.landing-foot {
+  position: relative;
+  margin-top: 40px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.1);
+}
+
+.landing-foot-in {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 26px var(--gutter) 34px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px 24px;
+}
+
+.landing-foot small {
+  font-size: 13px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* ---------- tablet ---------- */
+@media (min-width: 768px) {
+  .landing {
+    --gutter: 40px;
+  }
+  .landing-top {
+    height: 84px;
+  }
+  .landing-brand-mark {
+    width: 38px;
+    height: 38px;
+  }
+  .landing-brand b {
+    font-size: 23px;
+  }
+  .landing-art {
+    height: clamp(340px, 44svh, 520px);
+  }
+  .landing-hive {
+    width: 116.3%;
+    height: 100%;
+    left: -8.1%;
+    top: 0;
+  }
+  .landing-copy {
+    text-align: center;
+    max-width: 680px;
+    margin: 0 auto;
+  }
+  .landing-wait {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: left;
+  }
+  .landing .landing-h1 {
+    font-size: 68px;
+  }
+  .landing .landing-sub {
+    font-size: 18px;
+    margin: 0 auto;
+  }
+  .landing-props {
+    padding-top: 110px;
+  }
+  .landing .landing-h2 {
+    font-size: 44px;
+  }
+  .landing-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .landing-card {
+    padding: 26px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .landing-chip {
+    display: inline-block;
+    white-space: normal;
+    line-height: 1.5;
+  }
+}
+
+/* ---------- desktop ---------- */
+@media (min-width: 1200px) {
+  .landing {
+    --gutter: clamp(48px, 4.6vw, 96px);
+  }
+  .landing-top {
+    height: 96px;
+  }
+  .landing-top-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 22px;
+  }
+  .landing-glass-btn {
+    height: auto;
+    padding: 11px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    color: hsl(var(--ink-primary));
+    border-color: hsl(var(--hive-ice) / 0.18);
+    background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.08), hsl(var(--hive-frost) / 0.03));
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+  .landing-glass-btn:hover {
+    border-color: hsl(var(--hive-ice-2) / 0.55);
+  }
+  .landing-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 45fr) minmax(0, 55fr);
+    align-items: center;
+    padding-bottom: 40px;
+  }
+  .landing-art {
+    order: 0;
+    height: min(84svh, 900px);
+    margin: 0 calc(-1 * var(--gutter)) 0 -60px;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .landing-hive {
+    width: 100%;
+    height: 100%;
+    left: 0;
+    top: 0;
+  }
+  .landing-hive .hive-tags {
+    display: inline;
+  }
+  .landing-copy {
+    text-align: left;
+    margin: 0;
+    max-width: 760px;
+    padding: 0 0 10px;
+  }
+  .landing-wait {
+    margin-left: 0;
+    margin-top: 34px;
+  }
+  .landing .landing-h1 {
+    font-size: clamp(68px, 5.1vw, 98px);
+    margin: 26px 0 22px;
+    letter-spacing: -0.05em;
+  }
+  .landing .landing-sub {
+    font-size: clamp(18px, 1.1vw, 21px);
+    margin: 0;
+    max-width: 30em;
+  }
+  .landing-os {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 38px;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: hsl(var(--ink-inactive));
+  }
+  .landing-os i {
+    width: 6px;
+    height: 7px;
+    background: hsl(var(--hive-ice-2) / 0.5);
+    clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  }
+  .landing-bg {
+    background:
+      radial-gradient(38% 50% at 72% 50%, hsl(var(--hive-ice-2) / 0.15), transparent 70%),
+      radial-gradient(15% 20% at 71% 42%, hsl(var(--hive-amber) / 0.09), transparent 70%),
+      radial-gradient(34% 44% at 90% 70%, hsl(var(--hive-ice-2) / 0.11), transparent 70%),
+      radial-gradient(50% 60% at 0% 0%, hsl(var(--hive-steel) / 0.32), transparent 70%),
+      linear-gradient(180deg, hsl(var(--surface-card)) 0%, color-mix(in srgb, hsl(var(--surface-card)), hsl(var(--surface-page)) 60%) 70%, hsl(var(--surface-page)) 100%);
+  }
+  .landing-bg svg {
+    -webkit-mask-image: radial-gradient(45% 60% at 70% 50%, #000 0%, transparent 100%);
+    mask-image: radial-gradient(45% 60% at 70% 50%, #000 0%, transparent 100%);
+  }
+  .landing-term {
+    position: absolute;
+    right: auto;
+    top: auto;
+    left: 4%;
+    bottom: 9%;
+    width: 372px;
+    z-index: 2;
+  }
+  .landing-props {
+    padding-top: 120px;
+  }
+  .landing-props-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 60px;
+  }
+  .landing-props-head .landing-eyebrow {
+    grid-column: 1 / -1;
+    margin-bottom: -46px;
+  }
+  .landing .landing-h2 {
+    font-size: 56px;
+    margin-top: 0;
+  }
+  .landing .landing-props-lead {
+    font-size: 17px;
+    justify-self: end;
+    margin: 0 0 6px;
+  }
+  .landing-cards {
+    gap: 22px;
+    margin-top: 56px;
+  }
+  .landing-card {
+    padding: 32px 32px 34px;
+    border-radius: 30px;
+    min-height: 360px;
+  }
+  .landing .landing-h3 {
+    font-size: 24px;
+    margin-top: 30px;
+  }
+  .landing .landing-card-body {
+    font-size: 16px;
+  }
+  .landing-chip {
+    margin-top: auto;
+    transform: translateY(8px);
+  }
+  .landing-cell-ico {
+    width: 84px;
+    height: 84px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-dot {
+    animation: none;
+  }
+}
