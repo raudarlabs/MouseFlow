@@ -224,7 +224,7 @@ const MAX_TOKENS = 16000;
  * product should not have two ideas about what a long task is.
  */
 const WAVE_TURNS = 24;
-const MAX_WAVES = 10;
+const MAX_WAVES = 40;   // the same ceiling as api/_brain.mjs (2026-10-16)
 
 const SYSTEM = `You are driving a real Chrome tab on the user's own computer to accomplish a goal they described in plain language.
 

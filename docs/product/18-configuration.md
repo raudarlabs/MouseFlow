@@ -133,7 +133,7 @@ definition.
 | `AGENT_WANTS` | `0.28.0` — and it lives in **four** places: `Version` in the ps1, `let VERSION` in the swift, this constant, and the pin on it in `agent/test-contract.mjs` | `agent.ts` |
 | Per-endpoint deadlines | 2.5 s – 20 s (see [10](10-agent-protocol.md#the-endpoints)) | `agent.ts` |
 | Health poll | 2 s while answering or under 8 failures, 15 s after | `store.ts` |
-| `WAVE_TURNS` / `MAX_WAVES` | 24 / 10 | `desktop-engine.ts` |
+| `WAVE_TURNS` / `MAX_WAVES` | 24 / 40 | `api/_brain.mjs` (both drivers), `extension/agent.js` |
 | Model / timeout | `claude-opus-5` / 75 s | `desktop-engine.ts` |
 | `max_tokens` per decision | 8,000 | `desktop-engine.ts` |
 | Default screenshot width | 1,280 px, halved on 413, floor 320 | `desktop-engine.ts` |

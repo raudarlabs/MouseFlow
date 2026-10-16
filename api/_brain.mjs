@@ -23,7 +23,11 @@
  * wave starts from the goal plus that note. Long tasks finish, and the tenth wave costs what the first did
  * because a wave carries only its own turns. */
 export const WAVE_TURNS = 24;
-export const MAX_WAVES = 10;
+/* Сорок с 2026-10-16 (владелец: «давай увеличивать шаги до бесконечности в идеале»). Сжатие истории уже
+ * было - заметка между волнами, - так что длина прогона стоит не памяти, а денег и времени; бесконечность
+ * была бы прогоном, который, зациклившись, тратит без конца. 960 шагов - потолок, а не ожидание: раньше его
+ * останавливают неподвижный экран (STILL_GIVE_UP) и потолки расхода (api/_spend.mjs). */
+export const MAX_WAVES = 40;
 export const DEFAULT_SHOT_W = 1280;
 
 /* СКОЛЬКО ЗНАКОВ МОЖЕТ ЗАНЯТЬ ЦЕЛЬ ВМЕСТЕ С ПРИЛОЖЕННЫМИ ФАЙЛАМИ - и почему это ОДНО число, а не три.
@@ -1360,6 +1364,23 @@ export const AFTER_CUT = 'not carried out — the turn was cut short before this
  * 401 there means the session expired while working, not that nobody signed in. And every one of these says
  * which step it reached, because "it died" and "it died on step 19 of 24" call for different reactions.
  */
+/* ВРЕМЕННАЯ ПЕРЕГРУЗКА МОДЕЛИ - НЕ КОНЕЦ ПРОГОНА (владелец, 2026-10-16: «The model refused: HTTP 529 -
+ * Overloaded» на шаге 28 задачи, которой ещё было куда идти). 529 - это «перегружено у Anthropic», 429 -
+ * «слишком часто», 5xx - «не ответили»: всё это проходит само, и прогон, сданный на первом же таком ответе,
+ * выбрасывает двадцать семь сделанных шагов. Поэтому ход не засчитывается, машина ждёт, и решение
+ * спрашивается заново со свежим снимком. Паузы растут - 5, 10, 20, 40, 60, 60 с, около трёх минут в сумме;
+ * дальше прогон закрывается причиной, а не висит. Одно правило на оба драйвера. */
+export const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504, 529]);
+export const RETRY_WAITS_MS = [5000, 10000, 20000, 40000, 60000, 60000];
+export const retryable = (status) => RETRYABLE_STATUS.has(Number(status));
+export const retryWaitMs = (attempt) => RETRY_WAITS_MS[attempt] ?? null;
+export const busyNote = (status, waitMs) => (status === 529
+  ? `The model service is overloaded right now; waiting ${Math.round(waitMs / 1000)}s and asking again.`
+  : `The model did not answer (HTTP ${status}); waiting ${Math.round(waitMs / 1000)}s and asking again.`);
+export const busyGaveUp = (status, stepNo) => `The model service stayed ${status === 529 ? 'overloaded' : `unavailable (HTTP ${status})`} `
+  + `for about three minutes at step ${stepNo}, so the run stopped there. Nothing is wrong with the task - ask `
+  + `again in a few minutes, and it starts over.`;
+
 export function explainStatus(status, stepNo, detail) {
   const got = `The run got as far as step ${stepNo}.`;
   if (status === 401 || status === 403) {

@@ -224,7 +224,7 @@ The constants live in `api/_brain.mjs`, and both drivers read them from there.
 |---|---|
 | Model | `claude-opus-5`, `max_tokens: 8000`, 75 s per turn |
 | Wave | `WAVE_TURNS = 24` decisions |
-| Run | `MAX_WAVES = 10` waves — 240 steps |
+| Run | `MAX_WAVES = 40` waves — 960 steps (10 until 2026-10-16); between waves the history is compacted into one note |
 | Screenshot | 1280px wide by default, halved on a 413, floor 320px |
 | Prefix | `SYSTEM` + the tool schemas are **cached** — see *What a turn costs* |
 | Tools by machine | `click_named` is offered only where `/health` says `canClickName` — `toolsFor(gated, success, caps)` |

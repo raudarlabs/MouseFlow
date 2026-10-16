@@ -47,6 +47,10 @@ import {
   WAVE_TURNS,
   actionBody,
   explainStatus,
+  busyGaveUp,
+  busyNote,
+  retryWaitMs,
+  retryable,
   forgetOldPictures,
   mediaType,
   openList,
@@ -391,6 +395,8 @@ async function runWave(o: {
   const { messages, machine, onEvent, isAborted, steps, wave } = o;
   let stepNo = o.stepFrom;
   let shotWidth = DEFAULT_SHOT_W;
+  /* Сколько раз подряд модель была перегружена (retryable в мозге). Сбрасывается первым же ответом. */
+  let retry = 0;
 
   /* Сколько действий подряд не сдвинули экран. Живёт через ходы: три неподвижных в одном ходе и три в
    * следующем - это шесть подряд, и человек, глядя на это, считал бы именно так. */
@@ -520,6 +526,22 @@ async function runWave(o: {
       stepNo--;
       continue;
     }
+
+    /* ПЕРЕГРУЖЕНО - ПОДОЖДАТЬ И СПРОСИТЬ СНОВА, тем же правилом, что облачный драйвер (retryable в
+     * api/_brain.mjs). Снимок, ради которого спрашивали, уходит из разговора, шаг не считается. */
+    if (retryable(res.status)) {
+      const waitMs = retryWaitMs(retry);
+      if (waitMs == null) return { stepNo, result: { ok: false, error: busyGaveUp(res.status, stepNo), steps } };
+      retry += 1;
+      messages.pop();
+      turn--;
+      stepNo--;
+      onEvent({ type: 'text', text: busyNote(res.status, waitMs) });
+      await new Promise((done) => setTimeout(done, waitMs));
+      if (isAborted()) return { stepNo };
+      continue;
+    }
+    retry = 0;
 
     if (!res.ok) {
       let detail = '';
