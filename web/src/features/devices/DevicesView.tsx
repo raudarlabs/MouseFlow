@@ -30,6 +30,8 @@ import {
   AGENT_WANTS, macEnrollCommand, macInstallCommand, olderThan, windowsEnrollCommand, windowsInstallCommand,
 } from '@/lib/agent';
 import { refreshLive } from '@/lib/live';
+import { useAgent } from '@/lib/store';
+import { openSettings } from '@/shell/SettingsDialog';
 import { useAccount } from '@/shell/AccountProvider';
 import { Page } from '@/shell/Surface';
 import { when } from '@/features/create/run-history';
@@ -359,6 +361,29 @@ const AddMachines = ({ onNote }: { onNote: (note: SaidNote) => void }) => {
   );
 };
 
+/* ЭТОТ КОМПЬЮТЕР - то, что о нём говорит его собственный агент по loopback, рядом со списком машин аккаунта.
+ *
+ * Найдено на живом аккаунте 2026-10-16: агент работал, а в списке машин было пусто. Его токен был отозван,
+ * агент получил 401, выключил приём работы - и продолжал считать себя подключённым, потому что account.json
+ * на машине остался. Сервер не может знать, какой токен у агента ЭТОГО компьютера, а агент может сказать,
+ * что он подключён и не берёт работу. Это и говорится, с кнопкой туда, где привязку делают заново. */
+const ThisComputer = () => {
+  const { health } = useAgent();
+  if (!health || health.linked === undefined) return null;
+  if (health.linked && health.taking) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border-fb-attention/40 border bg-fb-attention/[0.06] px-4 py-3">
+      <Typography variant="p" className="min-w-[16rem] flex-1 text-[0.85rem] text-ink-body">
+        {health.linked
+          ? 'The agent on this computer is attached but not taking work. If it is missing from the list below, '
+            + 'its token was removed from the account: open Connections, press Detach, then Attach this computer.'
+          : 'The agent on this computer is running but not attached to this account, so it is not in the list.'}
+      </Typography>
+      <Button size="sm" variant="secondary" onClick={() => openSettings('connections')}>Open Connections</Button>
+    </div>
+  );
+};
+
 export const DevicesView = () => {
   const [rows, setRows] = useState<Device[] | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
@@ -434,7 +459,8 @@ export const DevicesView = () => {
           </Typography>
         </div>
         <div className="flex items-center gap-3">
-          <Link to="/connect" className="text-[0.82rem] text-brand-primary hover:underline">Attach this computer</Link>
+          <button type="button" onClick={() => openSettings('connections')}
+            className="text-[0.82rem] text-brand-primary hover:underline">Attach this computer</button>
         </div>
       </div>
 
@@ -444,6 +470,7 @@ export const DevicesView = () => {
 
       <Said note={note} onDismiss={() => setNote(null)} />
       {failed && <Said note={{ text: failed, kind: 'bad' }} />}
+      <ThisComputer />
 
       <Composer targets={[...picked]} names={names} onSent={(said) => { setNote(said); void load(); }} />
 

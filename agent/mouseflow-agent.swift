@@ -5093,15 +5093,40 @@ enum Enroll {
         return pick.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
+    /// Жив ли токен: только явный 401 значит «нет». Спрашивается то, на что токен устройства всегда получает
+    /// 403 («только браузер»), а мёртвый - 401.
+    static func tokenAlive(_ link: Account.Link) -> Bool {
+        guard let url = URL(string: link.base + "/api/sync?tokens=1") else { return true }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer " + link.token, forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 15
+        let done = DispatchSemaphore(value: 0)
+        var status = 0
+        URLSession.shared.dataTask(with: req) { _, response, _ in
+            status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 20)
+        return status != 401
+    }
+
     @discardableResult
     static func run(code: String, name: String, base asked: String) -> Bool {
         if Bundle.main.bundleIdentifier == nil && !attachLoose {
             log("--enroll ignored: a loose binary, not the installed app (pass --account to attach it anyway)")
             return false
         }
-        if Account.link != nil {
-            log("already attached to an account - the enrolment code was not spent")
-            return true
+        /* УЖЕ ПОДКЛЮЧЕНА - ЕСЛИ ТОКЕН ЖИВ. Найдено на живом аккаунте 2026-10-16: токен этой машины отозвали,
+         * агент получил 401 и выключил приём работы, а account.json остался - и код подключения отвечал бы
+         * «already attached», ничего не сделав. Поэтому сначала спрашивается сервер: 401 - токен мёртв, код
+         * тратится и заменяет его; любой другой ответ, включая «нет сети», - токен считается живым, и код
+         * не тратится зря. */
+        if let link = Account.link {
+            if tokenAlive(link) {
+                log("already attached to an account - the enrolment code was not spent")
+                return true
+            }
+            log("the token this Mac had was refused by its account - attaching again with the code")
         }
         let base = baseFor(asked)
         guard let url = URL(string: base + "/api/sync?redeem=1") else {

@@ -160,8 +160,11 @@ with `{code, name, hostname, platform, version}` and no credential: the code is 
 token is written exactly as `POST /account` writes it, with taking **on** — a machine attached from the
 account was attached to be given work; the menu-bar / tray switch is still the stronger one. Rules:
 
-- **An attached machine does not spend a code.** Re-running an installer must not put a second copy of the
-  same machine in the account.
+- **An attached machine does not spend a code — if its token still works.** Re-running an installer must
+  not put a second copy of the same machine in the account. But a revoked token stays in `account.json`, so
+  the agent first asks `GET {base}/api/sync?tokens=1` with it: a device token always gets 403 there, a dead
+  one 401. Only 401 spends the code and replaces the token; no answer at all keeps the old one (found on a
+  live account 2026-10-16: the Mac's token had been revoked and the code would have done nothing).
 - **Before the socket.** `--enroll-only` trades and exits without listening, because the port may already
   be held by the agent this machine is running.
 - **The refusal is one sentence for every reason** — unknown, expired, used up — so a guesser learns nothing.

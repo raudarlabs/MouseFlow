@@ -39,6 +39,13 @@ import { HoursScreen } from './settings/HoursScreen';
 
 export type SettingsScreen = 'account' | 'connections' | 'hours';
 
+/* ОТКРЫТЬ НАСТРОЙКИ С ЛЮБОЙ СТРАНИЦЫ (Hivelink). Окно живёт в AppLayout, а кнопка «Attach this computer»
+ * нужна на Devices: событием, а не пробросом пропсов через маршрутизатор - экран не обязан знать, где стоит
+ * окно. Ссылка на /connect вела на страницу установки, где кнопки привязки нет вовсе. */
+export const OPEN_SETTINGS_EVENT = 'mouseflow:open-settings';
+export const openSettings = (screen: SettingsScreen) =>
+  window.dispatchEvent(new CustomEvent<SettingsScreen>(OPEN_SETTINGS_EVENT, { detail: screen }));
+
 /* The one height all three screens are written to fit (see BODY below), and the row metrics the nav shares
  * with the sidebar's. Declared once rather than inferred from whichever screen happened to be tallest.
  *

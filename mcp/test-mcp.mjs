@@ -6558,6 +6558,19 @@ group('Hivelink H5: machines by name from MCP and Telegram, and a quiet account 
   check('a goal sent from the page reads as "you" in Logs, not "chat"', /\.\.\.browser, via: 'page' \}/.test(read('../api/queue.js')));
 }
 
+/* ОТОЗВАННЫЙ ТОКЕН НЕ ДЕЛАЕТ МАШИНУ «УЖЕ ПОДКЛЮЧЁННОЙ» (найдено на живом аккаунте 2026-10-16). */
+group('a revoked token does not count as attached: the code re-attaches it, on both agents');
+{
+  const swift = read('../agent/mouseflow-agent.swift');
+  const ps = read('../agent/mouseflow-agent.ps1');
+  check('the Mac asks its account whether the token still works, and only 401 means no',
+    /if tokenAlive\(link\) \{/.test(swift) && /return status != 401/.test(swift)
+      && /link\.base \+ "\/api\/sync\?tokens=1"/.test(swift));
+  check('and so does Windows', /if \(\$code -eq 401\) \{/.test(ps) && /'\/api\/sync\?tokens=1'/.test(ps));
+  check('a device token is refused there with 403, not 401 - the probe depends on it',
+    /if \(who\.via !== 'session'\) return fail\(res, 403, 'only a signed-in browser can list devices'\);/.test(read('../api/sync.js')));
+}
+
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by
  * here, and a keep-alive socket that outlives them keeps the loop open - which turns a suite that has
  * finished and said so into one that appears to hang, and `npm test` never returns. Everything this file

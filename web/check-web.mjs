@@ -472,6 +472,16 @@ group('Hivelink H4: Windows through the installer, and outdated agents marked');
   check('и сказано, как обновить на обеих платформах', /windowsInstallCommand\(\)/.test(view) && /macInstallCommand\(8787\)/.test(view));
 }
 
+group('Devices: «Attach this computer» opens Connections, and a detached local agent is named');
+{
+  const view = read('src/features/devices/DevicesView.tsx');
+  check('кнопка открывает окно Connections, а не страницу установки',
+    /onClick=\{\(\) => openSettings\('connections'\)\}/.test(view) && !/<Link to="\/connect"[^>]*>Attach this computer/.test(view));
+  check('и окно слушает это событие', /window\.addEventListener\(OPEN_SETTINGS_EVENT, open\)/.test(read('src/shell/AppLayout.tsx')));
+  check('агент этого компьютера, подключённый, но не берущий работу, - назван со способом починить',
+    /if \(health\.linked && health\.taking\) return null;/.test(view) && /press Detach, then Attach this computer/.test(view));
+}
+
 group('папки одного продукта не импортируют папки другого');
 {
   /* Шаг 0 плана разделения (docs/SEPARATION-PLAN.md): продукты разойдутся по аккаунтам, и код экрана P1,

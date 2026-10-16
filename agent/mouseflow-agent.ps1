@@ -7492,7 +7492,23 @@ namespace MouseFlow
 if ($Enroll) {
     [MouseFlow.Account]::Load()
     $enrolled = $false
+    # УЖЕ ПОДКЛЮЧЕНА - ЕСЛИ ТОКЕН ЖИВ (найдено 2026-10-16): отозванный токен остаётся в account.json, и код
+    # отвечал бы «already attached», ничего не сделав. Только явный 401 значит «мёртв»; нет сети - живой.
+    $alive = $false
     if ([MouseFlow.Account]::Linked) {
+        $alive = $true
+        try {
+            Invoke-RestMethod -Uri ([MouseFlow.Account]::Base + '/api/sync?tokens=1') -Headers @{ Authorization = 'Bearer ' + [MouseFlow.Account]::Token } -TimeoutSec 15 | Out-Null
+        } catch {
+            $code = 0
+            try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+            if ($code -eq 401) {
+                $alive = $false
+                Write-Host "  enrol       the token this PC had was refused by its account - attaching again with the code"
+            }
+        }
+    }
+    if ($alive) {
         Write-Host "  enrol       already attached to an account - the code was not spent"
         $enrolled = $true
     } else {

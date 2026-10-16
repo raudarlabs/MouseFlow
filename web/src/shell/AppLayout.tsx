@@ -17,7 +17,7 @@ import { titleAt } from '@/lib/product';
 import { askAgent, useAgent } from '@/lib/store';
 import { AccountProvider, isAuthPath, isPanelPath, isPublicPath } from './AccountProvider';
 import { AppSidebar } from './AppSidebar';
-import { SettingsDialog, type SettingsScreen } from './SettingsDialog';
+import { OPEN_SETTINGS_EVENT, SettingsDialog, type SettingsScreen } from './SettingsDialog';
 import { OnboardingTour } from './OnboardingTour';
 /* Makes this browser and the account agree, on load and on every change, without asking. Mounted here rather
  * than on the Record page because signing in on another machine can land anywhere, and waiting for somebody to
@@ -90,6 +90,12 @@ const ShellFrame = () => {
    * throws away a half-typed goal to deliver a change they did not ask for. */
   const [updated, setUpdated] = useState(false);
   useEffect(() => watchForNewBuild(() => setUpdated(true)), []);
+  /* Настройки, открытые со страницы (openSettings в SettingsDialog.tsx). */
+  useEffect(() => {
+    const open = (ev: Event) => setSettings((ev as CustomEvent<SettingsScreen>).detail || 'account');
+    window.addEventListener(OPEN_SETTINGS_EVENT, open);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, open);
+  }, []);
 
   return (
     <div className="page-glow flex min-h-screen items-stretch bg-surface-page">
