@@ -1,6 +1,8 @@
-# “Do it for me” — the documentation of one half
+# “Hivelink” — the documentation of one half
 
-**Describe the job. The machine carries it out on your computer, and proves it still works.**
+**Tell your computers what to do. Each one carries the job out on its own screen, and proves it still works.**
+
+Called *Do it for me* until 2026-10-16, when the owner named it Hivelink.
 
 The arrow points one way here: **the machine acts and the person watches.** A goal, a queue, evidence of
 what happened, and a check that says whether it is still true tomorrow.
@@ -9,8 +11,8 @@ This is an **index over the existing pages**, not a second copy of them. Every p
 the other half reads where the subject is shared; nothing is duplicated, and nothing is hidden.
 
 The file is named for the product's **id**, not for its name: `do` is what `web/src/lib/product.ts` calls
-it, and the name above is a working title the owner has not settled (`SPLIT-PLAN.md` §11.1). When the name
-changes, this heading changes and no link does.
+it. The name changed once already — from *Do it for me* to *Hivelink* — and this heading changed with it while
+no link did.
 
 ## Its screens
 
@@ -21,11 +23,13 @@ quietly teaching somebody the wrong product.
 
 | | Screen | What it covers |
 |---|---|---|
+| Overview | `/overview` | The home screen: machines connected, online now and seen in the window; runs, success rate, failures by reason, most-run skills and what runs next by itself. Per-machine counts wait for Devices — see `docs/HIVELINK-PLAN.md` |
 | [05 — Create](05-create.md) | `/create` | Prompt → flow: the executor, the plan, checkpoint gates, window pinning, live context, the decision loop |
 | [26 — Logs](26-activity.md) | `/logs` | Running, waiting and everything that ran, with Stop and Cancel beside the thing itself; the status vocabulary |
-| [27 — Test cases](27-cases.md) | `/tests` | A skill plus what must be true when it has run: the four verdicts, and why nothing without evidence is ever green |
-| [25 — Checks](25-tests.md) | `/tests` | `expect`: an assertion the machine decides from the accessibility tree rather than the model from a picture |
-| [24 — Schedules](24-schedules.md) | `/tests` | Runs nobody asks for, ticked by the machine's own poll — and what it says when the machine was asleep |
+| [27 — Test cases](27-cases.md) | `/saved` | A skill plus what must be true when it has run: the four verdicts, and why nothing without evidence is ever green |
+| [25 — Checks](25-tests.md) | `/saved` | `expect`: an assertion the machine decides from the accessibility tree rather than the model from a picture |
+| [24 — Schedules](24-schedules.md) | `/saved` | Runs nobody asks for, ticked by the machine's own poll — and what it says when the machine was asleep |
+| [21 — MCP](21-mcp.md) | `/ai` | Connecting your own AI: the address with `?profile=do`, who is connected, and the tools it gets here |
 | [09 — Connections](09-connections.md) | `/connect` | Installing the agent on both platforms, Local Network Access, autostart |
 
 ## The parts underneath
@@ -52,7 +56,7 @@ Shared with the other half, because the engine is one engine. Read them when the
 ## What is deliberately not here
 
 Recording, the skill library, documents written from a recording, the dashboard, teams, the gallery and the
-MCP connector belong to the other half — **[“Make it reusable”](make.md)**. They are not missing pages;
+public page about the MCP connector belong to the other half — **[“Make it reusable”](make.md)**. They are not missing pages;
 they are somebody else's subject, and the one place both halves meet is the parts list above.
 
 The whole set, in one table, is [README.md](README.md).

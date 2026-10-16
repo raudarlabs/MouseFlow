@@ -23,8 +23,10 @@ import {
   CircleDot,
   FileText,
   FolderOpen,
+  LayoutDashboard,
   LayoutGrid,
   PanelLeft,
+  Plug,
   Repeat,
   ScrollText,
   Sparkles,
@@ -58,6 +60,7 @@ const NONE_HIDDEN = new Set<string>();
 /* Значок на пункт меню, по маршруту. Единственное, что осталось здесь от прежнего списка: остальное -
  * ярлык, заголовок, бета, счётчик, шаг тура - переехало в product.ts, где у него один экземпляр. */
 const ICONS: Record<string, LucideIcon> = {
+  '/overview': LayoutDashboard,
   '/record': CircleDot,
   '/create': Sparkles,
   '/logs': ScrollText,
@@ -67,6 +70,7 @@ const ICONS: Record<string, LucideIcon> = {
   '/dashboard': ChartNoAxesColumn,
   '/team': Users,
   '/gallery': LayoutGrid,
+  '/ai': Plug,
 };
 
 /* One row height, one glyph box, one gap - so a lucide glyph that draws lighter than its neighbours still

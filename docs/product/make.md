@@ -54,8 +54,8 @@ half's own and is listed first for that reason.
 
 ## What is deliberately not here
 
-Create, Logs, test cases, checks, schedules and Connections belong to the other half —
-**[“Do it for me”](do.md)**. They are not missing pages; they are somebody else's subject, and the one
+Overview, Create, Logs, saved skills with their tests and schedules, the in-app MCP screen and Connections belong to the other half —
+**[“Hivelink”](do.md)**. They are not missing pages; they are somebody else's subject, and the one
 place both halves meet is the parts list above.
 
 The whole set, in one table, is [README.md](README.md).

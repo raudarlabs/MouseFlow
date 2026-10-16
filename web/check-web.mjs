@@ -177,7 +177,8 @@ group('порядок меню закреплён по каждому проду
   const ORDER = {
     /* Первый продукт - это ПРОВЕРКИ: попросил, прочитал журнал, сложил в навык, проверяешь. Галерея,
      * дашборд и команды ушли во второй - решение владельца от 2026-09-18, см. комментарии в product.ts. */
-    do: '/create,/logs,/saved',
+    /* 2026-10-16, владелец: Hivelink - обзор машин домом, Tests внутри Skills, и MCP своим экраном. */
+    do: '/overview,/create,/logs,/saved,/ai',
     make: '/record,/skills,/docs,/dashboard,/team,/gallery',
   };
   for (const id of PRODUCT_IDS) {
@@ -350,8 +351,9 @@ group('у первого продукта - Skills вместо Tests: сохр�
   const tests = SCREENS.find((s) => s.to === '/tests');
   check('Skills - экран первого продукта, в меню', !!saved && saved.owner === 'do' && saved.nav === true
     && saved.label === 'Skills', show(saved));
-  check('а Tests жив по адресу, но в меню его нет', !!tests && tests.nav === false
-    && /path: '\/tests', component: TestsView/.test(main), show(tests));
+  /* С 2026-10-16 Tests - внутри Skills (владелец), и адрес перенаправляет туда, а не рисует свой экран. */
+  check('а /tests ведёт в Skills, и пункта меню у него нет', !!tests && tests.nav === false
+    && /path: '\/tests',\s*beforeLoad: \(\) => \{ throw redirect\(\{ to: '\/saved' \}\); \}/.test(main), show(tests));
   check('мастерская второго продукта не тронута', SCREENS.find((s) => s.to === '/skills')?.owner === 'make');
   check('здесь - скиллы из цели, а не записи', /flows\.filter\(\(one\) => one\.kind === 'created'\)/.test(view));
   check('запуск - через очередь, а не своим путём', /await runSkill\(flow\.id, given\)/.test(view)
@@ -364,13 +366,65 @@ group('у первого продукта - Skills вместо Tests: сохр�
     /<ArmedButton\b/.test(view) && /if \(saved\.problems\?\.length\) throw new Error/.test(view));
 }
 
+group('Hivelink: имя, дом-обзор, тесты в Skills и MCP своим экраном');
+{
+  /* Владелец, 2026-10-16. Имя - одна строка в product.ts; id остаётся `do`, на нём держатся маршруты,
+   * профиль MCP и docs/product/do.md. */
+  check('первый продукт называется Hivelink, а id у него прежний', PRODUCTS.do.name === 'Hivelink', PRODUCTS.do.name);
+  check('и по умолчанию открывается он', DEFAULT_PRODUCT === 'do', DEFAULT_PRODUCT);
+  check('дом Hivelink - обзор машин', PRODUCTS.do.home === '/overview' && productAt('/overview') === 'do',
+    PRODUCTS.do.home);
+  check('и у обзора есть маршрут', /path: '\/overview', component: OverviewView/.test(main));
+
+  /* ЧИСЛА ОБЗОРА - НЕ ВЫДУМАННЫЕ. Машины - токены агентов, «на связи» - по last_used_at, прогоны - половина
+   * ran того же api/insights.js. И то, чего посчитать нельзя (прогон не знает своей машины), сказано словами. */
+  const overview = read('src/features/overview/OverviewView.tsx');
+  check('машины - токены, которые ставит привязка агента',
+    /const AGENT_LABEL = 'This computer';/.test(overview)
+      && /mintDeviceToken\('This computer'\)/.test(read('src/shell/settings/ConnectionsScreen.tsx')));
+  check('и сервер обновляет last_used_at на каждом запросе с токеном - иначе «на связи» значило бы «когда-то»',
+    /update device_token set last_used_at = now\(\)/.test(readFileSync(join(here, '../api/_session.js'), 'utf8')));
+  check('прогоны - из ?half=ran, а не посчитаны страницей заново',
+    /\/api\/insights\?days=\$\{Math\.round\(days\)\}&half=ran/.test(read('src/lib/api.ts'))
+      && /ranInsights\(span\)/.test(overview));
+  check('доля без прогонов - тире, а не 0%', /whole > 0 \? `\$\{Math\.round\(\(part \/ whole\) \* 100\)\}%` : '—'/.test(overview));
+  check('изменение к прошлому окну - только если оно было', /if \(!had\) return null;/.test(overview));
+  check('и чего нельзя посчитать по машинам, сказано, а не подставлено',
+    /A run does not record the\s+machine it ran on today/.test(overview));
+
+  /* MCP В HIVELINK - адрес с профилем, и список инструментов профиля сверен с сервером в обе стороны. */
+  const facts = read('src/lib/mcp-facts.ts');
+  const tools = readFileSync(join(here, '../api/_mcp-tools.mjs'), 'utf8');
+  const listOf = (name) => {
+    const m = tools.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\];`));
+    return m ? [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]) : [];
+  };
+  const server = {
+    do: [...listOf('DO_ONLY'), ...listOf('SHARED')],
+    make: [...listOf('MAKE_ONLY'), ...listOf('SHARED')],
+  };
+  const { PROFILE_TOOLS } = await import('./src/lib/mcp-facts.ts');
+  for (const id of ['do', 'make']) {
+    const here_ = [...PROFILE_TOOLS[id]].sort().join();
+    const there = [...server[id]].sort().join();
+    check(`инструменты профиля ${id} на экране - те же, что на сервере`, server[id].length > 0 && here_ === there,
+      show({ page: here_, server: there }));
+  }
+  const ai = read('src/features/ai/AiView.tsx');
+  check('экран MCP отдаёт адрес с профилем Hivelink', /const url = mcpUrlFor\('do'\);/.test(ai)
+    && /\?profile=\$\{profile\}/.test(facts));
+  check('и показывает только инструменты этого профиля', /PROFILE_TOOLS\.do\.includes\(tool\.name\)/.test(ai));
+  check('и у него есть маршрут за входом, а публичная /mcp на месте',
+    /path: '\/ai', component: AiView/.test(main) && /path: '\/mcp', component: McpView/.test(main));
+}
+
 group('папки одного продукта не импортируют папки другого');
 {
   /* Шаг 0 плана разделения (docs/SEPARATION-PLAN.md): продукты разойдутся по аккаунтам, и код экрана P1,
    * читающий из папки экрана P2, - это нитка, которую тогда придётся рвать под нагрузкой. Общее живёт в
    * lib/, components/ и shell/. Какая папка чья - по экрану, который она рисует. */
   const OWNER = {
-    create: 'do', saved: 'do', activity: 'do', panel: 'do', connect: 'do', tests: 'do',
+    create: 'do', saved: 'do', activity: 'do', panel: 'do', connect: 'do', tests: 'do', overview: 'do', ai: 'do',
     record: 'make', skills: 'make', docs: 'make', insights: 'make', team: 'make', gallery: 'make',
     chat: 'make', mcp: 'make',
   };

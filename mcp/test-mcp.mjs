@@ -785,7 +785,8 @@ check('and it is in the sidebar, not buried in a dialog',
    с тех пор находил бы ноль пунктов и проходил бы, ничего не сравнив. Порядок здесь - объединение двух
    продуктов в порядке объявления, то есть ровно сегодняшнее меню; по каждому продукту в отдельности он
    закреплён в web/check-web.mjs. */
-const NAV_ORDER = '/record,/create,/logs,/skills,/docs,/saved,/dashboard,/team,/gallery';
+/* 2026-10-16: /overview (дом Hivelink) первым и /ai (MCP внутри Hivelink) после его Skills - владелец. */
+const NAV_ORDER = '/overview,/record,/create,/logs,/skills,/docs,/saved,/ai,/dashboard,/team,/gallery';
 const navNow = SCREENS.filter((s) => s.nav).map((s) => s.to).join();
 check('порядок в сайдбаре тот, о котором договорились, и Gallery последняя',
   navNow === NAV_ORDER, navNow);
@@ -4793,7 +4794,8 @@ group('у расписания есть экран, и он говорит о п
   /* ПЕРЕЕХАЛА НА TESTS, шаг 7 (2026-09-22). Полоса стояла над библиотекой скиллов, и довод был верен:
    * расписание - единственное, что происходит без человека. Но происходит оно в ПЕРВОМ продукте, а
    * Skills - мастерская второго. */
-  const page = read('../web/src/features/tests/TestsView.tsx');
+  /* С 2026-10-16 полоса стоит на Skills Hivelink: Tests влиты в него (владелец). */
+  const page = read('../web/src/features/saved/SavedSkillsView.tsx');
   const client = read('../web/src/lib/api.ts');
   const appRoute = read('../api/schedules.js');
 
@@ -4826,16 +4828,19 @@ group('у расписания есть экран, и он говорит о п
   /* Полоса - ПОД «New case», а не над списком кейсов: расписание это следствие того, что уже есть, а не
    * первое, что делают на этой странице. Порядок чтения - какие кейсы есть, как написать новый, что из
    * всего этого идёт без меня. */
-  check('полоса стоит под «New case», а не первой на странице',
-    page.indexOf('<RunsByItself') > 0
-      && page.indexOf('<RunsByItself') > page.indexOf('<NewCase'));
+  /* С 2026-10-16 - под скиллами и их тестами: порядок чтения тот же - что есть, как это проверить, что из
+   * этого идёт без меня. */
+  check('полоса стоит под скиллами и их тестами, а не первой на странице',
+    page.indexOf('<Schedules') > 0
+      && page.indexOf('<Schedules') > page.indexOf('<CaseRow')
+      && page.indexOf('<Schedules') > page.indexOf('<CaseForm'));
   check('поставленное сразу видно в полосе - ключ, а не надежда на перерисовку',
     page.includes('setKey((n) => n + 1)') && strip.includes('[load, reloadKey]'));
   /* И ПОСТАВИТЬ РАСПИСАНИЕ МОЖНО ТАМ ЖЕ, ГДЕ ОНО ВИДНО. Часы уехали из строки скилла вместе с полосой, и
    * показывать, не давая завести, значило бы убрать способ совсем. Список скиллов здесь уже был - его
    * берёт «New case» из тех же `flows`, - так что это тот же список, а не второй. */
-  check('и скилл ставится на расписание там же, где полоса',
-    /aria-label="Skill to schedule"/.test(page) && /<ScheduleFor/.test(page)
+  check('и скилл ставится на расписание там же, где полоса - из своей строки',
+    /setClocking\(clocking === flow\.id \? null : flow\.id\)/.test(page) && /<ScheduleFor/.test(page)
       && /flows\.filter\(\(one\) => one\.kind === 'created'\)/.test(page));
   /* А на Skills от расписаний не осталось ничего: ни полосы, ни часов в строке. */
   check('на Skills расписаний не осталось',
@@ -5352,7 +5357,7 @@ group('Activity отвечает целиком: идёт, ждёт, было - 
     /useSyncExternalStore\(subscribe, snapshot, snapshot\)/.test(live) && /if \(!listeners\.size && timer\)/.test(live));
   check('и сайдбар считает только идущее и ждущее, никогда историю',
     /job\.state === 'claimed' \|\| job\.state === 'queued'/.test(page) && /liveCount > 0 &&/.test(sidebar));
-  check('пункт стоит после Create и до Skills', /'\/record,\/create,\/logs,\/skills/.test(read('./test-mcp.mjs')));
+  check('пункт стоит после Create и до Skills', /'\/overview,\/record,\/create,\/logs,\/skills/.test(read('./test-mcp.mjs')));
 
   /* ТРИ ОСИ, А НЕ ОДИН ПЕРЕКЛЮЧАТЕЛЬ: «failed» и «by itself» это разные вопросы, и один сегментный контрол
    * заставлял выбирать между ними. */
@@ -5414,7 +5419,9 @@ group('тест-кейс: утверждения заранее, вердикт 
   const door = read('../api/cases.js');
   const queue = read('../api/_queue.mjs');
   const sched = read('../api/schedules.js');
-  const page = read('../web/src/features/tests/TestsView.tsx');
+  /* Кирпичи кейса - в features/tests/cases.tsx, собранные в строке скилла на /saved (2026-10-16). */
+  const page = read('../web/src/features/tests/cases.tsx');
+  const view = read('../web/src/features/saved/SavedSkillsView.tsx');
   const words = read('../web/src/features/tests/verdicts.ts');
   const client = read('../web/src/lib/api.ts');
   const mock = read('../web/src/dev/mock-api.ts');
@@ -5566,18 +5573,21 @@ group('тест-кейс: утверждения заранее, вердикт 
    * «New case», и в полосе расписаний. */
   /* С 2026-09-28 пункта меню у Tests нет (владелец: кейсы - в продукте без интерфейса), а последний пункт
    * первого продукта - его Skills. Сам экран жив по адресу: на аккаунте есть расписание кейса. */
-  check('страница - маршрут без пункта меню, и последний пункт первого продукта - его Skills',
-    /path: '\/tests'/.test(read('../web/src/main.tsx'))
+  /* С 2026-10-16 - ВНУТРИ SKILLS (владелец: «объединим скилы и тесты в один компонент»). /tests -
+   * перенаправление на /saved: на адрес ссылаются письма расписаний. */
+  check('тесты - в строке своего скилла, а /tests ведёт туда же',
+    /path: '\/tests',\s*beforeLoad: \(\) => \{ throw redirect\(\{ to: '\/saved' \}\); \}/.test(read('../web/src/main.tsx'))
       && !screensFor('do').some((s) => s.to === '/tests')
-      && screensFor('do').at(-1).to === '/saved'
-      && !screensFor('do').some((s) => s.to === '/skills'));
-  /* ТРИ карточки: кейсы, новый кейс, и то, что идёт само. Третья переехала со страницы Skills. */
-  check('три карточки в том же ободке, что у библиотеки',
-    (page.match(/const CARD = 'rounded-xl border-stroke border bg-surface-card p-4'/g) || []).length === 1
-      && (page.match(/<section className=\{CARD\}>/g) || []).length === 3);
-  check('окно на семь строк той же меркой, что на Activity',
-    /const LIST_ROW = 2\.75;/.test(page)
-      && /const LIST_HEIGHT = `\$\{7 \* LIST_ROW \+ 6 \* LIST_GAP\}rem`;/.test(page));
+      && screensFor('do').some((s) => s.to === '/saved')
+      && !screensFor('do').some((s) => s.to === '/skills')
+      && !existsSync(fileURLToPath(new URL('../web/src/features/tests/TestsView.tsx', import.meta.url))));
+  check('строка скилла несёт свои тесты и форму проверок, а кейс без скилла не прячется',
+    /<CaseRow key=\{one\.id\} one=\{one\} busy=\{busy\} act=\{act\} \/>/.test(view)
+      && /<CaseForm\b/.test(view)
+      && /if \(one\.skillGone \|\| !live\.has\(one\.flowId\)\) \{ lost\.push\(one\); continue; \}/.test(view)
+      && /without a skill here/.test(view));
+  check('у кирпичей нет своей страницы - их собирает Skills',
+    !/<Page\b/.test(page) && /export const CaseRow/.test(page) && /export const CaseForm/.test(page));
   check('ряд последних ночей - точками, старые слева', /\[\.\.\.runs\]\.reverse\(\)/.test(page));
   check('шаги и кадры рисуются теми же, что история на Create',
     /from '@\/features\/create\/verdict'/.test(page) && /from '@\/features\/create\/Frames'/.test(page)
@@ -5650,7 +5660,7 @@ group('веб-QA: проверки уровня dom, кейсы в браузе�
   const route = mcpWhole('../api/mcp.js');
   const sync = read('../api/sync.js');
   const door = read('../api/cases.js');
-  const page = read('../web/src/features/tests/TestsView.tsx');
+  const page = read('../web/src/features/tests/cases.tsx');
   const expectRules = read('../api/_expect.mjs');
   const artifact = read('../api/_artifact.mjs');
   const describe = read('../web/src/features/create/describe.ts');
@@ -5711,8 +5721,11 @@ group('веб-QA: проверки уровня dom, кейсы в браузе�
       && /It runs as soon as that Chrome takes it/.test(door));
   check('страница называет поверхность в строке и в подсказке кнопки',
     /' · in Chrome'/.test(page) && /in Chrome with the extension/.test(page));
-  check('и в выборе скилла видно, где он будет проверяться',
-    /in Chrome'\}/.test(page) || /' — in Chrome'/.test(page));
+  /* Выбора скилла в форме больше нет - она открывается из его строки (2026-10-16), - и вместо подписи в
+   * выборе поверхность решает набор проверок, который форма предлагает. */
+  check('и форма предлагает проверки той поверхности, на которой скилл будет проверяться',
+    /const on = flow\.source !== 'desktop' \? 'browser' : 'desktop';/.test(page)
+      && /checksFor\(on\)/.test(page));
   check('панель истории читает три новых вида проверки словами, а не именами полей',
     /check that the page is/.test(describe) && /check that there are/.test(describe));
   check('в фикстуре есть веб-кейс с доказательствами dom - иначе эту ветку не видно ни на экране',

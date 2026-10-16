@@ -663,6 +663,10 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
     return json(res, 200, {
       ok: true,
       devices: [
+        /* Три агента для обзора Hivelink: один на связи, один был вчера, один ни разу не спросил работу. */
+        { id: 'dev_a1', label: 'This computer', createdAt: hoursAgo(300), lastUsedAt: new Date(Date.now() - 4000).toISOString() },
+        { id: 'dev_a2', label: 'This computer', createdAt: hoursAgo(120), lastUsedAt: hoursAgo(26) },
+        { id: 'dev_a3', label: 'This computer', createdAt: hoursAgo(2), lastUsedAt: null },
         { id: 'dev_1', label: 'Chrome extension', createdAt: hoursAgo(200), lastUsedAt: hoursAgo(4) },
         { id: 'dev_2', label: 'Chrome extension', createdAt: hoursAgo(500), lastUsedAt: null },
       ],

@@ -17,7 +17,7 @@ parts underneath belong to both.
 
 | | |
 |---|---|
-| [“Do it for me”](do.md) | The machine acts and the person watches: a goal, a queue, evidence, and a check that says whether it is still true tomorrow |
+| [“Hivelink”](do.md) | The machine acts and the person watches: a goal, a queue, evidence, and a check that says whether it is still true tomorrow |
 | [“Make it reusable”](make.md) | The person acts and the machine watches: a recording, a transcript, a skill, a document, and where the week went |
 
 Each of those is an **index over these same pages**, not a second copy. The screen rows in them carry the

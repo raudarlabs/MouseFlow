@@ -381,6 +381,23 @@ export interface Schedule {
 
 export const schedules = () => call<{ ok: true; schedules: Schedule[] }>('/api/schedules');
 
+/* ПОЛОВИНА ДАШБОРДА ПРО ПРОГОНЫ - для обзора Hivelink. Маршрут тот же, что у Dashboard второго продукта
+ * (api/insights.js), но спрашивается `?half=ran`: обзор говорит о том, что сделали машины, а не о записях.
+ * Объявлены только поля, которые обзор читает; остальное в ответе есть и здесь не нужно. */
+export interface RanInsights {
+  window: { days: number; from: string; to: string; timeZone: string };
+  totals: { runs: number; ok: number; failed: number; stopped: number; running: number; agentHours: number };
+  previous: { had: boolean; runs: number; ok: number; failed: number; stopped: number; agentHours: number };
+  byDay: { day: string; runs: number; ok: number; failed: number; agentSeconds: number }[];
+  failures: { reason: string; times: number; lastAt: string | null; example: { runId: string | null; error: string } }[];
+  skills: {
+    flowId: string; name: string; kind: 'created' | 'recorded'; runs: number; ok: number; failed: number;
+    medianSeconds: number | null; lastRunAt: string | null;
+  }[];
+}
+export const ranInsights = (days: number) =>
+  call<RanInsights & { ok: true }>(`/api/insights?days=${Math.round(days)}&half=ran`);
+
 /* КАДРЫ ПРОГОНА - те немногие, что что-то доказывают: ход, сделавший проверку, и экран, на котором всё
  * кончилось. См. db/020 и api/_artifact.mjs.
  *

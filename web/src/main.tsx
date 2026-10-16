@@ -13,7 +13,8 @@ import { bootTheme } from '@/shell/theme';
 import { RecordView } from '@/features/record/RecordView';
 import { CreateView } from '@/features/create/CreateView';
 import { ActivityView } from '@/features/activity/ActivityView';
-import { TestsView } from '@/features/tests/TestsView';
+import { OverviewView } from '@/features/overview/OverviewView';
+import { AiView } from '@/features/ai/AiView';
 import { SavedSkillsView } from '@/features/saved/SavedSkillsView';
 import { SkillsView } from '@/features/skills/SkillsView';
 import { GalleryView } from '@/features/gallery/GalleryView';
@@ -60,6 +61,8 @@ const routes = [
      * Сам выбор - в web/src/shell/useProduct.ts, значение по умолчанию - в web/src/lib/product.ts. */
     beforeLoad: () => { throw redirect({ to: PRODUCTS[storedProduct()].home }); },
   }),
+  /* ДОМ HIVELINK: сколько машин подключено, сколько на связи, что они сделали за окно. */
+  createRoute({ getParentRoute: () => rootRoute, path: '/overview', component: OverviewView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/record', component: RecordView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/create', component: CreateView }),
   /* ПРОШЛЫЙ ПРОГОН - ТОТ ЖЕ ЭКРАН, ОТКРЫТЫЙ НА НЁМ (владелец, 2026-09-28). Не отдельная страница: прогон
@@ -81,7 +84,13 @@ const routes = [
     beforeLoad: () => { throw redirect({ to: '/logs' }); },
   }),
   createRoute({ getParentRoute: () => rootRoute, path: '/skills', component: SkillsView }),
-  createRoute({ getParentRoute: () => rootRoute, path: '/tests', component: TestsView }),
+  /* ТЕСТЫ ЖИВУТ В SKILLS (владелец, 2026-10-16): кейс - это скилл плюс проверки, и показывать их стали в
+   * строке скилла. Адрес - перенаправлением, а не удалением: на него ссылаются письма расписаний. */
+  createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/tests',
+    beforeLoad: () => { throw redirect({ to: '/saved' }); },
+  }),
   createRoute({ getParentRoute: () => rootRoute, path: '/saved', component: SavedSkillsView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/gallery', component: GalleryView }),
   createRoute({ getParentRoute: () => rootRoute, path: '/dashboard', component: InsightsView }),
@@ -124,6 +133,8 @@ const routes = [
   /* The one page that is about the product rather than part of it, and the only route readable with no
    * account - see PUBLIC_PATHS. It is what "add MouseFlow to Claude" points at. */
   createRoute({ getParentRoute: () => rootRoute, path: '/mcp', component: McpView }),
+  /* MCP ВНУТРИ HIVELINK - за входом, в обстановке приложения: адрес с профилем продукта и его инструменты. */
+  createRoute({ getParentRoute: () => rootRoute, path: '/ai', component: AiView }),
   /* The three ways in. Reachable while signed OUT, which is the whole point - the account provider lets
    * these through its wall rather than showing it, because a wall in front of the sign-up page is a door
    * that only opens from inside. */

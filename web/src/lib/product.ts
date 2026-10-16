@@ -49,9 +49,15 @@ export interface ProductInfo {
 export const PRODUCTS: Record<Product, ProductInfo> = {
   do: {
     id: 'do',
-    name: 'Do it for me',
-    blurb: 'Describe the job. The machine carries it out on your computer, and proves it still works.',
-    home: '/create',
+    /* HIVELINK - имя владельца от 2026-10-16. Продукт про то, что машина действует: на одном компьютере
+     * или на многих сразу, каждый своим агентом. id остаётся `do` - на нём держатся маршруты, профиль MCP
+     * и документация (docs/product/do.md), а имя меняется здесь и только здесь. */
+    name: 'Hivelink',
+    blurb: 'Tell your computers what to do. Each one carries the job out on its own screen, and proves it '
+      + 'still works.',
+    /* ДОМ - ОБЗОР, а не Create (владелец, 2026-10-16): первым экраном видно, сколько агентов подключено,
+     * сколько их сейчас на связи и что они сделали за неделю. Create - то, куда идут из него. */
+    home: '/overview',
     /* ТОЛЬКО ЛОКАЛЬНЫЙ АГЕНТ - решение владельца от 2026-09-18, и слово «пока» в нём было.
      *
      * Расширение и агент - два разных исполнителя с разными обещаниями: расширение целится в элементы
@@ -76,13 +82,13 @@ export const PRODUCTS: Record<Product, ProductInfo> = {
 
 export const PRODUCT_IDS: Product[] = ['do', 'make'];
 
-/* ЧТО ОТКРЫВАЕТСЯ ПО УМОЛЧАНИЮ - ровно то, что открывалось до этого шага, то есть Record.
+/* ЧТО ОТКРЫВАЕТСЯ ПО УМОЛЧАНИЮ - Hivelink.
  *
- * «Какой продукт ведёт» - открытый вопрос владельца (§11.1 и SITE-DEBT §2), и он про главную страницу
- * сайта, а не про эту строку. Выбрать здесь что-то другое значило бы ответить на него молча и заодно
- * переставить первый экран у всех, кто уже пользуется приложением. Одна константа - и ответ, когда он
- * будет, это её правка. */
-export const DEFAULT_PRODUCT: Product = 'make';
+ * Здесь стояло 'make' с запиской «какой продукт ведёт - открытый вопрос владельца». Владелец ответил
+ * 2026-10-01 (SEPARATION-PLAN: «P1 leads») и подтвердил 2026-10-16, назвав его Hivelink. Человек, который
+ * уже выбирал продукт в этом браузере, попадает в выбранный, как и раньше: это значение - для того, кто
+ * не выбирал ничего. */
+export const DEFAULT_PRODUCT: Product = 'do';
 
 export interface TourStep {
   title: string;
@@ -110,6 +116,22 @@ export interface Screen {
  * которого убрано чужое, а не новый порядок, придуманный заодно. Человек, открывший приложение после
  * этого изменения, находит то же там же. */
 export const SCREENS: Screen[] = [
+  /* ОБЗОР - ДОМ HIVELINK (владелец, 2026-10-16): «дешборд как хоум скрин, где видно, сколько агентов всего
+   * подключено, сколько онлайн, сколько работало за прошлое время». Не /dashboard: тот отвечает второму
+   * продукту на «куда ушла неделя» по ЗАПИСЯМ, а этот - на «что сделали мои машины» по ПРОГОНАМ. Один
+   * адрес на два вопроса переключал бы оболочку в зависимости от того, кто его открыл. */
+  {
+    to: '/overview',
+    label: 'Overview',
+    title: 'Overview',
+    owner: 'do',
+    nav: true,
+    tour: {
+      title: 'Your machines at a glance',
+      body: 'How many computers are connected, how many are taking work right now, and what they did this '
+        + 'week — every number counted from your own runs, and the ones that cannot be counted yet say so.',
+    },
+  },
   {
     to: '/record',
     label: 'Record',
@@ -196,16 +218,31 @@ export const SCREENS: Screen[] = [
     owner: 'do',
     nav: true,
     tour: {
-      title: 'Do it again, or on a clock',
-      body: 'A run that worked can be saved as a skill. Run it again with one click, or have it repeat at a '
-        + 'time of day — it runs by itself while the computer is awake.',
+      title: 'Do it again, on a clock, and prove it',
+      body: 'A run that worked can be saved as a skill. Run it again with one click, have it repeat at a '
+        + 'time of day, and add checks — what must be true when it is done — to turn it into a test.',
     },
   },
-  /* TESTS - БЕЗ ПУНКТА МЕНЮ (владелец, 2026-09-28): кейсы остаются в продукте без интерфейса - таблицы,
-   * api/cases.js и тулы mouseflow_case* на месте, а кейс из чужой системы учёта идёт через mouseflow_do с
-   * `expect`. Экран жив по прямому адресу: на аккаунте есть расписание кейса, и ссылка на него не должна
-   * вести в никуда. */
-  { to: '/tests', label: 'Tests', title: 'Tests', owner: 'do', nav: false },
+  /* MCP - ЭКРАН ВНУТРИ HIVELINK (владелец, 2026-10-16), а не только публичная страница /mcp. Та объясняет
+   * продукт тому, у кого аккаунта может не быть; эта - для того, кто уже внутри: адрес с профилем этого
+   * продукта, три способа подключиться и инструменты, которые подключённый ИИ здесь получит. */
+  {
+    to: '/ai',
+    label: 'MCP',
+    title: 'Connect an AI',
+    owner: 'do',
+    nav: true,
+    tour: {
+      title: 'Let your own AI give the orders',
+      body: 'Connect Claude or any MCP client, and it can run your skills and goals on your computers the '
+        + 'same way you do here — through the same queue, with the same evidence in Logs.',
+    },
+  },
+  /* TESTS - ВНУТРИ SKILLS (владелец, 2026-10-16): «объединим скилы и тесты в один компонент - они очень
+   * близки по функционалу». Кейс и был скиллом плюс тем, что должно быть верно в конце (`user_case.flow_id`
+   * обязателен), поэтому теперь проверки живут в строке своего скилла на /saved. Адрес /tests
+   * перенаправляет туда: на него ссылаются письма расписаний и старые закладки. */
+  { to: '/tests', label: 'Skills', title: 'Skills', owner: 'do', nav: false },
   /* Asking about the numbers happens on the page that shows them, not at its own address.
    *
    * И это экран ТОЛЬКО второго продукта, решение владельца от 2026-09-18. Дашборд отвечает на вопрос «на

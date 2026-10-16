@@ -23,6 +23,24 @@ export const mcpUrl = (origin?: string) =>
   (origin ?? (typeof location === 'undefined' ? 'https://mouseflowapp.vercel.app' : location.origin))
     .replace(/\/$/, '') + MCP_PATH;
 
+/* АДРЕС С ПРОФИЛЕМ ПРОДУКТА. `?profile=do` сужает набор инструментов до того, что продукт делает, и
+ * спрашивается сервером и на `tools/list`, и на `tools/call` (api/_mcp-tools.mjs, `inProfile`). Экран MCP в
+ * Hivelink отдаёт именно такой адрес: ИИ, подключённый к продукту про машины, не должен получать в списке
+ * инструменты записи, которых в этом продукте нет. */
+export const mcpUrlFor = (profile: 'do' | 'make', origin?: string) => `${mcpUrl(origin)}?profile=${profile}`;
+
+/* ЧТО ВИДИТ ПОДКЛЮЧЁННЫЙ ИИ В КАЖДОМ ПРОФИЛЕ - копия `PROFILES` из api/_mcp-tools.mjs, потому что тот файл
+ * тянет за собой базу, а этот обязан оставаться без зависимостей. web/check-web.mjs сверяет обе копии в обе
+ * стороны: инструмент, добавленный в профиль на сервере и забытый здесь, роняет сюиту. */
+export const PROFILE_TOOLS: Record<'do' | 'make', string[]> = {
+  do: ['mouseflow_run', 'mouseflow_do', 'mouseflow_stop', 'mouseflow_run_status', 'mouseflow_case',
+    'mouseflow_cases', 'mouseflow_case_results', 'mouseflow_status', 'mouseflow_schedule',
+    'mouseflow_schedules', 'mouseflow_unschedule'],
+  make: ['mouseflow_recordings', 'mouseflow_transcript', 'mouseflow_activity', 'mouseflow_run_history',
+    'mouseflow_help', 'mouseflow_start_recording', 'mouseflow_stop_recording', 'mouseflow_status',
+    'mouseflow_schedule', 'mouseflow_schedules', 'mouseflow_unschedule'],
+};
+
 export type ToolGroup = 'read' | 'machine' | 'control';
 
 export interface McpTool {

@@ -16,20 +16,27 @@
  *
  * НИЧЕГО СВОЕГО. Скиллы и прогоны - из AccountProvider; расписания - те же Schedules/ScheduleFor, что стояли
  * на Tests; запуск - очередь (api/queue.js), та же, что у панели и телеграма.
+ *
+ * ТЕСТЫ - ЗДЕСЬ ЖЕ (владелец, 2026-10-16): «объединим скилы и тесты в один компонент - они очень близки по
+ * функционалу». Кейс - это скилл плюс то, что должно быть верно в конце, поэтому его проверки стоят в
+ * строке скилла: «Add checks» открывает форму, сохранённые проверки идут рядом точками ночей и вердиктом.
+ * Кейс, чей скилл удалён, не прячется - он стоит отдельным списком внизу и говорит, почему не запустится.
+ * Данные прежние (`user_case`, api/cases.js): миграции это слияние не просит.
  */
-import { CalendarClock, Play, Trash2 } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { CalendarClock, ListChecks, Play, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
 import { ArmedButton } from '@/components/ArmedButton';
 import { Said, type SaidNote } from '@/components/Said';
-import { type Flow, type Run, push, runSkill } from '@/lib/api';
+import { type Case, type Flow, type Run, cases, push, runSkill } from '@/lib/api';
 import { refreshLive } from '@/lib/live';
 import { useAccount } from '@/shell/AccountProvider';
 import { Page } from '@/shell/Surface';
 import { ScheduleFor, Schedules } from '@/features/tests/Schedules';
+import { CaseForm, CaseRow } from '@/features/tests/cases';
 import { titleOf, when } from '@/features/create/run-history';
 
 const LABEL = 'text-[0.7rem] uppercase tracking-wide text-ink-inactive';
@@ -61,6 +68,25 @@ export const SavedSkillsView = () => {
   const [armed, setArmed] = useState<string | null>(null);
   /* Меняется, когда поставили новое расписание: полоса перечитывает себя по ключу. */
   const [key, setKey] = useState(0);
+  /* Тесты: проверки скиллов, прочитанные с api/cases.js. null - ещё не спросили; отказ - своим состоянием,
+   * а не пустым списком: «проверок нет» и «прочитать не удалось» - разные факты. */
+  const [tests, setTests] = useState<Case[] | null>(null);
+  const [testsFailed, setTestsFailed] = useState<string | null>(null);
+  /** Какому скиллу сейчас пишут проверки. */
+  const [checking, setChecking] = useState<string | null>(null);
+
+  const loadTests = useCallback(async () => {
+    try {
+      const answer = await cases();
+      setTests(answer.cases);
+      setTestsFailed(null);
+    } catch (err) {
+      setTestsFailed(err instanceof Error ? err.message : 'the checks could not be read');
+      setTests([]);
+    }
+  }, []);
+
+  useEffect(() => { void loadTests(); }, [loadTests]);
 
   const skills = useMemo(() => flows.filter((one) => one.kind === 'created'), [flows]);
   /* Прогоны каждого скилла - по flowId, который пишет и облачный драйвер, и страница. Новые первыми. */
@@ -76,6 +102,39 @@ export const SavedSkillsView = () => {
   }, [runs]);
 
   const onNote = useCallback((text: string, kind: 'good' | 'bad') => setNote({ text, kind }), []);
+
+  /* Проверки каждого скилла - по flowId, как прогоны. Кейс без живого скилла уходит в отдельный список:
+   * в строке скилла, которого нет, ему стоять негде. «Удалён» говорит только сервер (`skillGone`): кейс,
+   * чей скилл просто не попал в этот список, назван иначе - иначе страница утверждала бы удаление, о
+   * котором ничего не знает. */
+  const { testsOf, orphans } = useMemo(() => {
+    const live = new Set(skills.map((one) => one.id));
+    const out = new Map<string, Case[]>();
+    const lost: Case[] = [];
+    for (const one of tests ?? []) {
+      if (one.skillGone || !live.has(one.flowId)) { lost.push(one); continue; }
+      const list = out.get(one.flowId) ?? [];
+      list.push(one);
+      out.set(one.flowId, list);
+    }
+    return { testsOf: out, orphans: lost };
+  }, [skills, tests]);
+  const failing = (tests ?? []).filter((one) => one.runs[0]?.verdict === 'fail').length;
+
+  const act = useCallback(async (id: string, what: () => Promise<unknown>, said: string) => {
+    setBusy(id);
+    setNote(null);
+    try {
+      await what();
+      setNote({ text: said, kind: 'good' });
+      await loadTests();
+      setKey((n) => n + 1);
+    } catch (err) {
+      setNote({ text: err instanceof Error ? err.message : 'it did not work', kind: 'bad' });
+    } finally {
+      setBusy(null);
+    }
+  }, [loadTests]);
 
   const run = async (flow: Flow, given: Record<string, string>) => {
     setBusy(flow.id);
@@ -118,8 +177,9 @@ export const SavedSkillsView = () => {
           Things you asked for once, ready to do again
         </Typography>
         <Typography variant="p" className="mt-1 max-w-[76ch] text-ink-inactive text-[0.9rem]">
-          A run that worked in Create can be saved as a skill. Run it again from here, or put it on a clock and
-          it runs by itself while the computer is awake.
+          A run that worked in Create can be saved as a skill. Run it again from here, put it on a clock and it
+          runs by itself while the computer is awake — or add checks, and it becomes a test: each run is then
+          judged green when what must be true held, red when it did not, grey when nothing was proven.
         </Typography>
       </div>
 
@@ -128,7 +188,10 @@ export const SavedSkillsView = () => {
       <section className={CARD}>
         <Typography variant="span" className={cn(LABEL, 'block')}>
           {skills.length ? `${skills.length} skill${skills.length === 1 ? '' : 's'}` : 'nothing yet'}
+          {tests && tests.length ? ` · ${tests.length} test${tests.length === 1 ? '' : 's'}` : ''}
+          {failing ? ` · ${failing} failing` : ''}
         </Typography>
+        {testsFailed && <Said note={{ text: testsFailed, kind: 'bad' }} />}
 
         {!skills.length ? (
           <Typography variant="p" className="py-6 text-center text-[0.88rem] text-ink-inactive">
@@ -203,6 +266,15 @@ export const SavedSkillsView = () => {
                       >
                         Repeat
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        leftSlot={<ListChecks className="size-4" />}
+                        title="Say what must be true when it is done, and every run is judged against it"
+                        onClick={() => setChecking(checking === flow.id ? null : flow.id)}
+                      >
+                        Add checks
+                      </Button>
                       <ArmedButton
                         label="Delete"
                         armedLabel="Delete this skill — press again"
@@ -238,6 +310,27 @@ export const SavedSkillsView = () => {
                     </form>
                   )}
 
+                  {/* ПРОВЕРКИ ЭТОГО СКИЛЛА - под ним, а не на другом экране: это тот же скилл, только
+                    * с ответом на «всё ещё работает?». */}
+                  {(testsOf.get(flow.id) ?? []).length > 0 && (
+                    <ul className="flex flex-col gap-1.5">
+                      {(testsOf.get(flow.id) ?? []).map((one) => (
+                        <CaseRow key={one.id} one={one} busy={busy} act={act} />
+                      ))}
+                    </ul>
+                  )}
+                  {checking === flow.id && (
+                    <CaseForm
+                      flow={flow}
+                      onCancel={() => setChecking(null)}
+                      onMade={(made) => {
+                        setChecking(null);
+                        setTests((was) => [made, ...(was ?? [])]);
+                        setNote({ text: `Checks saved for “${flow.name}”. Press Nightly to have them run by themselves.`, kind: 'good' });
+                      }}
+                    />
+                  )}
+
                   {clocking === flow.id && (
                     <ScheduleFor
                       flowId={flow.id}
@@ -256,6 +349,25 @@ export const SavedSkillsView = () => {
           </ul>
         )}
       </section>
+
+      {/* ТЕСТЫ БЕЗ СКИЛЛА - не прячутся: такой кейс каждую ночь падает на заборе, и узнать об этом надо
+        * раньше ночи. Здесь его можно только забыть. */}
+      {orphans.length > 0 && (
+        <section className={CARD}>
+          <Typography variant="span" className={cn(LABEL, 'block')}>
+            {orphans.length} test{orphans.length === 1 ? '' : 's'} without a skill here
+          </Typography>
+          <Typography variant="p" className="mt-1 max-w-[72ch] text-[0.82rem] text-ink-inactive">
+            {orphans.every((one) => one.skillGone)
+              ? 'The skill these checks ran has been deleted, so they cannot run. Their past runs stay readable.'
+              : 'These checks run a skill that is not among the skills above — each row names it, and says so '
+                + 'when it has been deleted. Their past runs stay readable.'}
+          </Typography>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {orphans.map((one) => <CaseRow key={one.id} one={one} busy={busy} act={act} standalone />)}
+          </ul>
+        </section>
+      )}
 
       {/* ЧТО ИДЁТ САМО - полоса сама себя не рисует, когда расписаний нет (см. Schedules.tsx). */}
       <Schedules reloadKey={key} onNote={onNote} />

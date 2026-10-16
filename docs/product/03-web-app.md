@@ -8,13 +8,16 @@ Entry point: `web/src/main.tsx`.
 
 | Path | Screen | Notes |
 |---|---|---|
-| `/` | → the chosen product's home | `/record` for *Make it reusable*, `/create` for *Do it for me*. See **Two products, one shell** below. |
+| `/` | → the chosen product's home | `/overview` for *Hivelink* (the default since 2026-10-16), `/record` for *Make it reusable*. See **Two products, one shell** below. |
+| `/overview` | Overview | Hivelink's home: machines connected, online now and seen in the window; runs, success, failures and what is coming up. 2026-10-16. |
 | `/record` | [Record](04-record.md) | |
 | `/logs` | [Logs](26-activity.md) | Running, waiting and everything that ran, with Stop and Cancel beside each. Renamed from Activity, 2026-09-18. |
 | `/activity` | → `/logs` | The old path, kept: it was linked from chats and from schedule mail. |
 | `/create` | [Create](05-create.md) | Marked **Beta** in the sidebar. |
 | `/skills` | [Skills](06-skills.md) | |
-| `/tests` | [Test cases](27-cases.md) | Cases, the row of nights each one has had, and one button for a nightly run. |
+| `/saved` | Skills (Hivelink) | Skills saved from Create — run now, repeat on a clock — and their **checks**: a skill with checks is a test case, shown in the skill's own row with its row of nights. See [27 — Test cases](27-cases.md). |
+| `/tests` | → `/saved` | Tests folded into Skills, 2026-10-16. The path is kept: schedule mail links to it. |
+| `/ai` | MCP (Hivelink) | The address with `?profile=do`, the three ways to connect, who is connected, and the tools a connected AI gets. The public page about MCP stays at `/mcp`. |
 | `/gallery` | [Gallery](07-gallery.md) | |
 | `/dashboard` | [Dashboard](08-dashboard.md) | `?team=<id>` scopes it to a whole team, for its owners and admins. |
 | `/team` | [Teams](22-teams.md) | |
@@ -78,7 +81,7 @@ gone. See [04 — Record § reconciliation](04-record.md#cross-device-reconcilia
 
 ## Two products, one shell
 
-The app holds two products — *Do it for me* (the machine acts) and *Make it reusable* (the person acts) —
+The app holds two products — *Hivelink* (the machine acts; called *Do it for me* until 2026-10-16) and *Make it reusable* (the person acts) —
 and shows one at a time. `docs/SPLIT-PLAN.md` is the plan; this section is what is built.
 
 **One definition, in `web/src/lib/product.ts`.** Every screen is one row there: address, sidebar label,
@@ -90,7 +93,7 @@ the suite (`web/check-web.mjs`) loads it and asks it the same questions the side
 
 | Product | Menu |
 |---|---|
-| *Do it for me* | Create, Logs, Skills, Tests |
+| *Hivelink* | Overview, Create, Logs, Skills (with tests), MCP |
 | *Make it reusable* | Record, Skills, Dashboard, Teams, Gallery |
 
 **The owner trimmed the first product on 2026-09-18**: the Gallery, the Dashboard and Teams belong to the

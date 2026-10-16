@@ -26,6 +26,13 @@ concrete thing named for the owner to check.
 
 *The split is finished. What follows is the rest of the sequence.*
 
+- [x] **Hivelink, step H0 — 2026-10-16** (owner). The first product is named **Hivelink**; its home is
+      **Overview** (machines connected / online / seen, runs, failures, what is coming up); **Tests live inside
+      Skills**; **MCP** is a screen of its own at `/ai`. Web only, no migration.
+      [HIVELINK-PLAN §1](HIVELINK-PLAN.md)
+- [ ] **Hivelink H1–H5 — many named machines, each given its own commands.** H1 needs a migration
+      (`025_device`) and waits for approval. [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+
 - [x] **The night the 04:30 task did not run — found and fixed 2026-10-01.** The cause was **our own test
       suite**: since 2026-09-23 a check in `agent/check-swift.mjs` ran the installer's `write_login_item`
       with real bash, and that function calls real `launchctl` — every `npm test` on the owner's Mac booted
