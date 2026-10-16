@@ -486,7 +486,7 @@ group('a machine that cannot do a goal is named on Devices and Overview, this co
 {
   const view = read('src/features/devices/DevicesView.tsx');
   check('у статуса машины - «не видит экран» и что нажать', /machineCannot\(one\) && \(/.test(view)
-    && /Allow Screen Recording for MouseFlow Agent/.test(read('src/lib/api.ts')));
+    && /Set Up Permissions…/.test(read('src/lib/api.ts')));
   check('и на обзоре тоже', /machineCannot\(one\)!\.short\}: \{machineCannot\(one\)!\.fix\}/.test(read('src/features/overview/OverviewView.tsx')));
   check('а этот компьютер говорит сам, по loopback, - без пересборки агента',
     /const blind = health\.linked && health\.taking && health\.canSee === false;/.test(view));

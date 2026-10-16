@@ -303,6 +303,16 @@ because without the tree there is no name to resolve.
 platform and its permissions. An older agent is reported to the user as needing an update, with the command to get the current
 one — so a new implementation should report a version it can actually honour the whole of this table at.
 
+### The setup window (macOS, 2026-10-16)
+
+While Accessibility or Screen Recording is missing, the installed agent opens **Set Up MouseFlow Agent**:
+two steps, one after the other, each with **Allow…** and **Open Settings**, ticked as soon as a fresh
+`--probe` child sees the grant (a running process never sees Screen Recording change). The menu bar keeps
+**Set Up Permissions…** while either is missing. **Allow…** for the screen first runs `tccutil reset
+ScreenCapture <bundle>` — this app only, only while it is not granted — because macOS asks an app once,
+and an ad-hoc rebuild leaves the old binary's entry behind: no prompt, and a switch that does not apply.
+PermissionWatch restarts the agent once the grants land.
+
 ## Coordinates
 
 Everything — `/shot`, `/do`, `/replay` — works in **virtual-desktop coordinates**: one space covering all

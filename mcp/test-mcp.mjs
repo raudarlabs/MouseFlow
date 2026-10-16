@@ -6624,6 +6624,22 @@ group('restart and shut down from the account: reported first, done after, refus
     && /This agent is record-only, so it does not restart or shut down the PC\./.test(ps));
 }
 
+/* ОКНО НАСТРОЙКИ РАЗРЕШЕНИЙ НА MAC (2026-10-16): два шага по очереди, и вопрос macOS возвращается. */
+group('the Mac agent asks for its two permissions in a window, one after the other');
+{
+  const swift = read('../agent/mouseflow-agent.swift');
+  check('there is a setup window with the two steps, the second after the first',
+    /final class SetupWindow: NSObject, NSWindowDelegate/.test(swift) && /srButton\.isEnabled = ax && !sr/.test(swift));
+  check('Allow for the screen resets only this app\'s entry, only while it is not granted, then asks',
+    /reset\.arguments = \["reset", "ScreenCapture", bundle\]/.test(swift)
+      && /if let bundle = Bundle\.main\.bundleIdentifier, !Permission\.screenRecording/.test(swift)
+      && /_ = CGRequestScreenCaptureAccess\(\) \}\s*\}/.test(swift));
+  check('its ticks come from a fresh probe, not from the running process', /let now = PermissionWatch\.probe\(\)/.test(swift));
+  check('it opens by itself when something is missing, and the menu keeps a way back to it',
+    /if SetupWindow\.needed && Bundle\.main\.bundleIdentifier != nil \{ SetupWindow\.shared\.show\(\) \}/.test(swift)
+      && /"Set Up Permissions…"/.test(swift) && /setupItem\?\.isHidden = !SetupWindow\.needed/.test(swift));
+}
+
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by
  * here, and a keep-alive socket that outlives them keeps the loop open - which turns a suite that has
  * finished and said so into one that appears to hang, and `npm test` never returns. Everything this file

@@ -141,7 +141,7 @@ export const machineCannot = (one: Device): { short: string; fix: string } | nul
       short: 'cannot see the screen',
       fix: one.platform === 'windows'
         ? 'It cannot take screenshots. If the PC is locked or a remote session was disconnected, there is no desktop to look at.'
-        : 'Allow Screen Recording for MouseFlow Agent in System Settings → Privacy & Security; the agent picks it up within seconds.',
+        : 'On that Mac: the agent\u2019s menu → Set Up Permissions… (or reinstall the agent, and the window opens by itself), then allow Screen Recording.',
     };
   }
   if (!one.caps.canAct) {

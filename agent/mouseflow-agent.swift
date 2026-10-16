@@ -6084,7 +6084,7 @@ enum PermissionWatch {
     private static func launchdManaged() -> Bool { Autostart.launchdView().ownsThisProcess }
 
     /* What the settings say now, from a process young enough to know. nil when the probe could not run. */
-    private static func probe() -> (accessibility: Bool, screenRecording: Bool)? {
+    static func probe() -> (accessibility: Bool, screenRecording: Bool)? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: Autostart.binary)
         task.arguments = ["--probe"]
@@ -8339,6 +8339,173 @@ enum Hotkey {
     }
 }
 
+/* ОКНО НАСТРОЙКИ РАЗРЕШЕНИЙ - два шага по очереди (владелец, 2026-10-16: «один скрин с двумя разрешениями,
+ * чтобы юзер клацал и давал одно, а потом запись экрана - как у Обсидиана»).
+ *
+ * ПОЧЕМУ ОНО ПОНАДОБИЛОСЬ. Агент просил Screen Recording через CGRequestScreenCaptureAccess, а macOS
+ * показывает этот вопрос приложению ОДИН РАЗ. Сборка без Developer ID меняет подпись при каждой пересборке, и
+ * запись в TCC остаётся от прежнего бинарника: в настройках переключатель есть (или его нет), а новый
+ * процесс разрешения не получает и спросить второй раз не может. Человек видел «агент не видит экран» и ни
+ * одного вопроса.
+ *
+ * ПОЭТОМУ «Allow» У ЭКРАНА СНАЧАЛА СБРАСЫВАЕТ свою запись (`tccutil reset ScreenCapture <bundle>` - только
+ * для этого приложения и только пока разрешения нет, терять нечего), и тогда системный вопрос появляется
+ * снова; рядом - «Open Settings» на нужный раздел, если macOS всё-таки промолчит. Второй шаг доступен после
+ * первого: по одному вопросу за раз, как просили. Состояние экрана читается дочерним процессом (--probe):
+ * в работающем процессе ответ о записи экрана не обновляется никогда, это измерено (см. PermissionWatch).
+ * Когда оба выданы, PermissionWatch перезапускает агента сам - нажимать ничего не нужно. */
+final class SetupWindow: NSObject, NSWindowDelegate {
+    static let shared = SetupWindow()
+    private var window: NSWindow?
+    private var timer: Timer?
+    private var axState = NSTextField(labelWithString: "")
+    private var srState = NSTextField(labelWithString: "")
+    private var axButton = NSButton(title: "Allow…", target: nil, action: nil)
+    private var srButton = NSButton(title: "Allow…", target: nil, action: nil)
+    private var footer = NSTextField(wrappingLabelWithString: "")
+
+    static var needed: Bool { !(Permission.accessibility && Permission.screenRecording) }
+
+    private func row(_ number: String, _ title: String, _ detail: String, state: NSTextField, button: NSButton,
+                     settings: Selector) -> NSView {
+        let badge = NSTextField(labelWithString: number)
+        badge.font = .boldSystemFont(ofSize: 15)
+        let name = NSTextField(labelWithString: title)
+        name.font = .boldSystemFont(ofSize: 13)
+        let words = NSTextField(wrappingLabelWithString: detail)
+        words.font = .systemFont(ofSize: 11)
+        words.textColor = .secondaryLabelColor
+        words.preferredMaxLayoutWidth = 250
+        state.font = .systemFont(ofSize: 11)
+        let open = NSButton(title: "Open Settings", target: self, action: settings)
+        open.bezelStyle = .inline
+        open.controlSize = .small
+        button.bezelStyle = .rounded
+        button.target = self
+        let text = NSStackView(views: [name, words, state])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 3
+        let buttons = NSStackView(views: [button, open])
+        buttons.orientation = .vertical
+        buttons.alignment = .trailing
+        buttons.spacing = 4
+        let line = NSStackView(views: [badge, text, buttons])
+        line.orientation = .horizontal
+        line.alignment = .top
+        line.spacing = 12
+        return line
+    }
+
+    func show() {
+        DispatchQueue.main.async { [self] in
+            if let shown = window {
+                NSApp.activate(ignoringOtherApps: true)
+                shown.makeKeyAndOrderFront(nil)
+                return
+            }
+            axButton.action = #selector(allowAccessibility)
+            srButton.action = #selector(allowScreen)
+            let head = NSTextField(labelWithString: "MouseFlow Agent needs two permissions")
+            head.font = .boldSystemFont(ofSize: 16)
+            let lead = NSTextField(wrappingLabelWithString:
+                "One at a time: press Allow, switch MouseFlow Agent on in the window macOS shows, then come back for the next.")
+            lead.font = .systemFont(ofSize: 12)
+            lead.textColor = .secondaryLabelColor
+            lead.preferredMaxLayoutWidth = 400
+            footer.font = .systemFont(ofSize: 11)
+            footer.textColor = .secondaryLabelColor
+            footer.preferredMaxLayoutWidth = 400
+            let stack = NSStackView(views: [
+                head, lead,
+                row("1", "Accessibility", "To click, type, and read the names of buttons in other apps.",
+                    state: axState, button: axButton, settings: #selector(openAccessibility)),
+                row("2", "Screen Recording", "To see the screen, so a task can be carried out from what is on it.",
+                    state: srState, button: srButton, settings: #selector(openScreen)),
+                footer,
+            ])
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            stack.spacing = 14
+            stack.edgeInsets = NSEdgeInsets(top: 20, left: 22, bottom: 20, right: 22)
+            let made = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 330),
+                                styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            made.title = "Set Up MouseFlow Agent"
+            made.contentView = stack
+            made.isReleasedWhenClosed = false
+            made.delegate = self
+            made.center()
+            window = made
+            refresh(Permission.accessibility, Permission.screenRecording)
+            NSApp.activate(ignoringOtherApps: true)
+            made.makeKeyAndOrderFront(nil)
+            timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.poll() }
+        }
+    }
+
+    /* Свежий ответ - от дочернего процесса, в фоне; рисуется на главном. */
+    private func poll() {
+        DispatchQueue.global().async {
+            let now = PermissionWatch.probe()
+            let ax = now?.accessibility ?? Permission.accessibility
+            let sr = now?.screenRecording ?? Permission.screenRecording
+            DispatchQueue.main.async { self.refresh(ax, sr) }
+        }
+    }
+
+    private func refresh(_ ax: Bool, _ sr: Bool) {
+        axState.stringValue = ax ? "✓ Allowed" : "Not allowed yet"
+        axState.textColor = ax ? .systemGreen : .secondaryLabelColor
+        axButton.isEnabled = !ax
+        srState.stringValue = sr ? "✓ Allowed" : (ax ? "Not allowed yet" : "After step 1")
+        srState.textColor = sr ? .systemGreen : .secondaryLabelColor
+        srButton.isEnabled = ax && !sr
+        footer.stringValue = ax && sr
+            ? "All set. The agent restarts itself in a few seconds to use them - nothing to press."
+            : "If MouseFlow Agent is already in the list and switched on but this still says Not allowed, switch it off and on again - the entry may belong to an older build."
+        if ax && sr {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.window?.close() }
+        }
+    }
+
+    @objc private func allowAccessibility() {
+        Permission.askForAccessibility()
+        openAccessibility()
+    }
+
+    @objc private func allowScreen() {
+        /* Своя запись - и только своя, и только пока разрешения нет. */
+        if let bundle = Bundle.main.bundleIdentifier, !Permission.screenRecording {
+            let reset = Process()
+            reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            reset.arguments = ["reset", "ScreenCapture", bundle]
+            reset.standardOutput = Pipe()
+            reset.standardError = Pipe()
+            try? reset.run()
+            reset.waitUntilExit()
+        }
+        if #available(macOS 10.15, *) { _ = CGRequestScreenCaptureAccess() }
+    }
+
+    @objc private func openAccessibility() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc private func openScreen() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        timer?.invalidate()
+        timer = nil
+        window = nil
+    }
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
@@ -8378,6 +8545,7 @@ final class MenuActions: NSObject, NSMenuDelegate {
             ? "It asks your account for work — nothing reaches in"
             : "Off. Nothing leaves this Mac."
         takingSeparator?.isHidden = link == nil
+        setupItem?.isHidden = !SetupWindow.needed
     }
 
     /* Taking work from the account, switched here because here is where it is visible.
@@ -8395,6 +8563,8 @@ final class MenuActions: NSObject, NSMenuDelegate {
      * Off the main thread: endFromAgent waits up to 1.5s for the resolver - which is still naming the very
      * clicks that operated this menu - and the menu bar must not freeze for it. The flag drops in the first
      * microseconds either way. */
+    @objc func openSetup() { SetupWindow.shared.show() }
+
     @objc func stopAndSave() {
         DispatchQueue.global().async { Recorder.shared.endFromAgent() }
     }
@@ -8518,6 +8688,13 @@ let note = NSMenuItem(title: "Records only between Start and Stop", action: nil,
 note.isEnabled = false
 menu.addItem(note)
 menu.addItem(.separator())
+/* Разрешения - первым пунктом, пока их не хватает: без них остальное меню обещает то, чего агент не сделает. */
+var setupItem: NSMenuItem?
+let setup = NSMenuItem(title: "Set Up Permissions…", action: #selector(MenuActions.openSetup), keyEquivalent: "")
+setup.target = menuActions
+setup.isHidden = !SetupWindow.needed
+menu.addItem(setup)
+setupItem = setup
 /* Visible only while recording - see menuNeedsUpdate. */
 var stopSaveItem: NSMenuItem?
 var stopSaveSeparator: NSMenuItem?
@@ -8656,5 +8833,8 @@ NotificationCenter.default.addObserver(
  * ничего не делает и молчит - привязка появляется позже, и панель прогреется, когда её позовут. */
 Hotkey.resume()
 Panel.shared.warm()
+/* Разрешений не хватает - окно настройки сразу. Только у установленного приложения: свободная сборка
+ * разработчика или тест не должны открывать окна. */
+if SetupWindow.needed && Bundle.main.bundleIdentifier != nil { SetupWindow.shared.show() }
 
 app.run()

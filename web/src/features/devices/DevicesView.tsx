@@ -384,8 +384,9 @@ const ThisComputer = () => {
             ? 'This computer is attached and taking work, but it cannot see the screen, so every goal sent to it '
               + 'fails at its first step. If it is locked or a remote session was disconnected, there is no desktop to look at.'
             : 'This computer is attached and taking work, but its agent cannot see the screen, so every goal sent '
-              + 'to it fails at its first step. Allow Screen Recording for MouseFlow Agent in System Settings → '
-              + 'Privacy & Security; the agent picks it up within seconds.')
+              + 'to it fails at its first step. Open the agent\u2019s menu (the cursor icon at the top of the screen) '
+              + '→ Set Up Permissions… and allow both, one after the other. An agent installed before 16 October '
+              + 'has no such item: run the Mac install command once more, and the window opens by itself.')
           : health.linked
             ? 'The agent on this computer is attached but not taking work. If it is missing from the list below, '
               + 'its token was removed from the account: open Connections, press Detach, then Attach this computer.'
