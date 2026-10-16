@@ -512,6 +512,20 @@ body {
   color: hsl(var(--ink-inactive));
 }
 
+/* The maker's credit: a quiet link in the footer's own ink, lit to the page's primary ink on hover. */
+.landing-credit a {
+  color: hsl(var(--ink-secondary));
+  text-decoration: underline;
+  text-decoration-color: hsl(var(--hive-ice) / 0.3);
+  text-underline-offset: 3px;
+  transition: color 0.15s ease, text-decoration-color 0.15s ease;
+}
+.landing-credit a:hover,
+.landing-credit a:focus-visible {
+  color: hsl(var(--ink-primary));
+  text-decoration-color: hsl(var(--brand-primary));
+}
+
 /* ---------- tablet ---------- */
 @media (min-width: 768px) {
   .landing {

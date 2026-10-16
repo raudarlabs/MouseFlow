@@ -267,6 +267,12 @@ export function Landing({ endpoint }: { endpoint: string }) {
         <div className="landing-foot-in">
           <Brand small />
           <small>© 2026 Hivelink. The hive opens soon · Early access.</small>
+          <small className="landing-credit">
+            Created by{' '}
+            <a href="https://raudar.dev/" target="_blank" rel="noopener">
+              Raudar Labs
+            </a>
+          </small>
         </div>
       </footer>
     </div>
