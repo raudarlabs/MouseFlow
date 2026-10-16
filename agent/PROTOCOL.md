@@ -135,6 +135,12 @@ account. A claim with no wait answers in about four tenths of a second; with thr
 is nearer 7. The endpoint still honours a requested wait, capped at 6 seconds, so an agent built before this
 gets a clean answer instead of a cut one.
 
+**How long to sleep is the account's to say (Hivelink H5).** A claim with no job answers `next`: seconds
+until the next ask, 3 while the account is in use (the app is open, or work was queued or closed in the
+last ten minutes) and 15 when it is quiet. An agent clamps it to 1-30 and uses 3 when it is absent — so an
+agent older than this asks every three seconds, as it always did. Ten machines asking every three seconds
+is close to 300,000 function calls a day for one account, nearly all of them answered "nothing".
+
 Three rules that are part of the contract rather than of one implementation:
 
 - **Off until somebody switches it on**, and visible while it is on. Everything else an agent does happens

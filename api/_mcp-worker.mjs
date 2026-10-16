@@ -269,6 +269,35 @@ async function saveRecording(sql, who, macro, health) {
   };
 }
 
+/* КАК ЧАСТО СПРАШИВАТЬ В ТИШИНЕ (Hivelink H5). Десять машин, спрашивающих каждые три секунды, - это под
+ * триста тысяч вызовов функции в сутки на один аккаунт, и почти все - «работы нет». Поэтому ответ без
+ * работы говорит машине, когда спросить снова: три секунды, пока аккаунтом пользуются - приложение открыто
+ * (страница опрашивает живую ленту, см. ?live в api/mcp.js) или работу ставили либо закрывали в последние
+ * десять минут, - и пятнадцать, когда тихо. Пятнадцать - потолок задержки до старта работы, поставленной
+ * расписанием или чатом в тишине; поставленная со страницы всегда застаёт три. Агент старше H5 поля не
+ * знает и спрашивает каждые три, как раньше. */
+export const POLL_BUSY_S = 3;
+export const POLL_QUIET_S = 15;
+async function pollHint(sql, userId) {
+  try {
+    const [row] = await sql`
+      select
+        exists (
+          select 1 from run_queue
+          where user_id = ${userId}
+            and (created_at > now() - interval '10 minutes' or finished_at > now() - interval '10 minutes')
+        ) as recent,
+        exists (
+          select 1 from user_pref
+          where user_id = ${userId} and key = 'web.seen' and updated_at > now() - interval '2 minutes'
+        ) as watched
+    `;
+    return row && (row.recent || row.watched) ? POLL_BUSY_S : POLL_QUIET_S;
+  } catch (_) {
+    return POLL_BUSY_S;
+  }
+}
+
 export async function workerRoute(action, req, res, sql, who) {
   if (action === 'claim') {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST' });
@@ -327,7 +356,7 @@ export async function workerRoute(action, req, res, sql, who) {
         where id = ${me} and user_id = ${who.id} and coalesce(to_jsonb(device_token) ->> 'paused', 'false') = 'true'
         limit 1
       `;
-      if (halted.length) return res.status(200).json({ ok: true, job: null });
+      if (halted.length) return res.status(200).json({ ok: true, job: null, next: POLL_QUIET_S });
     }
     /* WHAT THIS CLAIMER CAN ACTUALLY DO, which the queue did not ask until it had to.
      *
@@ -666,7 +695,7 @@ export async function workerRoute(action, req, res, sql, who) {
           },
         });
       }
-      if (Date.now() >= until) return res.status(200).json({ ok: true, job: null });
+      if (Date.now() >= until) return res.status(200).json({ ok: true, job: null, next: await pollHint(sql, who.id) });
       await new Promise((done) => setTimeout(done, CLAIM_POLL_MS));
     }
   }

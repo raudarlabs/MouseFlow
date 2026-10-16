@@ -34,7 +34,7 @@ export const mcpUrlFor = (profile: 'do' | 'make', origin?: string) => `${mcpUrl(
  * стороны: инструмент, добавленный в профиль на сервере и забытый здесь, роняет сюиту. */
 export const PROFILE_TOOLS: Record<'do' | 'make', string[]> = {
   do: ['mouseflow_run', 'mouseflow_do', 'mouseflow_stop', 'mouseflow_run_status', 'mouseflow_case',
-    'mouseflow_cases', 'mouseflow_case_results', 'mouseflow_status', 'mouseflow_schedule',
+    'mouseflow_cases', 'mouseflow_case_results', 'mouseflow_machines', 'mouseflow_status', 'mouseflow_schedule',
     'mouseflow_schedules', 'mouseflow_unschedule'],
   make: ['mouseflow_recordings', 'mouseflow_transcript', 'mouseflow_activity', 'mouseflow_run_history',
     'mouseflow_help', 'mouseflow_start_recording', 'mouseflow_stop_recording', 'mouseflow_status',
@@ -196,6 +196,15 @@ export const MCP_TOOLS: McpTool[] = [
       + 'picked it up.',
     args: '—',
   },
+  /* МАШИНЫ (Hivelink H5): что подключено и как каждую назвать в `machine`. */
+  {
+    name: 'mouseflow_machines',
+    group: 'control',
+    what: 'The computers attached to this account by name - online, paused or offline, what each is running '
+      + 'and its platform. A name from here, passed as `machine` to mouseflow_do or mouseflow_run, picks the '
+      + 'computer that does it.',
+    args: '',
+  },
   {
     name: 'mouseflow_stop',
     group: 'control',
@@ -213,7 +222,8 @@ export const MCP_TOOLS: McpTool[] = [
     group: 'control',
     what: 'Runs one of your skills on the paired machine - or a test case, checks included, exactly as its '
       + 'nightly schedule would. Ask mouseflow_recordings which skills there are and what each one takes.',
-    args: 'skill: its id, or case: a case id instead of it (one of the two) · arguments: what it asks for',
+    args: 'skill: its id, or case: a case id instead of it (one of the two) · arguments: what it asks for · '
+      + 'machine: which computer (a name from mouseflow_machines)',
   },
   {
     name: 'mouseflow_do',
@@ -224,7 +234,8 @@ export const MCP_TOOLS: McpTool[] = [
       + 'by check, with the case id handed back - so a test case read from TestRail can be run and its '
       + 'result written back without being copied here.',
     args: 'goal: what should be done, or a case\'s steps (required) · on: browser (default) or desktop · '
-      + 'expect: the expected results, as checks · ref: the case id to hand back',
+      + 'expect: the expected results, as checks · ref: the case id to hand back · machine: which computer, '
+      + 'on the desktop',
   },
 ];
 

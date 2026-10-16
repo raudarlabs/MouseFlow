@@ -106,6 +106,52 @@ export async function deviceOf(sql, userId, deviceId) {
   return rows.length ? rows[0] : null;
 }
 
+/* МАШИНЫ АККАУНТА СПИСКОМ - для дверей, у которых нет экрана Devices: MCP и мессенджера (Hivelink H5).
+ * Старшие первыми, как на Devices: машина без имени зовётся «This computer #N», и N не должен меняться,
+ * когда привязывают новую. */
+export async function machinesOf(sql, userId) {
+  const rows = await sql`
+    select id, created_at, last_used_at,
+           to_jsonb(device_token) ->> 'name' as name, to_jsonb(device_token) ->> 'hostname' as hostname,
+           to_jsonb(device_token) ->> 'platform' as platform, to_jsonb(device_token) ->> 'agent_version' as version,
+           coalesce(to_jsonb(device_token) ->> 'paused', 'false') = 'true' as paused
+    from device_token
+    where user_id = ${userId} and revoked_at is null and label = ${AGENT_LABEL}
+    order by created_at limit 50
+  `;
+  const now = Date.now();
+  return rows.map((r, i) => ({
+    id: String(r.id),
+    said: r.name || r.hostname || `${AGENT_LABEL} #${i + 1}`,
+    name: r.name || null,
+    hostname: r.hostname || null,
+    platform: r.platform || null,
+    version: r.version || null,
+    paused: !!r.paused,
+    online: !!r.last_used_at && now - new Date(r.last_used_at).getTime() < DEVICE_ONLINE_MS,
+    lastUsedAt: r.last_used_at || null,
+  }));
+}
+
+/* МАШИНА ПО ТОМУ, КАК ЕЁ НАЗВАЛИ. id - точно; имя, имя компьютера или «This computer #N» - без регистра, и
+ * только когда подходит ровно одна: две машины с похожим именем - это выбор, который нельзя сделать за
+ * человека, и запуск не на той машине хуже отказа. Отказ перечисляет, что есть. */
+export function findMachine(list, asked) {
+  const want = String(asked || '').trim();
+  if (!want) return { one: null };
+  const exact = list.find((m) => m.id === want);
+  if (exact) return { one: exact };
+  const low = want.toLowerCase();
+  const hits = list.filter((m) => [m.said, m.name, m.hostname].some((v) => v && v.toLowerCase() === low));
+  if (hits.length === 1) return { one: hits[0] };
+  const names = list.map((m) => `"${m.said}"`).join(', ') || 'none';
+  return {
+    why: hits.length > 1
+      ? `${hits.length} machines answer to "${want}". Use one of these ids instead: ${hits.map((m) => m.id).join(', ')}.`
+      : `There is no machine called "${want}" on this account. The machines are: ${names}.`,
+  };
+}
+
 /** Как назвать машину в словах отказа: её имя, имя компьютера или, если не знаем ничего, «that machine». */
 export const deviceSaid = (one) => (one && (one.name || one.hostname)) || 'that machine';
 

@@ -43,7 +43,10 @@ concrete thing named for the owner to check.
 - [x] **Hivelink H4 — Windows installed, at logon, self-updating — built 2026-10-16.** `agent/install-windows.ps1`;
       Devices marks outdated agents. **Not run on Windows yet**; the signed .NET installer waits for a
       certificate. [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
-- [ ] **Hivelink H5 — scale, safety, MCP/Telegram.** [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+- [x] **Hivelink H5 — machines from MCP and Telegram, a quiet account polled less — built 2026-10-16.**
+      `mouseflow_machines` + `machine`; `/machines`, `/use NAME`; `next` on idle claims. [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+- [ ] **Hivelink — what is owed:** apply `db/025_device.sql`; the first real Windows run (installer + code);
+      the signed Windows installer and the notarised Mac app (certificates, the owner's).
 
 - [x] **The night the 04:30 task did not run — found and fixed 2026-10-01.** The cause was **our own test
       suite**: since 2026-09-23 a check in `agent/check-swift.mjs` ran the installer's `write_login_item`

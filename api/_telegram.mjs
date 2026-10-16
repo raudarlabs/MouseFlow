@@ -62,6 +62,8 @@ export const SAY = {
     + '/mode - run straight through, or ask before anything that cannot be undone\n'
     + '/feed - this chat as a running log of everything your machines do (on by default)\n'
     + '/where - run tasks in the MouseFlow browser (your mouse stays yours) or on the screen\n'
+    + '/machines - your computers, which are online and what each is doing\n'
+    + '/use NAME - send tasks from here to that computer (/use any - to whichever is free)\n'
     + '/pair mf_... - pair this chat with an account',
   empty: 'There is nothing in that message to do. Say what you want done, in a sentence.',
   /* РЕЖИМ - тот же выбор, что в панели агента, и слова о нём те же по смыслу: «Auto» и «Ask first». */
@@ -246,6 +248,9 @@ export function routeOf({ row, update }) {
       if (wanted === false) return { act: 'refuse', say: SAY.feedBad };
       return { act: 'feed', on: wanted };
     }
+    /* МАШИНЫ (Hivelink H5): список и выбор той, на которую идут задачи из этого чата. */
+    if (command.name === 'machines') return { act: 'machines' };
+    if (command.name === 'use') return { act: 'use', machine: command.rest };
     if (command.name === 'mode') {
       const wanted = modeWanted(command.rest);
       if (wanted === false) return { act: 'refuse', say: SAY.modeBad };
@@ -468,6 +473,9 @@ export function feedLine({ event, title, said, source, when }) {
  * аккаунте, рядом с режимом: человек решает это один раз, а не в каждом сообщении. По умолчанию - экран:
  * так было, и задача, которой нужен Excel, во вкладке не сделается. */
 export const WHERE_KEY = 'telegram.surface';
+/* НА КАКОЙ МАШИНЕ ИДУТ ЗАДАЧИ ИЗ ЧАТА (Hivelink H5) - id устройства, выбранный /use; пусто - на любой
+ * свободной, как было. На аккаунте, рядом с /where: решают один раз, а не в каждом сообщении. */
+export const MACHINE_KEY = 'telegram.machine';
 /** Вкладка своего браузера для задач из телеграма - одна на чат: вход на сайты общий, а окна не копятся. */
 export const TELEGRAM_TAB = 'telegram';
 

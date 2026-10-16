@@ -27,7 +27,7 @@ import { neon } from '@neondatabase/serverless';
 import { byDeviceToken } from './_session.js';
 import { report, wrap } from './_report.js';
 import { overSpend } from './_spend.mjs';
-import { DESKTOP_GOAL, modeOf, queueOne, setMode, workerSeen } from './_queue.mjs';
+import { DESKTOP_GOAL, findMachine, machinesOf, modeOf, queueOne, setMode, workerSeen } from './_queue.mjs';
 import { ONE_WAY } from './_brain.mjs';
 import { GOAL_MAX, goalWith, looksLikeText } from './_attach.mjs';
 import { planFrom, planRequest } from './_plan.mjs';
@@ -35,7 +35,7 @@ import { recognise, refusedAudio } from './_transcribe.mjs';
 import { callModel } from './_vision.mjs';
 import { callTelegram, fileUrl, sendChat, tellFeed } from './_telegram-out.mjs';
 import {
-  CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, SAY, TELEGRAM_TAB, WHERE_KEY, draftId, expired, feedLine, feedSource,
+  CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, MACHINE_KEY, SAY, TELEGRAM_TAB, WHERE_KEY, draftId, expired, feedLine, feedSource,
   holdAnswerOf, keyboardFor,
   outcomeMessage, planMessage, refusedDocument, routeOf, tagFor, updateOf, verdictOf,
 } from './_telegram.mjs';
@@ -152,6 +152,52 @@ async function whereOf(sql, userId) {
   } catch (_) {
     return 'screen';
   }
+}
+
+/* МАШИНЫ ИЗ ЧАТА (Hivelink H5). /machines - список, /use - выбор, куда идут задачи отсюда. Имя ищется тем
+ * же findMachine, что у MCP: неоднозначное или незнакомое имя - отказ со списком, а не угаданная машина. */
+async function machineOf(sql, userId) {
+  try {
+    const [pref] = await sql`select value from user_pref where user_id = ${userId} and key = ${MACHINE_KEY}`;
+    return pref && pref.value ? String(pref.value) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function machines(sql, update, userId) {
+  const list = await machinesOf(sql, userId);
+  if (!list.length) {
+    return say(update.chatId, 'No computer is attached to this account yet. In MouseFlow, Devices -> Add machines '
+      + 'gives a code and one line to run on each computer.');
+  }
+  const chosen = await machineOf(sql, userId);
+  const lines = list.map((m) => `${m.id === chosen ? '> ' : '- '}${m.said}: `
+    + `${m.paused ? 'paused' : m.online ? 'online' : 'offline'}${m.platform ? ` (${m.platform})` : ''}`);
+  return say(update.chatId, `${lines.join('\n')}\n\n`
+    + (chosen && list.some((m) => m.id === chosen)
+      ? 'Tasks from here go to the one marked >. /use any - to whichever is free.'
+      : 'Tasks from here go to whichever is free. /use NAME - to send them to one.'));
+}
+
+async function useMachine(sql, update, userId, asked) {
+  const want = String(asked || '').trim();
+  if (!want) return machines(sql, update, userId);
+  if (/^(any|all|free|-)$/i.test(want)) {
+    await sql`
+      insert into user_pref (user_id, key, value) values (${userId}, ${MACHINE_KEY}, '')
+      on conflict (user_id, key) do update set value = excluded.value
+    `;
+    return say(update.chatId, 'Tasks from here now go to whichever computer is free.');
+  }
+  const found = findMachine(await machinesOf(sql, userId), want);
+  if (found.why) return say(update.chatId, found.why);
+  await sql`
+    insert into user_pref (user_id, key, value) values (${userId}, ${MACHINE_KEY}, ${found.one.id})
+    on conflict (user_id, key) do update set value = excluded.value
+  `;
+  return say(update.chatId, `Tasks from here now go to ${found.one.said}`
+    + `${found.one.paused ? ' - it is paused from the account, so they will wait' : found.one.online ? '' : ' - it is offline right now, so they will wait for it'}.`);
 }
 
 /** Объявлял ли агент этого аккаунта свой браузер за последние десять минут. */
@@ -415,11 +461,14 @@ async function decide(sql, update, userId) {
   /* ГДЕ - выбранное командой /where: во вкладке своего браузера агента (одна вкладка на чат) или на экране.
    * Замирает в аргументах работы, как режим: переключённое посреди прогона не должно менять, где он идёт. */
   const where = await whereOf(sql, userId);
+  /* НА ВЫБРАННОЙ /use МАШИНЕ (H5), или на любой свободной. Отозванную машину queueOne отвергнет словами. */
+  const device = await machineOf(sql, userId);
   const put = await queueOne(sql, userId, {
     flowId: DESKTOP_GOAL,
     toolName: 'mouseflow_do',
     args: { goal: draft.goal, telegram: { chatId: draft.chat_id }, ...(gate ? { gate } : {}),
       ...(where === 'browser' ? { surface: 'browser', tab: TELEGRAM_TAB } : {}) },
+    device,
   });
   if (put.why) return say(update.chatId, put.why);
 
@@ -491,6 +540,8 @@ async function handler(req, res) {
     if (route.act === 'mode') { await mode(sql, update, userId, route.mode); return ok(res, 'mode'); }
     if (route.act === 'feed') { await feed(sql, update, userId, route.on); return ok(res, 'feed'); }
     if (route.act === 'where') { await where(sql, update, userId, route.where); return ok(res, 'where'); }
+    if (route.act === 'machines') { await machines(sql, update, userId); return ok(res, 'machines'); }
+    if (route.act === 'use') { await useMachine(sql, update, userId, route.machine); return ok(res, 'use'); }
     if (route.act === 'decide') { await decide(sql, update, userId); return ok(res, 'decided'); }
     if (route.act === 'goal') { await offer(sql, update, userId); return ok(res, 'offered'); }
     if (route.act === 'amend') { await amend(sql, update, userId, route.draftId); return ok(res, 'amended'); }

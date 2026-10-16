@@ -6486,12 +6486,17 @@ namespace MouseFlow
                 }
 
                 _backoff = 2;
-                object job = Json.Child(Json.Parse(answer), "job");
+                object reply = Json.Parse(answer);
+                object job = Json.Child(reply, "job");
                 string id = Json.Text(job, "id");
                 if (string.IsNullOrEmpty(id))
                 {
-                    // Nothing to do. The sleep is the whole saving - see the arithmetic at the top.
-                    Thread.Sleep(IdleSleepSeconds * 1000);
+                    /* Nothing to do. The sleep is the whole saving - see the arithmetic at the top. HOW LONG is
+                       the account's to say (Hivelink H5): `next`, 1-30 s - three while somebody is using the
+                       account, longer when it is quiet. Absent means three, as before. */
+                    int next = Json.Int(reply, "next", IdleSleepSeconds);
+                    if (next < 1 || next > 30) next = IdleSleepSeconds;
+                    Thread.Sleep(next * 1000);
                     continue;
                 }
 

@@ -207,11 +207,13 @@ async function handler(req, res) {
       : {};
     if (fleet && fleet.length) {
       return await many({
-        flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}), ...browser },
+        flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}), ...browser, via: 'page' },
       });
     }
+    /* `via: 'page'` (H5) - откуда работа, для журнала: имя тула у цели со страницы то же, что у MCP, и без
+     * метки Logs звал бы её «chat», хотя её поставил сам человек - с панели или с Devices. */
     const put = await queueOne(sql, who.id, {
-      flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}), ...browser },
+      flowId: DESKTOP_GOAL, toolName: 'mouseflow_do', args: { goal, ...(gate ? { gate } : {}), ...browser, via: 'page' },
       device,
     });
     if (put.why) return res.status(409).json({ ok: false, error: { type: 'queue_error', message: put.why } });

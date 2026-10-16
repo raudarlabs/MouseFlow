@@ -712,7 +712,8 @@ const missing = [...served].filter((n) => !described.has(n));
 const invented = [...described].filter((n) => !served.has(n));
 check('every tool the server offers is described on the page', missing.length === 0, missing.join(', '));
 check('and nothing is described that the server does not offer', invented.length === 0, invented.join(', '));
-check('eighteen of them, so a count in prose can be trusted', served.size === 18, String(served.size));
+/* Девятнадцать с 2026-10-16: mouseflow_machines (Hivelink H5) - на чём запускать. */
+check('nineteen of them, so a count in prose can be trusted', served.size === 19, String(served.size));
 /* ПЕРЕИМЕНОВАНИЕ, У КОТОРОГО ЕСТЬ ЦЕНА. mouseflow_runs стало mouseflow_run_history, потому что рядом
  * стоит mouseflow_run, который двигает настоящую мышь: имена на одну `s` - плохая пара для того, что
  * выбирают по имени. Клиент забирает список инструментов один раз при подключении, поэтому старое имя
@@ -5395,7 +5396,7 @@ group('Activity отвечает целиком: идёт, ждёт, было - 
   check('и свой прогон не рисуется второй карточкой «by itself»',
     /if \(job\.source === 'you'\) \{[\s\S]{0,700}?continue;\s*\n\s*\}/.test(create));
   check('источник работы - отдельное поле ответа, и страница Create - это «you»',
-    /source: q\.schedule_id \? 'schedule'\s*: q\.tool_name === 'page' \|\| String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\) \? 'you' : 'chat'/.test(route)
+    /source: q\.schedule_id \? 'schedule'\s*: q\.tool_name === 'page' \|\| String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\)\s*\|\| \(q\.args && q\.args\.via === 'page'\) \? 'you' : 'chat'/.test(route)
       && /source: 'schedule' \| 'you' \| 'chat';/.test(client));
   check('один id на строку очереди, журнал, кадры и скилл - посчитан один раз',
     (create.match(/const runId = `dr_\$\{startedAt\.replace/g) || []).length === 1);
@@ -6207,7 +6208,7 @@ group('коннектор несёт половину набора, если о 
 
   /* Восемнадцать - это весь набор, и он остаётся по умолчанию: профиль сужает по просьбе, а не меняет
    * поведение всем, кто уже настроил коннектор. */
-  check('по умолчанию - весь набор, восемнадцать', names('all').length === 18, String(names('all').length));
+  check('по умолчанию - весь набор, девятнадцать', names('all').length === 19, String(names('all').length));
   check('и опечатка в профиле тоже весь, а не половина наугад',
     names('nonsense').join() === names('all').join() && names('').join() === names('all').join());
 
@@ -6215,7 +6216,7 @@ group('коннектор несёт половину набора, если о 
    * (никому не виден) или стоял бы в обоих без причины. */
   const both = new Set([...names('do'), ...names('make')]);
   check('объединение половин - весь набор, ни инструмента мимо',
-    both.size === 18 && names('all').every((n) => both.has(n)),
+    both.size === 19 && names('all').every((n) => both.has(n)),
     names('all').filter((n) => !both.has(n)).join(','));
   const shared = names('do').filter((n) => names('make').includes(n));
   check('а общих ровно четыре, и это status и расписания',
@@ -6347,7 +6348,7 @@ group('a saved skill runs from the page through the queue, and says what it lack
   /* 'page' ровно - это живые зеркала со страницы; их двери трогают строки по точному имени. */
   check('its job name is not the live mirror\'s, and Logs still reads it as "you"',
     /toolName: `page:\$\{flow\.name\}`/.test(block)
-      && /String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\) \? 'you'/.test(read('../api/mcp.js')));
+      && /String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\)\s*\|\| \(q\.args && q\.args\.via === 'page'\) \? 'you'/.test(read('../api/mcp.js')));
   check('a recording is never given a gate - nobody could answer it', /flow\.kind === 'created' && asked === ONE_WAY/.test(block));
 }
 
@@ -6431,7 +6432,7 @@ group('Hivelink H2: pause from the account, one command to many machines, schedu
 
   check('a paused machine is told there is no work - any agent version understands that',
     /coalesce\(to_jsonb\(device_token\) ->> 'paused', 'false'\) = 'true'/.test(worker)
-      && /if \(halted\.length\) return res\.status\(200\)\.json\(\{ ok: true, job: null \}\);/.test(worker)
+      && /if \(halted\.length\) return res\.status\(200\)\.json\(\{ ok: true, job: null, next: POLL_QUIET_S \}\);/.test(worker)
       && /add column if not exists paused\s+boolean not null default false;/.test(migration));
   check('and it neither gets a pinned job nor counts as a free seat',
     /kind: 'paused'/.test(queue) && /and coalesce\(to_jsonb\(device_token\) ->> 'paused', 'false'\) <> 'true'/.test(queue));
@@ -6517,6 +6518,44 @@ group('Hivelink H4: the Windows installer keeps the agent on disk, at logon, ref
   check('a code is traded in a child process', /& powershell -NoProfile -Command \$command/.test(inst) && /-EnrollOnly/.test(inst));
   check('and -Uninstall removes it all, and says to remove the PC on Devices too',
     /if \(\$Uninstall\)/.test(inst) && /remove this PC on Devices too/.test(inst));
+}
+
+/* HIVELINK H5 - МАШИНЫ ИЗ MCP И ИЗ ЧАТА, И ТИШИНА ДЕШЕВЛЕ. */
+group('Hivelink H5: machines by name from MCP and Telegram, and a quiet account polled less');
+{
+  const queue = read('../api/_queue.mjs');
+  const tools = read('../api/_mcp-tools.mjs');
+  const tg = read('../api/telegram.js');
+  const tgWords = read('../api/_telegram.mjs');
+  const worker = read('../api/_mcp-worker.mjs');
+  const live = read('../api/mcp.js');
+  const swift = read('../agent/mouseflow-agent.swift');
+  const ps = read('../agent/mouseflow-agent.ps1');
+
+  check('a machine is found by id exactly, by name only when exactly one answers, never guessed',
+    /if \(hits\.length === 1\) return \{ one: hits\[0\] \};/.test(queue)
+      && /machines answer to/.test(queue) && /There is no machine called/.test(queue));
+  check('MCP lists the machines and both doors that queue work take `machine`',
+    /name: 'mouseflow_machines'/.test(tools) && (tools.match(/machine: \{ \.\.\.MACHINE_ARG|machine: MACHINE_ARG,/g) || []).length === 2
+      && /const found = findMachine\(await machinesOf\(sql, who\.id\), args\.machine\);/.test(tools));
+  check('a machine for a browser goal is refused - Chrome takes those, not a computer\'s agent',
+    /`machine` picks a computer, so it goes with on: "desktop"\./.test(tools));
+  check('and the pick reaches the queue', /const put = await queueOne\(sql, who\.id, \{ flowId, toolName, args, device \}\);/.test(tools));
+  check('Telegram: /machines lists, /use picks, and approved tasks go to the pick',
+    /if \(command\.name === 'machines'\) return \{ act: 'machines' \};/.test(tgWords)
+      && /if \(command\.name === 'use'\) return \{ act: 'use', machine: command\.rest \};/.test(tgWords)
+      && /const device = await machineOf\(sql, userId\);/.test(tg) && /\/use NAME/.test(tgWords));
+
+  check('an idle answer says when to ask again: 3 s while the account is in use, 15 s when quiet',
+    /export const POLL_BUSY_S = 3;/.test(worker) && /export const POLL_QUIET_S = 15;/.test(worker)
+      && /job: null, next: await pollHint\(sql, who\.id\)/.test(worker));
+  check('"in use" is the app open or work queued or closed in ten minutes',
+    /key = 'web\.seen' and updated_at > now\(\) - interval '2 minutes'/.test(worker)
+      && /'web\.seen', \$\{new Date\(\)\.toISOString\(\)\}/.test(live) && /updated_at < now\(\) - interval '60 seconds'/.test(live));
+  check('both agents honour the hint within 1-30 s and keep 3 s without it',
+    /idleNext = UInt32\(min\(30, next\)\)/.test(swift) && /sleep\(idleNext\)/.test(swift)
+      && /int next = Json\.Int\(reply, "next", IdleSleepSeconds\);/.test(ps) && /if \(next < 1 \|\| next > 30\) next = IdleSleepSeconds;/.test(ps));
+  check('a goal sent from the page reads as "you" in Logs, not "chat"', /\.\.\.browser, via: 'page' \}/.test(read('../api/queue.js')));
 }
 
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by

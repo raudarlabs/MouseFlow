@@ -146,7 +146,7 @@ connector where half the tools work looks like an intermittent fault rather than
 
 ## What you can ask for
 
-Eighteen built-in tools. (There used to be one more for every skill on the account; that is gone - see
+Nineteen built-in tools. (There used to be one more for every skill on the account; that is gone - see
 **Skills as tools** below.)
 
 ![The tools, on the product page](../img/mcp-tools.png)
@@ -269,6 +269,7 @@ while that machine is awake and taking work — so a chat cannot promise a run o
 | Tool | Arguments | What it answers |
 |---|---|---|
 | `mouseflow_status` | — | How many skills the account holds and how many run on a desktop rather than in the extension; whether a machine has asked for work lately and how long ago; anything queued or running; how many rows are **not** offered because they are unstamped; and, plainly, that it cannot see the agent itself. |
+| `mouseflow_machines` | — | The computers on the account by name (Hivelink H5): online, paused from the account, or offline; what each is running; platform and version; its id. A name from here goes in `machine` on `mouseflow_do` (desktop) and `mouseflow_run` to pick the computer; an ambiguous or unknown name is refused with the list, never guessed. |
 | `mouseflow_stop` | — | Cancels everything queued or running for this account. Safe when nothing is happening. A run already under way stops at the next step its claimer checks, which is a second or two. |
 | `mouseflow_run_status` | `run`: the id an earlier answer named **(required)** | Whether it is still queued, being worked on, or finished — and what it said. |
 
@@ -281,19 +282,19 @@ three states that look identical from a chat: no machine has *ever* asked for wo
 ## One half of the set, if you ask for it
 
 ```
-https://mouseflowapp.vercel.app/api/mcp                 all eighteen tools (the default)
+https://mouseflowapp.vercel.app/api/mcp                 all nineteen tools (the default)
 https://mouseflowapp.vercel.app/api/mcp?profile=do      the machine acts: run, do, stop, cases
 https://mouseflowapp.vercel.app/api/mcp?profile=make     the person acts: recordings, transcripts, activity
 ```
 
-Eighteen tools answer two different products' questions, and a connector added in order to read documents
+Nineteen tools answer two different products' questions, and a connector added in order to read documents
 was being shown `mouseflow_run` — a tool that moves the real mouse on a real computer. That is not just a
 longer permission dialog. **A model chooses from what it was shown**, so offering it a way to act where only
 reading was asked for makes acting a possible outcome.
 
 | Profile | Carries |
 |---|---|
-| `do` (11) | `mouseflow_run`, `mouseflow_do`, `mouseflow_stop`, `mouseflow_run_status`, `mouseflow_case`, `mouseflow_cases`, `mouseflow_case_results` + the shared four |
+| `do` (12) | `mouseflow_run`, `mouseflow_do`, `mouseflow_stop`, `mouseflow_run_status`, `mouseflow_case`, `mouseflow_cases`, `mouseflow_case_results`, `mouseflow_machines` + the shared four |
 | `make` (11) | `mouseflow_recordings`, `mouseflow_transcript`, `mouseflow_activity`, `mouseflow_run_history`, `mouseflow_help`, `mouseflow_start_recording`, `mouseflow_stop_recording` + the shared four |
 | shared (4) | `mouseflow_status`, `mouseflow_schedule`, `mouseflow_schedules`, `mouseflow_unschedule` |
 

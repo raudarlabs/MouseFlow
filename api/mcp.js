@@ -141,6 +141,13 @@ async function handler(req, res) {
      * взятием»), прогоном не становится и в user_run не пишется - а человек, глядя на «что стало с моей
      * просьбой из чата», обязан увидеть и это. Тридцать суток - потолок, потому что строки очереди чистятся
      * не так, как журнал, и лента из тысячи отменённых никому не нужна. */
+    /* ПРИЛОЖЕНИЕ ОТКРЫТО (Hivelink H5) - отметка для pollHint в api/_mcp-worker.mjs: пока на аккаунт смотрят,
+     * машины спрашивают работу чаще. Не чаще раза в минуту и без ожидания: запись - удобство, не условие. */
+    sql`
+      insert into user_pref (user_id, key, value) values (${who.id}, 'web.seen', ${new Date().toISOString()})
+      on conflict (user_id, key) do update set value = excluded.value, updated_at = now()
+      where user_pref.updated_at < now() - interval '60 seconds'
+    `.catch(() => {});
     const days = Math.min(30, Math.max(0, Math.round(Number(req.query.days) || 0)));
     const rows = days
       ? await sql`
@@ -198,7 +205,8 @@ async function handler(req, res) {
           /* Откуда работа: расписание, страница Create (человек сам, на этом компьютере) или чат через MCP.
            * Отдельным полем, потому что «by itself» и «you» - разные подписи у одной и той же строки. */
           source: q.schedule_id ? 'schedule'
-            : q.tool_name === 'page' || String(q.tool_name || '').startsWith('page:') ? 'you' : 'chat',
+            : q.tool_name === 'page' || String(q.tool_name || '').startsWith('page:')
+              || (q.args && q.args.via === 'page') ? 'you' : 'chat',
           startedAt: (loop && loop.startedAt) || q.run_started || q.claimed_at || q.created_at,
           finishedAt: q.finished_at,
           /* Идущий - из loop; законченный - из журнала. Ни один не выдумывается. */

@@ -5162,6 +5162,10 @@ enum Courier {
      * up, once per run. */
     private static let claimWaitSeconds = 0
     private static let idleSleepSeconds: UInt32 = 3
+    /* СКОЛЬКО ЖДАТЬ В ТИШИНЕ - говорит аккаунт (Hivelink H5): `next` в ответе без работы. Три секунды, пока
+     * аккаунтом пользуются (открыто приложение, недавно ставили работу), и дольше, когда тихо, - так десять
+     * машин не стучат в развёртывание двадцать раз в минуту каждая ради ничего. Нет поля - три, как было. */
+    private static var idleNext: UInt32 = 3
     private static var backoff: UInt32 = 2
 
     enum Claimed {
@@ -5245,7 +5249,7 @@ enum Courier {
             case .idle:
                 backoff = 2
                 // Nothing to do. The sleep is the whole saving - see the note on claimWaitSeconds.
-                sleep(idleSleepSeconds)
+                sleep(idleNext)
             case .job(let job):
                 backoff = 2
                 /* A goal is not carried, it is driven: the deployment decides one action at a time and this
@@ -5324,6 +5328,12 @@ enum Courier {
         if status == 200 && parsed == nil { return .cut }
         guard status == 200, let raw = parsed as? [String: Any] else {
             return .failed("HTTP \(status)")
+        }
+        /* Подсказка аккаунта о следующем вопросе - в пределах 1-30 с; без неё или с мусором - три. */
+        if let next = raw["next"] as? Int, next >= 1 {
+            idleNext = UInt32(min(30, next))
+        } else {
+            idleNext = idleSleepSeconds
         }
         guard let job = raw["job"] as? [String: Any], let id = job["id"] as? String else { return .idle }
         let args = (job["args"] as? [String: Any]) ?? [:]

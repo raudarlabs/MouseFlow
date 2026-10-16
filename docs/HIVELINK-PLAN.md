@@ -134,6 +134,25 @@ permissions, so it cannot be done safely from the account until the agent is Dev
   remote job runs, a local pause the server cannot override, per-machine revoke.
 - MCP `hivelink_devices` and a `device` argument on `do`/`run`; Telegram `/machines` and `/use NAME`.
 
+**H5 built 2026-10-16:**
+- **MCP:** `mouseflow_machines` (in the `do` profile; nineteen tools in all) lists the machines by name with
+  online / paused / offline, what each runs and its id; `machine` on `mouseflow_do` (desktop only) and
+  `mouseflow_run` picks one. A name is matched exactly by id, else by name / computer name / "This computer
+  #N" when exactly one answers; anything else is refused with the list (`findMachine`, `api/_queue.mjs`).
+- **Telegram:** `/machines` lists them, `/use NAME` sends this account's chat tasks to one (`/use any` —
+  back to whichever is free); kept in `user_pref 'telegram.machine'`.
+- **Fewer polls in the quiet:** an idle claim answers `next` — 3 s while the app is open (`web.seen`,
+  stamped at most once a minute by the live feed) or work moved in the last ten minutes, 15 s otherwise.
+  Both agents honour it (1-30 s); older agents keep asking every 3 s.
+- **Audit:** Logs is the record of who sent what to which machine — Source (you / schedule / chat) and
+  Machine on every row, in the CSV too. A goal sent from the page now carries `via: 'page'`, so it reads as
+  *you* rather than *chat*.
+- Already true before H5 and kept: the Windows agent draws a border on every screen while it is being
+  driven; the tray / menu-bar switch turns taking work off and the account cannot turn it back on; a machine
+  is revoked one by one on Devices.
+- Not done: a push channel instead of polling (worth it only if the 15 s quiet poll is still too costly when
+  measured), and teams of admins over one fleet (Teams belongs to the other product today).
+
 ## 4. Open questions for the owner
 
 1. Commands beyond skill / goal / stop / screenshot — shell commands? (new, and the riskiest)
