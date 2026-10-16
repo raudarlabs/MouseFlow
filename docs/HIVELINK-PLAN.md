@@ -115,6 +115,18 @@ not run** — no PowerShell on this Mac — and its first real enrolment is owed
   file and registers autostart. macOS: the signed `.dmg` exists and waits for notarisation.
 - Auto-update, or an `update` command against a version manifest.
 
+**Built 2026-10-16, as far as this machine allows.** `agent/install-windows.ps1` keeps the Windows agent on
+disk, starts it at every logon from the Startup folder (no `-File`, so `AllSigned` does not engage), and
+refreshes it from the deployment before each start — a PC updates itself at its next logon and still
+starts offline. It takes `-Enroll`/`-Name`, `-NoStart`, `-Uninstall`. Devices and Add machines give Windows
+the installer command; a machine whose reported version is older than `AGENT_WANTS` is marked **update**,
+with both commands to do it (a Mac rebuilds by running its installer again; it stays attached). Checked with
+PowerShell 7 on this Mac: both `.ps1` files parse; the installer, run against a stand-in origin with a scratch
+`LOCALAPPDATA` and Startup folder, writes a byte-identical agent copy, a `start-agent.ps1` that parses, and
+the launcher above (the parser caught one nested-quote error first). **Not run on Windows** — no Windows here — and not done: the signed .NET 10 installer (needs a certificate, the owner's
+purchase, SPLIT-PLAN §6.3), and a remote "update now" command (on a Mac an ad-hoc rebuild resets the
+permissions, so it cannot be done safely from the account until the agent is Developer-ID signed).
+
 ### H5 — scale, safety, the other doors
 - Ten machines polling every 3 s is ~290k requests a day per account against Vercel and Neon: idle backoff
   to 10–15 s first, a push channel only if measured necessary. Vercel Pro is likely (cron, durations).

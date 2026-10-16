@@ -462,6 +462,16 @@ group('Hivelink H3: Devices makes a code and gives each platform its command');
   check('код показывается один раз - и это сказано', /shown once/.test(view));
 }
 
+group('Hivelink H4: Windows through the installer, and outdated agents marked');
+{
+  const view = read('src/features/devices/DevicesView.tsx');
+  const agent = read('src/lib/agent.ts');
+  check('Windows ставится установщиком, и код едет в него', /\/agent\/install-windows\.ps1\)\)\) -Origin \$\{origin\}/.test(agent)
+    && /`\$\{windowsInstallCommand\(\)\} -Enroll \$\{code\}`/.test(agent));
+  check('устаревший агент помечен, только когда версия известна', /one\.version && olderThan\(one\.version\)/.test(view));
+  check('и сказано, как обновить на обеих платформах', /windowsInstallCommand\(\)/.test(view) && /macInstallCommand\(8787\)/.test(view));
+}
+
 group('папки одного продукта не импортируют папки другого');
 {
   /* Шаг 0 плана разделения (docs/SEPARATION-PLAN.md): продукты разойдутся по аккаунтам, и код экрана P1,

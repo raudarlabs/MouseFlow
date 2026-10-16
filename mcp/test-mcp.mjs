@@ -6496,6 +6496,29 @@ group('Hivelink H3: an enrolment code, traded once per machine by the agent itse
       && !/write_login_item[^\n]*enroll/.test(installer));
 }
 
+/* HIVELINK H4 - WINDOWS НА ДИСКЕ, ПРИ ВХОДЕ, ОБНОВЛЯЕТСЯ САМ. */
+group('Hivelink H4: the Windows installer keeps the agent on disk, at logon, refreshed, and never via -File');
+{
+  const inst = read('../agent/install-windows.ps1');
+  const code = inst.split('\n').filter((ln) => !/^\s*#/.test(ln)).join('\n');
+  const copy = read('../web/scripts/copy-agent.mjs');
+  check('it is published beside the agent', /'install-windows\.ps1',/.test(copy));
+  check('nothing is started with -File, so AllSigned never engages', !/-File\b/.test(code)
+    && /\[scriptblock\]::Create\(\[IO\.File\]::ReadAllText\(/.test(code));
+  check('it never exits the person\'s window', !/\bexit\b/.test(code.replace(/-EnrollOnly/g, '')));
+  check('the logon launcher is the same file the agent\'s own autostart writes',
+    /'MouseFlowAgent\.cmd'/.test(inst) && /\\\\MouseFlowAgent\.cmd/.test(read('../agent/mouseflow-agent.ps1')));
+  check('each start refreshes from the deployment and keeps the local copy when that fails',
+    /Invoke-RestMethod -Uri '\$Origin\/agent\/mouseflow-agent\.ps1' -TimeoutSec 20/.test(inst)
+      && /\} catch \{ \}\r?\nif \(-not \(Test-Path `\$agent\)\) \{ return \}/.test(inst));
+  check('an error page is never saved as the agent', (inst.match(/Contains\('public const string Version'\)/g) || []).length === 2);
+  check('origin and port are baked in at install, never read at logon',
+    /-AllowOrigin '\$Origin' -Port \$Port/.test(inst));
+  check('a code is traded in a child process', /& powershell -NoProfile -Command \$command/.test(inst) && /-EnrollOnly/.test(inst));
+  check('and -Uninstall removes it all, and says to remove the PC on Devices too',
+    /if \(\$Uninstall\)/.test(inst) && /remove this PC on Devices too/.test(inst));
+}
+
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by
  * here, and a keep-alive socket that outlives them keeps the loop open - which turns a suite that has
  * finished and said so into one that appears to hang, and `npm test` never returns. Everything this file

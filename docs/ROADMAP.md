@@ -40,7 +40,10 @@ concrete thing named for the owner to check.
 - [x] **Hivelink H3 — a machine attaches with a code, no browser on it — built 2026-10-16.** Devices → Add
       machines; `--enroll`/`-Enroll` on both agents (`canEnroll`), no migration. **The Windows half has not run
       for real yet.** [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
-- [ ] **Hivelink H4–H5 — packaging and updates, scale and safety, MCP/Telegram.** [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+- [x] **Hivelink H4 — Windows installed, at logon, self-updating — built 2026-10-16.** `agent/install-windows.ps1`;
+      Devices marks outdated agents. **Not run on Windows yet**; the signed .NET installer waits for a
+      certificate. [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
+- [ ] **Hivelink H5 — scale, safety, MCP/Telegram.** [HIVELINK-PLAN §3](HIVELINK-PLAN.md)
 
 - [x] **The night the 04:30 task did not run — found and fixed 2026-10-01.** The cause was **our own test
       suite**: since 2026-09-23 a check in `agent/check-swift.mjs` ran the installer's `write_login_item`

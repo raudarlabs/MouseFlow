@@ -26,7 +26,9 @@ import {
   type Device, type EnrollCode, type Flow, type LiveJob, cancelJob, commandMachines, devices, dropEnrollCode,
   enrollCodes, isMachine, liveJobs, machineName, machineOnline, makeEnrollCode, nameDevice, pauseDevice, revokeDevice,
 } from '@/lib/api';
-import { macEnrollCommand, windowsEnrollCommand } from '@/lib/agent';
+import {
+  AGENT_WANTS, macEnrollCommand, macInstallCommand, olderThan, windowsEnrollCommand, windowsInstallCommand,
+} from '@/lib/agent';
 import { refreshLive } from '@/lib/live';
 import { useAccount } from '@/shell/AccountProvider';
 import { Page } from '@/shell/Surface';
@@ -321,7 +323,7 @@ const AddMachines = ({ onNote }: { onNote: (note: SaidNote) => void }) => {
           </label>
           {[
             { label: 'macOS — in Terminal', text: macEnrollCommand(made.code, name), note: 'Installs it as a login item, so it is back after every restart. Needs Xcode Command Line Tools; the installer names them if they are missing.' },
-            { label: 'Windows — in PowerShell', text: windowsEnrollCommand(made.code, name), note: 'Runs while that window is open. Starting at login on Windows comes with the signed installer.' },
+            { label: 'Windows — in PowerShell', text: windowsEnrollCommand(made.code, name), note: 'Installs it for this Windows user, starts it at every logon and refreshes it from here before each start. No admin rights; -Uninstall removes it.' },
           ].map((one) => (
             <div key={one.label}>
               <Typography variant="span" weight="semibold" className="block text-[0.84rem]">{one.label}</Typography>
@@ -539,6 +541,14 @@ export const DevicesView = () => {
                       </td>
                       <td className="py-2.5 pe-3 whitespace-nowrap text-ink-secondary">
                         {one.platform || one.version ? `${one.platform || ''} ${one.version || ''}`.trim() : '—'}
+                        {/* УСТАРЕЛ (H4) - только когда версия известна: неизвестная - это «не сказал», а не
+                          * «старый», и ставить на неё метку значило бы гонять человека переустанавливать зря. */}
+                        {one.version && olderThan(one.version) && (
+                          <span className="ms-1.5 rounded-full bg-fb-attention/15 px-1.5 py-0.5 text-[0.7rem] font-semibold text-fb-attention"
+                            title={`This app expects ${AGENT_WANTS} — see "Keeping agents up to date" below`}>
+                            update
+                          </span>
+                        )}
                       </td>
                       <td className="py-2.5 text-right whitespace-nowrap">
                         <span className="inline-flex items-center gap-1">
@@ -589,6 +599,32 @@ export const DevicesView = () => {
           </div>
         )}
       </section>
+
+      {/* ОБНОВЛЕНИЕ (H4). Windows-установщик обновляет агента сам при каждом входе; на Mac агент собирается
+        * на машине, и обновить его - это запустить установщик ещё раз (машина остаётся подключённой, файл
+        * аккаунта не трогается). Сказано обеими командами, а не «обновите». */}
+      {list.some((one) => one.version && olderThan(one.version)) && (
+        <section className={CARD}>
+          <Typography variant="span" className={cn(LABEL, 'block')}>Keeping agents up to date</Typography>
+          <Typography variant="p" className="mt-1 max-w-[76ch] text-[0.84rem] text-ink-inactive">
+            Machines marked <span className="text-fb-attention">update</span> run an agent older than {AGENT_WANTS}.
+            A Windows PC installed with the installer refreshes itself at its next logon; run this to do it now.
+            A Mac rebuilds the agent when the installer runs again — it stays attached, though macOS may ask
+            for its permissions once more.
+          </Typography>
+          {[
+            { label: 'Windows — in PowerShell', text: windowsInstallCommand() },
+            { label: 'macOS — in Terminal', text: macInstallCommand(8787) },
+          ].map((one) => (
+            <div key={one.label} className="mt-2">
+              <Typography variant="span" weight="semibold" className="block text-[0.82rem]">{one.label}</Typography>
+              <code className="mt-1 block overflow-x-auto whitespace-nowrap rounded-md border-stroke border bg-surface-card2 px-2 py-1.5 font-mono text-[0.76rem] text-ink-primary">
+                {one.text}
+              </code>
+            </div>
+          ))}
+        </section>
+      )}
     </Page>
   );
 };

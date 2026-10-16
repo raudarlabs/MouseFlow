@@ -722,7 +722,7 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
           name: MACHINE_NAMES.dev_a1 ?? 'Office-1', hostname: 'DESKTOP-7K2Q', platform: 'windows', version: '0.29.0',
           seenAt: new Date(Date.now() - 4000).toISOString(), jobs: { days: 30, done: 31, failed: 3, running: 'page:Reply that the invoice is approved' }, paused: !!MACHINE_PAUSED.dev_a1 },
         { id: 'dev_a2', label: 'This computer', createdAt: hoursAgo(120), lastUsedAt: hoursAgo(26),
-          name: MACHINE_NAMES.dev_a2 ?? null, hostname: 'Vics-MacBook-Air', platform: 'macos', version: '0.29.0',
+          name: MACHINE_NAMES.dev_a2 ?? null, hostname: 'Vics-MacBook-Air', platform: 'macos', version: '0.28.0',
           seenAt: hoursAgo(26), jobs: { days: 30, done: 12, failed: 1, running: null }, paused: !!MACHINE_PAUSED.dev_a2 },
         { id: 'dev_a3', label: 'This computer', createdAt: hoursAgo(2), lastUsedAt: null,
           name: MACHINE_NAMES.dev_a3 ?? null, hostname: null, platform: null, version: null, seenAt: null,
