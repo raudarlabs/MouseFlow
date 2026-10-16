@@ -49,8 +49,8 @@ not record its machine today, so a per-machine number would be invented. Both ar
 - `step`/`report`/`state` require `claimed_by = deviceId`; stop, status and the stale sweep per machine.
 - **Works with 0.29.0 agents unchanged** — each already presents its own token.
 
-**Built 2026-10-16; `db/025_device.sql` written and NOT applied** (it needs the owner's go-ahead and a
-machine with `.env.local`). As built:
+**Built 2026-10-16; `db/025_device.sql` applied the same day** (owner's go-ahead; all eight columns and
+the index read back). As built:
 - `byDeviceToken` returns `deviceId`. The claim stamps `seen_at`/`hostname` on the token, records
   `claimed_device`, gives a machine that already holds a job no second one, and matches a pin
   (`run_queue.machine`) against the device id as well as the old computer name.
@@ -115,12 +115,74 @@ not run** — no PowerShell on this Mac — and its first real enrolment is owed
   file and registers autostart. macOS: the signed `.dmg` exists and waits for notarisation.
 - Auto-update, or an `update` command against a version manifest.
 
+**Built 2026-10-16, as far as this machine allows.** `agent/install-windows.ps1` keeps the Windows agent on
+disk, starts it at every logon from the Startup folder (no `-File`, so `AllSigned` does not engage), and
+refreshes it from the deployment before each start — a PC updates itself at its next logon and still
+starts offline. It takes `-Enroll`/`-Name`, `-NoStart`, `-Uninstall`. Devices and Add machines give Windows
+the installer command; a machine whose reported version is older than `AGENT_WANTS` is marked **update**,
+with both commands to do it (a Mac rebuilds by running its installer again; it stays attached). Checked with
+PowerShell 7 on this Mac: both `.ps1` files parse; the installer, run against a stand-in origin with a scratch
+`LOCALAPPDATA` and Startup folder, writes a byte-identical agent copy, a `start-agent.ps1` that parses, and
+the launcher above (the parser caught one nested-quote error first). **Not run on Windows** — no Windows here — and not done: the signed .NET 10 installer (needs a certificate, the owner's
+purchase, SPLIT-PLAN §6.3), and a remote "update now" command (on a Mac an ad-hoc rebuild resets the
+permissions, so it cannot be done safely from the account until the agent is Developer-ID signed).
+
 ### H5 — scale, safety, the other doors
 - Ten machines polling every 3 s is ~290k requests a day per account against Vercel and Neon: idle backoff
   to 10–15 s first, a push channel only if measured necessary. Vercel Pro is likely (cron, durations).
 - An audit line per command (who sent what to which machine), an on-screen mark on the machine while a
   remote job runs, a local pause the server cannot override, per-machine revoke.
 - MCP `hivelink_devices` and a `device` argument on `do`/`run`; Telegram `/machines` and `/use NAME`.
+
+**H5 built 2026-10-16:**
+- **MCP:** `mouseflow_machines` (in the `do` profile; nineteen tools in all) lists the machines by name with
+  online / paused / offline, what each runs and its id; `machine` on `mouseflow_do` (desktop only) and
+  `mouseflow_run` picks one. A name is matched exactly by id, else by name / computer name / "This computer
+  #N" when exactly one answers; anything else is refused with the list (`findMachine`, `api/_queue.mjs`).
+- **Telegram:** `/machines` lists them, `/use NAME` sends this account's chat tasks to one (`/use any` —
+  back to whichever is free); kept in `user_pref 'telegram.machine'`.
+- **Fewer polls in the quiet:** an idle claim answers `next` — 3 s while the app is open (`web.seen`,
+  stamped at most once a minute by the live feed) or work moved in the last ten minutes, 15 s otherwise.
+  Both agents honour it (1-30 s); older agents keep asking every 3 s.
+- **Audit:** Logs is the record of who sent what to which machine — Source (you / schedule / chat) and
+  Machine on every row, in the CSV too. A goal sent from the page now carries `via: 'page'`, so it reads as
+  *you* rather than *chat*.
+- Already true before H5 and kept: the Windows agent draws a border on every screen while it is being
+  driven; the tray / menu-bar switch turns taking work off and the account cannot turn it back on; a machine
+  is revoked one by one on Devices.
+- Not done: a push channel instead of polling (worth it only if the 15 s quiet poll is still too costly when
+  measured), and teams of admins over one fleet (Teams belongs to the other product today).
+
+**After H5, 2026-10-16:** the owner sent a command from the Mac and it ran on a Windows PC — the Windows
+agent's first real run. Found on the live account and fixed the same day: a revoked token left the Mac
+looking attached (the code now re-attaches; Devices names it), a Mac without Screen Recording looked
+online while every goal failed at step one (agents now send `canSee`/`canAct` with each claim; Devices,
+Overview, MCP and Telegram say it), and the Telegram menu did not know `/machines` (the bot now publishes
+`BOT_COMMANDS` itself with `setMyCommands`; `/status` lists the machines).
+
+**The Telegram bot made Hivelink's, 2026-10-16** (it had been another project's - "Hulk Eats": its keyboard
+under the input and a "Dashboard" button to a deployment that no longer exists):
+- **Its profile and menu are published by the bot itself** on the first message after a deploy that changed
+  them (`ensureCommands` in `api/telegram.js`, marked in `app_setting 'telegram.commands'`): name
+  *Hivelink*, short and long descriptions, `BOT_COMMANDS`, and the menu button — a Mini App at
+  `https://<this deployment>/tg`. The username (@TWOBSBOT) and the avatar can only be changed in BotFather.
+- **Its own keyboard** — Machines, Status, Stop, Help — replaces the old one on the next reply that carries
+  it (/start, /help, /machines, /status); a button sends its text and `commandOf` reads it as the command.
+- **The Mini App** (`web/src/features/tg/TgApp.tsx`, public path `/tg`): the machines with online / paused /
+  offline and what cannot see the screen, a goal sent to the picked machine or the first free one, and the
+  last eight jobs with Stop. No sign-in inside Telegram: each request carries `initData`, which Telegram
+  signs; `api/_tg-app.mjs` checks the signature, its age (a day at most) and who opened it, and the account
+  is the one that chat was paired with (`chat_sender`, `allowed`). The check is executed in
+  `api/_test-telegram.mjs` — forged user, foreign token, old string, no signature all refused.
+
+**Machine cards in Telegram, 2026-10-16** (owner: "each device with its own options - give a command, shut
+down, reboot, status"): /machines is a list of buttons; a tap turns the same message into that machine's
+card — status, platform and version, what it cannot do, what it is running — with **Give a task** (the next
+task goes there, once), **Make default** (= /use), **Refresh**, **Pause/Resume**, **Stop** the current job,
+and **Restart** / **Shut down**, each asked twice. Restart and shut down are agent commands (see
+`agent/PROTOCOL.md`); a machine whose agent has not declared `power` is told to update rather than given a
+job it would never take. The menu button is now also set per chat — the previous bot had set one for the
+chat itself, which outranks the default.
 
 ## 4. Open questions for the owner
 

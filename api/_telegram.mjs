@@ -62,6 +62,8 @@ export const SAY = {
     + '/mode - run straight through, or ask before anything that cannot be undone\n'
     + '/feed - this chat as a running log of everything your machines do (on by default)\n'
     + '/where - run tasks in the MouseFlow browser (your mouse stays yours) or on the screen\n'
+    + '/machines - your computers, which are online and what each is doing\n'
+    + '/use NAME - send tasks from here to that computer (/use any - to whichever is free)\n'
     + '/pair mf_... - pair this chat with an account',
   empty: 'There is nothing in that message to do. Say what you want done, in a sentence.',
   /* РЕЖИМ - тот же выбор, что в панели агента, и слова о нём те же по смыслу: «Auto» и «Ask first». */
@@ -168,9 +170,50 @@ export function updateOf(body) {
   };
 }
 
+/* МЕНЮ КОМАНД БОТА - то, что телеграм показывает по «/» и кнопке меню (2026-10-16). Было заведено руками в
+ * BotFather, и новые команды (/machines, /use) в нём не появлялись: человек не знал, что они есть. Теперь
+ * список здесь, и бот публикует его сам (setMyCommands в api/telegram.js), когда список изменился. */
+export const BOT_COMMANDS = [
+  { command: 'machines', description: 'Your computers - which are online and what each is doing' },
+  { command: 'use', description: 'Send tasks to one computer: /use Office-3 (or /use any)' },
+  { command: 'status', description: 'Is a computer of yours awake and taking work' },
+  { command: 'stop', description: 'Stop whatever is running' },
+  { command: 'mode', description: 'Run straight through, or ask before what cannot be undone' },
+  { command: 'feed', description: 'This chat as a log of everything your machines do' },
+  { command: 'where', description: 'Run tasks in the MouseFlow browser or on the screen' },
+  { command: 'help', description: 'What I can do' },
+];
+
+/* ОБЛИК БОТА - имя, описания и кнопка меню (2026-10-16). Бот достался от другого проекта, и телеграм
+ * помнил его имя и его кнопку «Dashboard» на несуществующий деплой. Публикуется ботом самим, как меню. */
+export const BOT_PROFILE = {
+  name: 'Hivelink',
+  shortDescription: 'Tell your computers what to do - each one does it on its own screen.',
+  description: 'Hivelink runs tasks on your own computers. Pair this chat with your account, then send a '
+    + 'task in a sentence or by voice: you get a plan, press Approve, and the computer you chose does it '
+    + 'and reports back here. /machines shows your computers.',
+  menuText: 'Hivelink',
+};
+
+/* КЛАВИАТУРА ПОД ПОЛЕМ ВВОДА - своя вместо оставшейся от прошлого бота. Нажатие присылает текст кнопки, и
+ * routeOf читает его как команду; поэтому слова здесь и разбор ниже - одна таблица. */
+export const KEYBOARD_BUTTONS = {
+  '🖥 Machines': 'machines',
+  '📊 Status': 'status',
+  '⏹ Stop': 'stop',
+  '❓ Help': 'help',
+};
+export const KEYBOARD = {
+  keyboard: [[{ text: '🖥 Machines' }, { text: '📊 Status' }], [{ text: '⏹ Stop' }, { text: '❓ Help' }]],
+  resize_keyboard: true,
+  is_persistent: true,
+};
+
 /** `/pair mf_x` → `{ name: 'pair', rest: 'mf_x' }`. Не команда - null, и это не ошибка, а обычный случай. */
 export function commandOf(text) {
   const said = String(text || '').trim();
+  /* Кнопка своей клавиатуры - та же команда, что её слэш-форма. */
+  if (KEYBOARD_BUTTONS[said]) return { name: KEYBOARD_BUTTONS[said], rest: '' };
   if (!said.startsWith('/')) return null;
   /* `/status@my_bot` - то же самое: в группах телеграм дописывает имя бота, и команда, не узнавшая себя
    * из-за суффикса, отвечает «не понял» там, где человек всё сделал правильно. */
@@ -246,6 +289,9 @@ export function routeOf({ row, update }) {
       if (wanted === false) return { act: 'refuse', say: SAY.feedBad };
       return { act: 'feed', on: wanted };
     }
+    /* МАШИНЫ (Hivelink H5): список и выбор той, на которую идут задачи из этого чата. */
+    if (command.name === 'machines') return { act: 'machines' };
+    if (command.name === 'use') return { act: 'use', machine: command.rest };
     if (command.name === 'mode') {
       const wanted = modeWanted(command.rest);
       if (wanted === false) return { act: 'refuse', say: SAY.modeBad };
@@ -468,6 +514,9 @@ export function feedLine({ event, title, said, source, when }) {
  * аккаунте, рядом с режимом: человек решает это один раз, а не в каждом сообщении. По умолчанию - экран:
  * так было, и задача, которой нужен Excel, во вкладке не сделается. */
 export const WHERE_KEY = 'telegram.surface';
+/* НА КАКОЙ МАШИНЕ ИДУТ ЗАДАЧИ ИЗ ЧАТА (Hivelink H5) - id устройства, выбранный /use; пусто - на любой
+ * свободной, как было. На аккаунте, рядом с /where: решают один раз, а не в каждом сообщении. */
+export const MACHINE_KEY = 'telegram.machine';
 /** Вкладка своего браузера для задач из телеграма - одна на чат: вход на сайты общий, а окна не копятся. */
 export const TELEGRAM_TAB = 'telegram';
 

@@ -37,6 +37,7 @@ import { report, wrap } from './_report.js';
 import { cors } from './_cors.mjs';
 /* Коды подключения машин без браузера на них (Hivelink H3). */
 import { dropCode, listCodes, makeCode, spendCode } from './_enroll.mjs';
+import { capsOf } from './_queue.mjs';
 
 const FLOWS_MAX = 300;        // per push
 const RUNS_MAX = 100;
@@ -208,7 +209,8 @@ async function listTokens(res, sql, who) {
            to_jsonb(device_token) ->> 'platform' as platform,
            to_jsonb(device_token) ->> 'agent_version' as agent_version,
            to_jsonb(device_token) ->> 'seen_at' as seen_at,
-           to_jsonb(device_token) ->> 'paused' as paused
+           to_jsonb(device_token) ->> 'paused' as paused,
+           (select p.value from user_pref p where p.user_id = device_token.user_id and p.key = 'device.caps.' || device_token.id) as caps
     from device_token
     where user_id = ${who.id} and revoked_at is null
     order by created_at desc limit 50
@@ -248,6 +250,8 @@ async function listTokens(res, sql, who) {
         version: r.agent_version || null, seenAt: r.seen_at || null,
         /* Пауза из аккаунта (H2). Отсутствие поля - до 025 - значит «паузы нет», и так оно и есть. */
         paused: r.paused === 'true',
+        /* Может ли она сделать цель (2026-10-16): видит ли экран, может ли действовать. null - не сказала. */
+        caps: capsOf(r.caps),
         ...(counted ? { jobs: { days: 30, done: one ? one.done : 0, failed: one ? one.failed : 0,
           running: one ? one.running || null : null } } : {}),
       };
@@ -384,7 +388,10 @@ async function pull(res, sql, who) {
   let prefs = [];
   try {
     /* Без кодов подключения (H3): это не предпочтения, а удостоверения машин, и странице они не нужны. */
-    prefs = await sql`select key, value from user_pref where user_id = ${who.id} and key not like 'enroll.%'`;
+    prefs = await sql`
+      select key, value from user_pref
+      where user_id = ${who.id} and key not like 'enroll.%' and key not like 'device.caps.%'
+    `;
   } catch (_) {
     /* No table yet, or no permission. Absent preferences mean the defaults, which is what a deployment
      * that has never had them should do. */

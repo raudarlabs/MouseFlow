@@ -462,13 +462,43 @@ group('Hivelink H3: Devices makes a code and gives each platform its command');
   check('код показывается один раз - и это сказано', /shown once/.test(view));
 }
 
+group('Hivelink H4: Windows through the installer, and outdated agents marked');
+{
+  const view = read('src/features/devices/DevicesView.tsx');
+  const agent = read('src/lib/agent.ts');
+  check('Windows ставится установщиком, и код едет в него', /\/agent\/install-windows\.ps1\)\)\) -Origin \$\{origin\}/.test(agent)
+    && /`\$\{windowsInstallCommand\(\)\} -Enroll \$\{code\}`/.test(agent));
+  check('устаревший агент помечен, только когда версия известна', /one\.version && olderThan\(one\.version\)/.test(view));
+  check('и сказано, как обновить на обеих платформах', /windowsInstallCommand\(\)/.test(view) && /macInstallCommand\(8787\)/.test(view));
+}
+
+group('Devices: «Attach this computer» opens Connections, and a detached local agent is named');
+{
+  const view = read('src/features/devices/DevicesView.tsx');
+  check('кнопка открывает окно Connections, а не страницу установки',
+    /onClick=\{\(\) => openSettings\('connections'\)\}/.test(view) && !/<Link to="\/connect"[^>]*>Attach this computer/.test(view));
+  check('и окно слушает это событие', /window\.addEventListener\(OPEN_SETTINGS_EVENT, open\)/.test(read('src/shell/AppLayout.tsx')));
+  check('агент этого компьютера, подключённый, но не берущий работу, - назван со способом починить',
+    /if \(health\.linked && health\.taking && !blind\) return null;/.test(view) && /press Detach, then Attach this computer/.test(view));
+}
+
+group('a machine that cannot do a goal is named on Devices and Overview, this computer included');
+{
+  const view = read('src/features/devices/DevicesView.tsx');
+  check('у статуса машины - «не видит экран» и что нажать', /machineCannot\(one\) && \(/.test(view)
+    && /Set Up Permissions…/.test(read('src/lib/api.ts')));
+  check('и на обзоре тоже', /machineCannot\(one\)!\.short\}: \{machineCannot\(one\)!\.fix\}/.test(read('src/features/overview/OverviewView.tsx')));
+  check('а этот компьютер говорит сам, по loopback, - без пересборки агента',
+    /const blind = health\.linked && health\.taking && health\.canSee === false;/.test(view));
+}
+
 group('папки одного продукта не импортируют папки другого');
 {
   /* Шаг 0 плана разделения (docs/SEPARATION-PLAN.md): продукты разойдутся по аккаунтам, и код экрана P1,
    * читающий из папки экрана P2, - это нитка, которую тогда придётся рвать под нагрузкой. Общее живёт в
    * lib/, components/ и shell/. Какая папка чья - по экрану, который она рисует. */
   const OWNER = {
-    create: 'do', saved: 'do', activity: 'do', panel: 'do', connect: 'do', tests: 'do', overview: 'do', ai: 'do', devices: 'do',
+    create: 'do', saved: 'do', activity: 'do', panel: 'do', connect: 'do', tests: 'do', overview: 'do', ai: 'do', devices: 'do', tg: 'do',
     record: 'make', skills: 'make', docs: 'make', insights: 'make', team: 'make', gallery: 'make',
     chat: 'make', mcp: 'make',
   };

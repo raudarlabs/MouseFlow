@@ -26,6 +26,30 @@ Fetched and executed **in memory** — nothing installed, nothing written to dis
 'UIAutomationTypes','WindowsBase'` compiles the C# on first run. That compile is why there is no Windows
 equivalent of a "download and run" binary and no need for one.
 
+## Installed, at logon, and kept up to date — `install-windows.ps1` (Hivelink H4)
+
+The in-memory start above is gone when its window closes and cannot start at logon. For a machine that has
+to stay in an account — a fleet of them especially — use the installer, the same way, from a scriptblock:
+
+```powershell
+& ([scriptblock]::Create((irm https://<origin>/agent/install-windows.ps1))) -Origin https://<origin> -Enroll HL-XXXXX-XXXXX -Name "Office-3"
+```
+
+| | |
+|---|---|
+| `%LOCALAPPDATA%\MouseFlow\mouseflow-agent.ps1` | the agent, on disk |
+| `%LOCALAPPDATA%\MouseFlow\start-agent.ps1` | what the logon launcher runs: fetch the agent from the deployment (keep the local copy if that fails), then start it with the baked-in origin and port |
+| `<Startup>\MouseFlowAgent.cmd` | the logon launcher — the same file the agent's own autostart writes, so `/health` says `autostart: true` and the agent's disable removes it |
+
+- **No `-File` anywhere.** The launcher reads `start-agent.ps1` and hands its text to a scriptblock, so an
+  `AllSigned` policy from Group Policy never engages — the same trade as the one-liner.
+- **It updates itself at every logon**, from your own deployment; the cost is the one-liner's — whatever
+  is at that address runs.
+- `-Enroll`/`-Name` attach it with a code, in a child process (the agent's `-EnrollOnly` ends with `exit`,
+  which would close the person's window). `-NoStart` installs without starting; `-Uninstall` stops it and
+  removes the launcher and the folder, account file included — remove the PC on Devices too.
+- **Never run on Windows yet** (written on a Mac, 2026-10-16). Its first real install is owed.
+
 ## Parameters
 
 | Flag | Default | Meaning |

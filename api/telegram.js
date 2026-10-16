@@ -27,15 +27,17 @@ import { neon } from '@neondatabase/serverless';
 import { byDeviceToken } from './_session.js';
 import { report, wrap } from './_report.js';
 import { overSpend } from './_spend.mjs';
-import { DESKTOP_GOAL, modeOf, queueOne, setMode, workerSeen } from './_queue.mjs';
+import { DESKTOP_GOAL, MACHINE_RESTART, MACHINE_SHUTDOWN, cannotSay, findMachine, machinesOf, modeOf, queueOne, setMode, workerSeen } from './_queue.mjs';
 import { ONE_WAY } from './_brain.mjs';
 import { GOAL_MAX, goalWith, looksLikeText } from './_attach.mjs';
 import { planFrom, planRequest } from './_plan.mjs';
 import { recognise, refusedAudio } from './_transcribe.mjs';
 import { callModel } from './_vision.mjs';
-import { callTelegram, fileUrl, sendChat, tellFeed } from './_telegram-out.mjs';
+import { callTelegram, fileUrl, sendChat, tellFeed, tellOutcome } from './_telegram-out.mjs';
+import { checkInitData } from './_tg-app.mjs';
 import {
-  CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, SAY, TELEGRAM_TAB, WHERE_KEY, draftId, expired, feedLine, feedSource,
+  BOT_COMMANDS, BOT_PROFILE, CHANNEL, FEED_KEY, HOLD_GO, HOLD_HALT, KEYBOARD, MACHINE_KEY, SAY, TELEGRAM_TAB,
+  WHERE_KEY, draftId, expired, feedLine, feedSource,
   holdAnswerOf, keyboardFor,
   outcomeMessage, planMessage, refusedDocument, routeOf, tagFor, updateOf, verdictOf,
 } from './_telegram.mjs';
@@ -100,6 +102,9 @@ async function greet(sql, update) {
   await say(update.chatId, SAY.stranger);
 }
 
+/* Ответ со своей клавиатурой - заменяет оставшуюся от прошлого бота у того, кто нажмёт что угодно. */
+const sayKeyed = (chatId, text) => say(chatId, text, { reply_markup: KEYBOARD });
+
 async function pair(sql, update, token) {
   const who = await byDeviceToken(sql, token);
   /* СНАЧАЛА УБРАТЬ ТОКЕН, ПОТОМ ОТВЕТИТЬ - и убрать в обоих случаях, верный он или нет. Неверный токен
@@ -119,7 +124,120 @@ async function pair(sql, update, token) {
   return say(update.chatId, SAY.paired);
 }
 
+/* МЕНЮ КОМАНД - публикуется ботом самим, один раз на каждую редакцию BOT_COMMANDS. Отметка - в app_setting
+ * (настройка развёртывания, не человека); сравнивается сам список, так что правка описания тоже уезжает.
+ * Не удалось - ничего страшного: попробует со следующим сообщением, а ответ человеку от этого не зависит. */
+const COMMANDS_KEY = 'telegram.commands';
+async function ensureCommands(sql, host) {
+  try {
+    /* Мини-приложение - на том же адресе, что ответил на этот вебхук: телеграм зовёт развёртывание, и
+     * кнопка меню должна вести в него же, а не в зашитый адрес. */
+    const app = host ? `https://${host}/tg` : null;
+    const wanted = JSON.stringify({ commands: BOT_COMMANDS, profile: BOT_PROFILE, app });
+    const [row] = await sql`select value from app_setting where key = ${COMMANDS_KEY}`;
+    if (row && row.value === wanted) return;
+    const steps = [
+      callTelegram('setMyCommands', { commands: BOT_COMMANDS }),
+      callTelegram('setMyName', { name: BOT_PROFILE.name }),
+      callTelegram('setMyShortDescription', { short_description: BOT_PROFILE.shortDescription }),
+      callTelegram('setMyDescription', { description: BOT_PROFILE.description }),
+      callTelegram('setChatMenuButton', {
+        menu_button: app
+          ? { type: 'web_app', text: BOT_PROFILE.menuText, web_app: { url: app } }
+          : { type: 'commands' },
+      }),
+    ];
+    const done = await Promise.all(steps);
+    /* setMyName телеграм ограничивает по частоте; остальное записано - а отметка ставится, только когда
+     * прошло всё, иначе следующее сообщение попробует снова. */
+    if (done.every((one) => one.ok)) {
+      await sql`
+        insert into app_setting (key, value) values (${COMMANDS_KEY}, ${wanted})
+        on conflict (key) do update set value = excluded.value, updated_at = now()
+      `;
+    }
+  } catch (_) { /* the menu is a convenience; the answer to the person is not */ }
+}
+
+/* ---------------------------------------------------------------- мини-приложение (/tg)
+ *
+ * POST /api/telegram?app=1 с `{ initData, action, ... }`. Без секрета вебхука - его знает только телеграм,
+ * а этот запрос приходит со страницы; удостоверение здесь - подписанный initData (см. api/_tg-app.mjs), а
+ * чей аккаунт - та же привязка chat_sender, что у чата. */
+async function miniApp(req, res, sql) {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const seen = checkInitData(body.initData, process.env.TELEGRAM_BOT_TOKEN);
+  if (seen.why) return res.status(401).json({ ok: false, why: seen.why });
+  const [row] = await sql`
+    select user_id, chat_id, state from chat_sender where channel = ${CHANNEL} and sender_id = ${String(seen.user.id)}
+  `;
+  if (!row || row.state !== 'allowed' || !row.user_id) {
+    return res.status(403).json({ ok: false, why: 'This Telegram account is not paired yet. Send /pair with a '
+      + 'device token in the chat first - MouseFlow, your avatar, then Connections.' });
+  }
+  const userId = row.user_id;
+  const action = String(body.action || 'state');
+
+  if (action === 'send') {
+    const goal = String(body.goal || '').trim();
+    if (!goal) return res.status(400).json({ ok: false, why: 'Say what should be done, in a sentence.' });
+    if (goal.length > GOAL_MAX) return res.status(413).json({ ok: false, why: `That is ${goal.length - GOAL_MAX} characters too long.` });
+    const gate = (await modeOf(sql, userId)) === ONE_WAY ? ONE_WAY : null;
+    const put = await queueOne(sql, userId, {
+      flowId: DESKTOP_GOAL,
+      toolName: 'mouseflow_do',
+      /* Исход - в чат этого человека, как у задачи из чата: окно мини-приложения закроют раньше. */
+      args: { goal, telegram: { chatId: row.chat_id }, ...(gate ? { gate } : {}), via: 'telegram-app' },
+      device: body.device ? String(body.device).slice(0, 60) : null,
+    });
+    if (put.why) return res.status(409).json({ ok: false, why: put.why });
+    return res.status(200).json({ ok: true, id: put.id });
+  }
+
+  if (action === 'stop') {
+    const id = String(body.id || '');
+    const killed = await sql`
+      update run_queue set state = 'cancelled', finished_at = now(), ok = false, said = 'cancelled before it finished'
+      where id = ${id} and user_id = ${userId} and state in ('queued', 'claimed')
+      returning id, flow_id, tool_name, args, schedule_id, state
+    `;
+    for (const one of killed) await tellOutcome(sql, userId, one, false, 'cancelled before it finished');
+    return res.status(200).json({ ok: true, cancelled: killed.length > 0 });
+  }
+
+  /* СОСТОЯНИЕ: машины, выбранная /use, и последние работы - что идёт и чем кончилось. */
+  const machines = await machinesOf(sql, userId);
+  const chosen = await machineOf(sql, userId);
+  const jobs = await sql`
+    select id, state, ok, said, tool_name, args, created_at, finished_at,
+           coalesce(to_jsonb(q) ->> 'claimed_device', to_jsonb(q) ->> 'machine') as device
+    from run_queue q where user_id = ${userId} order by created_at desc limit 8
+  `;
+  return res.status(200).json({
+    ok: true,
+    you: { name: seen.user.first_name || seen.user.username || null },
+    chosen: chosen && machines.some((m) => m.id === chosen) ? chosen : null,
+    machines: machines.map((m) => ({ id: m.id, name: m.said, platform: m.platform, online: m.online,
+      paused: m.paused, cannot: cannotSay(m.caps) })),
+    jobs: jobs.map((j) => ({
+      id: j.id, state: j.state, ok: j.ok, said: j.said || null,
+      what: (j.args && typeof j.args.goal === 'string' && j.args.goal) || String(j.tool_name || '').replace(/^page:/, ''),
+      machine: (machines.find((m) => m.id === j.device) || {}).said || null,
+      at: j.finished_at || j.created_at,
+    })),
+  });
+}
+
 async function status(sql, update, userId) {
+  /* МАШИНЫ - ПЕРВЫМИ, когда они есть (Hivelink): «жива ли машина» на аккаунте с несколькими - это «какие». */
+  const list = await machinesOf(sql, userId).catch(() => []);
+  if (list.length) {
+    const online = list.filter((m) => m.online && !m.paused);
+    const lines = list.map((m) => `- ${m.said}: ${m.paused ? 'paused' : m.online ? 'online' : 'offline'}`
+      + (cannotSay(m.caps) ? ` - ${cannotSay(m.caps)}` : ''));
+    return sayKeyed(update.chatId, `${online.length} of ${list.length} computer${list.length === 1 ? '' : 's'} `
+      + `taking work now:\n${lines.join('\n')}\n\n/machines - more, /use NAME - send tasks to one.`);
+  }
   const seen = await workerSeen(sql, userId);
   if (seen === undefined) return say(update.chatId, 'I cannot tell right now - this deployment could not answer.');
   if (seen === null) {
@@ -152,6 +270,244 @@ async function whereOf(sql, userId) {
   } catch (_) {
     return 'screen';
   }
+}
+
+/* МАШИНЫ ИЗ ЧАТА (Hivelink H5). /machines - список, /use - выбор, куда идут задачи отсюда. Имя ищется тем
+ * же findMachine, что у MCP: неоднозначное или незнакомое имя - отказ со списком, а не угаданная машина. */
+async function machineOf(sql, userId) {
+  try {
+    const [pref] = await sql`select value from user_pref where user_id = ${userId} and key = ${MACHINE_KEY}`;
+    return pref && pref.value ? String(pref.value) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/* ---------------------------------------------------------------- карточки машин (2026-10-16)
+ *
+ * Владелец: «работает, но неудобно - может сделаем каждый девайс со своими опциями? дать команду, выключить,
+ * ребут, статус». /machines - список кнопками, по машине на строку; нажатие открывает её карточку В ТОМ ЖЕ
+ * сообщении (editMessageText), а не новым: десять нажатий не должны оставлять десять сообщений.
+ *
+ * callback_data - `mc:<действие>:<id>`; id устройства `dev_` + 12 знаков, так что строка укладывается в 64
+ * байта, которые даёт телеграм. Перезагрузка и выключение - вторым нажатием: первое только спрашивает.
+ */
+const ONCE_KEY = 'telegram.once';
+const dotOf = (m) => (m.paused ? '⏸' : m.online ? '🟢' : '⚪️');
+
+async function edit(update, text, markup) {
+  if (update.messageId) {
+    const done = await callTelegram('editMessageText', {
+      chat_id: update.chatId, message_id: update.messageId, text, disable_web_page_preview: true,
+      ...(markup ? { reply_markup: markup } : {}),
+    });
+    if (done.ok || /not modified/i.test(String(done.why || ''))) return;
+  }
+  await say(update.chatId, text, markup ? { reply_markup: markup } : {});
+}
+
+async function machineList(sql, update, userId, notice) {
+  const list = await machinesOf(sql, userId);
+  if (!list.length) {
+    return sayKeyed(update.chatId, 'No computer is attached to this account yet. In Hivelink, Devices -> Add machines '
+      + 'gives a code and one line to run on each computer.');
+  }
+  const chosen = await machineOf(sql, userId);
+  const text = `${notice ? `${notice}\n\n` : ''}Your computers - tap one for what it can do.`
+    + (chosen && list.some((m) => m.id === chosen)
+      ? `\nTasks from here go to ${list.find((m) => m.id === chosen).said}.`
+      : '\nTasks from here go to whichever is free.');
+  const keyboard = list.map((m) => [{ text: `${dotOf(m)} ${m.said}`, callback_data: `mc:card:${m.id}` }]);
+  return edit(update, text, { inline_keyboard: keyboard });
+}
+
+async function jobOn(sql, userId, deviceId) {
+  const [job] = await sql`
+    select id, state, tool_name, args from run_queue q
+    where user_id = ${userId} and state in ('queued', 'claimed')
+      and ((to_jsonb(q) ->> 'claimed_device') = ${deviceId} or (to_jsonb(q) ->> 'machine') = ${deviceId})
+    order by created_at limit 1
+  `;
+  return job || null;
+}
+
+async function machineCard(sql, update, userId, deviceId, notice, confirm) {
+  const list = await machinesOf(sql, userId);
+  const m = list.find((one) => one.id === deviceId);
+  if (!m) return machineList(sql, update, userId, 'That computer is not attached any more.');
+  const chosen = await machineOf(sql, userId);
+  const job = await jobOn(sql, userId, m.id);
+  const what = job ? ((job.args && job.args.goal) || String(job.tool_name || '').replace(/^page:/, '')) : null;
+  const lines = [
+    `${dotOf(m)} ${m.said}`,
+    `${m.paused ? 'Paused from the account' : m.online ? 'Online' : 'Offline'}`
+      + `${m.platform ? ` · ${m.platform}` : ''}${m.version ? ` ${m.version}` : ''}`,
+  ];
+  if (cannotSay(m.caps)) lines.push(`⚠️ It ${cannotSay(m.caps)}.`);
+  if (what) lines.push(`${job.state === 'queued' ? 'Waiting' : 'Running'}: ${what}`);
+  if (chosen === m.id) lines.push('⭐ Tasks from this chat go here.');
+  if (notice) lines.push('', notice);
+
+  if (confirm) {
+    const verb = confirm === 'shutdown' ? 'Shut down' : 'Restart';
+    lines.push('', confirm === 'shutdown'
+      ? `${verb} ${m.said}? Unsaved work in open apps may be lost, and it can only be switched on again by hand.`
+      : `${verb} ${m.said}? Unsaved work in open apps may be lost. The agent comes back when the user logs in.`);
+    return edit(update, lines.join('\n'), { inline_keyboard: [[
+      { text: `Yes, ${verb.toLowerCase()}`, callback_data: `mc:${confirm === 'shutdown' ? 'off!' : 'rst!'}:${m.id}` },
+      { text: 'Cancel', callback_data: `mc:card:${m.id}` },
+    ]] });
+  }
+
+  const rows = [
+    [{ text: '📝 Give a task', callback_data: `mc:task:${m.id}` },
+      chosen === m.id
+        ? { text: '⭐ Default ✓', callback_data: `mc:any:${m.id}` }
+        : { text: '⭐ Make default', callback_data: `mc:use:${m.id}` }],
+    [{ text: '📊 Refresh', callback_data: `mc:card:${m.id}` },
+      m.paused
+        ? { text: '▶️ Resume', callback_data: `mc:resume:${m.id}` }
+        : { text: '⏸ Pause', callback_data: `mc:pause:${m.id}` }],
+  ];
+  if (job) rows.push([{ text: `⏹ Stop: ${String(what).slice(0, 40)}`, callback_data: `mc:stop:${m.id}` }]);
+  rows.push([{ text: '🔄 Restart', callback_data: `mc:rst:${m.id}` }, { text: '⏻ Shut down', callback_data: `mc:off:${m.id}` }]);
+  rows.push([{ text: '« All computers', callback_data: 'mc:list:-' }]);
+  return edit(update, lines.join('\n'), { inline_keyboard: rows });
+}
+
+async function machineAction(sql, update, userId, data) {
+  const [, action, deviceId] = String(data).split(':');
+  if (action === 'list') return machineList(sql, update, userId);
+  const list = await machinesOf(sql, userId);
+  const m = list.find((one) => one.id === deviceId);
+  if (!m) return machineList(sql, update, userId, 'That computer is not attached any more.');
+
+  if (action === 'card') return machineCard(sql, update, userId, m.id);
+  if (action === 'use' || action === 'any') {
+    await sql`
+      insert into user_pref (user_id, key, value) values (${userId}, ${MACHINE_KEY}, ${action === 'use' ? m.id : ''})
+      on conflict (user_id, key) do update set value = excluded.value
+    `;
+    return machineCard(sql, update, userId, m.id, action === 'use'
+      ? `Tasks from this chat now go to ${m.said}.` : 'Tasks from this chat now go to whichever computer is free.');
+  }
+  if (action === 'task') {
+    /* ОДИН РАЗ: следующая задача из чата уйдёт сюда, дальше - как было. Постоянный выбор - «Make default». */
+    await sql`
+      insert into user_pref (user_id, key, value) values (${userId}, ${ONCE_KEY}, ${m.id})
+      on conflict (user_id, key) do update set value = excluded.value, updated_at = now()
+    `;
+    return say(update.chatId, `Send the task for ${m.said} now - in a sentence, or by voice. You will get a plan first.`);
+  }
+  if (action === 'pause' || action === 'resume') {
+    try {
+      await sql`update device_token set paused = ${action === 'pause'} where id = ${m.id} and user_id = ${userId}`;
+    } catch (_) {
+      return machineCard(sql, update, userId, m.id, 'Pausing needs database migration 025.');
+    }
+    return machineCard(sql, update, userId, m.id, action === 'pause'
+      ? 'Paused: it finishes what it is doing and takes nothing new.' : 'It takes work again.');
+  }
+  if (action === 'stop') {
+    const job = await jobOn(sql, userId, m.id);
+    if (!job) return machineCard(sql, update, userId, m.id, 'Nothing is running there.');
+    const killed = await sql`
+      update run_queue set state = 'cancelled', finished_at = now(), ok = false, said = 'cancelled before it finished'
+      where id = ${job.id} and user_id = ${userId} and state in ('queued', 'claimed')
+      returning id, flow_id, tool_name, args, schedule_id, state
+    `;
+    for (const one of killed) await tellOutcome(sql, userId, one, false, 'cancelled before it finished');
+    return machineCard(sql, update, userId, m.id, killed.length ? 'Stopping - it ends at its next step.' : 'It had already finished.');
+  }
+  if (action === 'rst' || action === 'off') return machineCard(sql, update, userId, m.id, null, action === 'off' ? 'shutdown' : 'restart');
+  if (action === 'rst!' || action === 'off!') {
+    const kind = action === 'off!' ? 'shutdown' : 'restart';
+    /* Агент, не сказавший, что умеет, такую работу не возьмёт (см. claim) - сказать сразу, а не ставить её
+     * висеть. Молчание старого агента (caps нет) - тоже «не умеет»: он и правда не умеет. */
+    if (!m.caps || !m.caps.power) {
+      return machineCard(sql, update, userId, m.id, `Its agent cannot ${kind} the computer yet - it needs the current `
+        + 'agent. On Windows the installer updates it at the next logon; on a Mac, run the installer again.');
+    }
+    const put = await queueOne(sql, userId, {
+      flowId: kind === 'shutdown' ? MACHINE_SHUTDOWN : MACHINE_RESTART,
+      toolName: `machine.${kind}`,
+      args: { telegram: { chatId: update.chatId } },
+      device: m.id,
+    });
+    if (put.why) return machineCard(sql, update, userId, m.id, put.why);
+    return machineCard(sql, update, userId, m.id, m.online
+      ? `${kind === 'shutdown' ? 'Shutting down' : 'Restarting'} - it says so here as soon as it takes the command.`
+      : `Queued - it ${kind === 'shutdown' ? 'shuts down' : 'restarts'} when it next comes online.`);
+  }
+  return machineCard(sql, update, userId, m.id);
+}
+
+/* Задача, отправленная «Give a task», - один раз туда; потом - как обычно. */
+async function takeOnce(sql, userId) {
+  try {
+    const rows = await sql`delete from user_pref where user_id = ${userId} and key = ${ONCE_KEY} returning value, updated_at`;
+    if (!rows.length || !rows[0].value) return null;
+    /* Нажали и передумали час назад - не считать «один раз» вечным. */
+    return Date.now() - new Date(rows[0].updated_at).getTime() < 30 * 60_000 ? String(rows[0].value) : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/* КНОПКА МЕНЮ В ЭТОМ ЧАТЕ. Прошлый бот ставил её чату лично, а личная сильнее общей - поэтому у владельца
+ * так и висел «Dashboard» на несуществующий деплой. Ставится один раз на чат и адрес. */
+async function ensureChatMenu(sql, userId, chatId, host) {
+  if (!host) return;
+  const want = `${chatId}|https://${host}/tg|${BOT_PROFILE.menuText}`;
+  try {
+    const [row] = await sql`select value from user_pref where user_id = ${userId} and key = 'telegram.menu'`;
+    if (row && row.value === want) return;
+    const done = await callTelegram('setChatMenuButton', {
+      chat_id: chatId,
+      menu_button: { type: 'web_app', text: BOT_PROFILE.menuText, web_app: { url: `https://${host}/tg` } },
+    });
+    if (!done.ok) return;
+    await sql`
+      insert into user_pref (user_id, key, value) values (${userId}, 'telegram.menu', ${want})
+      on conflict (user_id, key) do update set value = excluded.value
+    `;
+  } catch (_) { /* a convenience */ }
+}
+
+async function machines(sql, update, userId) {
+  const list = await machinesOf(sql, userId);
+  if (!list.length) {
+    return say(update.chatId, 'No computer is attached to this account yet. In MouseFlow, Devices -> Add machines '
+      + 'gives a code and one line to run on each computer.');
+  }
+  const chosen = await machineOf(sql, userId);
+  const lines = list.map((m) => `${m.id === chosen ? '> ' : '- '}${m.said}: `
+    + `${m.paused ? 'paused' : m.online ? 'online' : 'offline'}${m.platform ? ` (${m.platform})` : ''}`
+    + (cannotSay(m.caps) ? ` - ${cannotSay(m.caps)}` : ''));
+  return sayKeyed(update.chatId, `${lines.join('\n')}\n\n`
+    + (chosen && list.some((m) => m.id === chosen)
+      ? 'Tasks from here go to the one marked >. /use any - to whichever is free.'
+      : 'Tasks from here go to whichever is free. /use NAME - to send them to one.'));
+}
+
+async function useMachine(sql, update, userId, asked) {
+  const want = String(asked || '').trim();
+  if (!want) return machines(sql, update, userId);
+  if (/^(any|all|free|-)$/i.test(want)) {
+    await sql`
+      insert into user_pref (user_id, key, value) values (${userId}, ${MACHINE_KEY}, '')
+      on conflict (user_id, key) do update set value = excluded.value
+    `;
+    return say(update.chatId, 'Tasks from here now go to whichever computer is free.');
+  }
+  const found = findMachine(await machinesOf(sql, userId), want);
+  if (found.why) return say(update.chatId, found.why);
+  await sql`
+    insert into user_pref (user_id, key, value) values (${userId}, ${MACHINE_KEY}, ${found.one.id})
+    on conflict (user_id, key) do update set value = excluded.value
+  `;
+  return say(update.chatId, `Tasks from here now go to ${found.one.said}`
+    + `${found.one.paused ? ' - it is paused from the account, so they will wait' : found.one.online ? '' : ' - it is offline right now, so they will wait for it'}.`);
 }
 
 /** Объявлял ли агент этого аккаунта свой браузер за последние десять минут. */
@@ -369,6 +725,8 @@ async function decide(sql, update, userId) {
    * ИДЁТ, а всё ниже - к плану, который ещё не начинался. */
   const hold = holdAnswerOf(update.data);
   if (hold) return answerHold(sql, update, userId, hold);
+  /* Кнопки карточек машин (mc:...). */
+  if (String(update.data || '').startsWith('mc:')) return machineAction(sql, update, userId, update.data);
 
   const said = verdictOf(update.data);
   if (!said) return;
@@ -415,11 +773,14 @@ async function decide(sql, update, userId) {
   /* ГДЕ - выбранное командой /where: во вкладке своего браузера агента (одна вкладка на чат) или на экране.
    * Замирает в аргументах работы, как режим: переключённое посреди прогона не должно менять, где он идёт. */
   const where = await whereOf(sql, userId);
+  /* НА ВЫБРАННОЙ /use МАШИНЕ (H5), или на любой свободной. Отозванную машину queueOne отвергнет словами. */
+  const device = (await takeOnce(sql, userId)) || await machineOf(sql, userId);
   const put = await queueOne(sql, userId, {
     flowId: DESKTOP_GOAL,
     toolName: 'mouseflow_do',
     args: { goal: draft.goal, telegram: { chatId: draft.chat_id }, ...(gate ? { gate } : {}),
       ...(where === 'browser' ? { surface: 'browser', tab: TELEGRAM_TAB } : {}) },
+    device,
   });
   if (put.why) return say(update.chatId, put.why);
 
@@ -438,6 +799,18 @@ async function decide(sql, update, userId) {
 async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST' });
 
+  /* МИНИ-ПРИЛОЖЕНИЕ - до секрета вебхука: его запросы идут со страницы, а не от телеграма, и удостоверение
+   * у них своё - подписанный initData (см. miniApp выше). */
+  if (req.query && req.query.app) {
+    if (!process.env.DATABASE_URL) return res.status(503).json({ ok: false, why: 'no database' });
+    try {
+      return await miniApp(req, res, neon(process.env.DATABASE_URL));
+    } catch (err) {
+      await report(err, req, { route: 'telegram-app' });
+      return res.status(500).json({ ok: false, why: err.message });
+    }
+  }
+
   /* СЕКРЕТ ПЕРЕД ВСЕМ ОСТАЛЬНЫМ, включая чтение тела: адрес функции узнать легко, и это единственное, что
    * отличает телеграм от того, кто его узнал. Отсутствие секрета в окружении - тоже отказ: маршрут,
    * который «пока без проверки», это открытая дверь к чужой мыши. */
@@ -449,6 +822,9 @@ async function handler(req, res) {
   if (!process.env.DATABASE_URL) return res.status(503).json({ error: 'no database' });
 
   const sql = neon(process.env.DATABASE_URL);
+  /* Меню команд, облик бота и кнопка мини-приложения - до разбора: обновляются с первым же сообщением после
+   * деплоя. */
+  await ensureCommands(sql, String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim());
   const update = updateOf(req.body);
   if (update.kind === 'ignored') return ok(res, update.why);
 
@@ -476,7 +852,7 @@ async function handler(req, res) {
     if (route.act === 'refuse') { await say(update.chatId, route.say); return ok(res, 'refused'); }
     if (route.act === 'greet') { await greet(sql, update); return ok(res, 'greeted'); }
     if (route.act === 'pair') { await pair(sql, update, route.token); return ok(res, 'pairing'); }
-    if (route.act === 'help') { await say(update.chatId, SAY.help); return ok(res, 'help'); }
+    if (route.act === 'help') { await sayKeyed(update.chatId, SAY.help); return ok(res, 'help'); }
 
     /* Отсюда и ниже всё требует аккаунта, и routeOf уже это обеспечил - но проверка стоит здесь ещё раз,
      * потому что именно тут начинаются последствия. Пропуск в этой ветке стоит чужого прогона. */
@@ -485,12 +861,15 @@ async function handler(req, res) {
     /* Последнее, что видели от этого отправителя, - для будущего разговора о частоте и для отзыва. */
     sql`update chat_sender set seen_at = now() where channel = ${CHANNEL} and sender_id = ${update.senderId}`
       .catch(() => {});
+    await ensureChatMenu(sql, userId, update.chatId, String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim());
 
     if (route.act === 'status') { await status(sql, update, userId); return ok(res, 'status'); }
     if (route.act === 'stop') { await stop(sql, update, userId); return ok(res, 'stopped'); }
     if (route.act === 'mode') { await mode(sql, update, userId, route.mode); return ok(res, 'mode'); }
     if (route.act === 'feed') { await feed(sql, update, userId, route.on); return ok(res, 'feed'); }
     if (route.act === 'where') { await where(sql, update, userId, route.where); return ok(res, 'where'); }
+    if (route.act === 'machines') { await machineList(sql, update, userId); return ok(res, 'machines'); }
+    if (route.act === 'use') { await useMachine(sql, update, userId, route.machine); return ok(res, 'use'); }
     if (route.act === 'decide') { await decide(sql, update, userId); return ok(res, 'decided'); }
     if (route.act === 'goal') { await offer(sql, update, userId); return ok(res, 'offered'); }
     if (route.act === 'amend') { await amend(sql, update, userId, route.draftId); return ok(res, 'amended'); }

@@ -19,7 +19,7 @@ import { FAILS_BEFORE_PAUSE, decide, ruleOf, whenSaid } from './_schedule.mjs';
 import { checksOf } from './_expect.mjs';
 import { ARTIFACT_KEEP_DAYS, artifactId, dropWhich, tooBig } from './_artifact.mjs';
 import { overSpend, spentWhy } from './_spend.mjs';
-import { BROWSER_GOAL, DESKTOP_GOAL, jobId, roomForOne, scheduleId } from './_queue.mjs';
+import { BROWSER_GOAL, CAPS_PREFIX, DESKTOP_GOAL, jobId, roomForOne, scheduleId } from './_queue.mjs';
 import { RUN_KEY, caseGoal, caseIdOf, expectsOf, stripCase } from './_case.mjs';
 import { PAYLOAD_MAX_BYTES } from './_payload.mjs';
 /* Исход работы, пришедшей из чата, отвечает туда же. Обе формы - в api/_telegram-out.mjs, потому что
@@ -269,6 +269,35 @@ async function saveRecording(sql, who, macro, health) {
   };
 }
 
+/* КАК ЧАСТО СПРАШИВАТЬ В ТИШИНЕ (Hivelink H5). Десять машин, спрашивающих каждые три секунды, - это под
+ * триста тысяч вызовов функции в сутки на один аккаунт, и почти все - «работы нет». Поэтому ответ без
+ * работы говорит машине, когда спросить снова: три секунды, пока аккаунтом пользуются - приложение открыто
+ * (страница опрашивает живую ленту, см. ?live в api/mcp.js) или работу ставили либо закрывали в последние
+ * десять минут, - и пятнадцать, когда тихо. Пятнадцать - потолок задержки до старта работы, поставленной
+ * расписанием или чатом в тишине; поставленная со страницы всегда застаёт три. Агент старше H5 поля не
+ * знает и спрашивает каждые три, как раньше. */
+export const POLL_BUSY_S = 3;
+export const POLL_QUIET_S = 15;
+async function pollHint(sql, userId) {
+  try {
+    const [row] = await sql`
+      select
+        exists (
+          select 1 from run_queue
+          where user_id = ${userId}
+            and (created_at > now() - interval '10 minutes' or finished_at > now() - interval '10 minutes')
+        ) as recent,
+        exists (
+          select 1 from user_pref
+          where user_id = ${userId} and key = 'web.seen' and updated_at > now() - interval '2 minutes'
+        ) as watched
+    `;
+    return row && (row.recent || row.watched) ? POLL_BUSY_S : POLL_QUIET_S;
+  } catch (_) {
+    return POLL_BUSY_S;
+  }
+}
+
 export async function workerRoute(action, req, res, sql, who) {
   if (action === 'claim') {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST' });
@@ -312,6 +341,20 @@ export async function workerRoute(action, req, res, sql, who) {
           where id = ${me} and user_id = ${who.id}
         `;
       } catch (_) { /* 025 not applied yet */ }
+      /* МОЖЕТ ЛИ ОНА СДЕЛАТЬ ЦЕЛЬ - видит ли экран и может ли действовать (агент присылает с 2026-10-16). Без
+       * миграции: строка user_pref на машину, и строка ПИШЕТСЯ только когда факты изменились - опрос каждые
+       * три секунды не превращается в запись каждые три секунды. Агент постарше полей не шлёт, и тогда о
+       * нём сказано «не знаем», а не «не может». */
+      if (typeof (req.body && req.body.canSee) === 'boolean' || typeof (req.body && req.body.canAct) === 'boolean') {
+        const caps = JSON.stringify({ canSee: req.body.canSee === true, canAct: req.body.canAct === true,
+          /* Умеет ли перезагрузить и выключить машину по команде из аккаунта (#machine.*). */
+          power: req.body.power === true });
+        await sql`
+          insert into user_pref (user_id, key, value) values (${who.id}, ${CAPS_PREFIX + me}, ${caps})
+          on conflict (user_id, key) do update set value = excluded.value, updated_at = now()
+          where user_pref.value <> excluded.value
+        `.catch(() => {});
+      }
       /* ОДНА РАБОТА НА МАШИНУ И ЗДЕСЬ: машина, у которой уже есть взятая работа, вторую не получает - ни
        * от расписания, ни от соседней постановки. Через to_jsonb: до 025 колонки нет, и условие ложно. */
       const holding = await sql`
@@ -327,7 +370,7 @@ export async function workerRoute(action, req, res, sql, who) {
         where id = ${me} and user_id = ${who.id} and coalesce(to_jsonb(device_token) ->> 'paused', 'false') = 'true'
         limit 1
       `;
-      if (halted.length) return res.status(200).json({ ok: true, job: null });
+      if (halted.length) return res.status(200).json({ ok: true, job: null, next: POLL_QUIET_S });
     }
     /* WHAT THIS CLAIMER CAN ACTUALLY DO, which the queue did not ask until it had to.
      *
@@ -399,6 +442,10 @@ export async function workerRoute(action, req, res, sql, who) {
      * постарше про `surface` не знает и выполнил бы такую цель НАСТОЯЩЕЙ мышью по экрану - ровно то, от чего
      * свой браузер и спасает. Объявление на забирающем, как и `steps`: отсутствие - «не умею». */
     const claimerOwnBrowser = !!(req.body && req.body.ownBrowser === true);
+    /* ПЕРЕЗАГРУЗИТЬ И ВЫКЛЮЧИТЬ (#machine.restart, #machine.shutdown) - только тому, кто сказал, что умеет.
+     * Агент постарше ответил бы «does not understand», а работа такая всегда привязана к машине, так что
+     * висела бы до сорока пяти минут. Объявление на забирающем, как `steps` и `ownBrowser`. */
+    const claimerPower = !!(req.body && req.body.power === true);
     const wait = Math.min(CLAIM_WAIT_MAX_MS, Math.max(0, Number((req.body && req.body.wait) || 0) * 1000));
     const until = Date.now() + wait;
 
@@ -422,6 +469,7 @@ export async function workerRoute(action, req, res, sql, who) {
              * Взятая им, она возвращается словами «asked to do something it does not understand» -
              * наблюдалось на первом же прогоне из телеграма. */
             and (${claimerOwnBrowser} or q.flow_id <> ${DESKTOP_GOAL} or coalesce(q.args ->> 'surface', '') <> 'browser')
+            and (${claimerPower} or q.flow_id not like '#machine.%')
             and (
               ${goalCapable}
               or (
@@ -666,7 +714,7 @@ export async function workerRoute(action, req, res, sql, who) {
           },
         });
       }
-      if (Date.now() >= until) return res.status(200).json({ ok: true, job: null });
+      if (Date.now() >= until) return res.status(200).json({ ok: true, job: null, next: await pollHint(sql, who.id) });
       await new Promise((done) => setTimeout(done, CLAIM_POLL_MS));
     }
   }
@@ -1058,6 +1106,15 @@ export async function workerRoute(action, req, res, sql, who) {
   if (action === 'event') {
     if (req.method !== 'POST') return res.status(405).json({ error: 'POST' });
     const body = req.body || {};
+    /* ПЕРЕЗАГРУЗКА ИЛИ ВЫКЛЮЧЕНИЕ НЕ СЛУЧИЛИСЬ (2026-10-16). Агент отчитывается «перезагружаюсь» ДО того, как
+     * перезагрузиться - после уже не сможет, - и если система отказала, работа уже закрыта удачей. Тогда он
+     * говорит это событием, и оно уходит в ленту: молчание прочитали бы как «перезагрузилась». */
+    if (body.event === 'power-failed') {
+      const machine = String(body.machine || 'that computer').slice(0, 60);
+      await tellFeed(sql, who.id, feedLine({ event: 'failed', title: `${String(body.kind || 'restart').slice(0, 20)} on ${machine}`,
+        said: String(body.said || 'the system refused').slice(0, 300), source: 'the agent on that machine' }));
+      return res.status(200).json({ ok: true });
+    }
     if (body.event !== 'revived') return res.status(400).json({ error: 'unknown event' });
     const machine = String(body.machine || 'your Mac').slice(0, 60);
     const at = String(body.at || '').slice(0, 40);

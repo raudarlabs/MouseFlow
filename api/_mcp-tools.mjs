@@ -18,7 +18,9 @@ import { report } from './_report.js';
 import { help } from './_help.mjs';
 import { firstAt, readRule, ruleOf, ruleSaid, whenSaid } from './_schedule.mjs';
 import { checksOf } from './_expect.mjs';
-import { BROWSER_GOAL, DESKTOP_GOAL, WHERE, jobId, queueOne, scheduleId, workerSeen } from './_queue.mjs';
+import {
+  BROWSER_GOAL, DESKTOP_GOAL, WHERE, cannotSay, findMachine, jobId, machinesOf, queueOne, scheduleId, workerSeen,
+} from './_queue.mjs';
 import {
   CASE_KEY, EXPECT_KEY, REF_KEY, REF_MAX, VERDICTS, checkedReport, checksFor, expectLine, expectsOf, readExpects,
   refOf, runIdOf, tallyOf, verdictSaid,
@@ -75,6 +77,24 @@ export const STATUS_TOOL = {
     + 'of skills, whether a worker has been seen recently, and anything queued or running. Ask this first '
     + 'when a skill call says nothing picked it up.',
   inputSchema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+};
+
+/* МАШИНЫ АККАУНТА (Hivelink H5). Вопрос «на чём это запустить» задают до запуска, и без этого тула модель
+ * могла только ставить работу «на любую свободную» - то есть на ту, что спросит первой. */
+export const MACHINES_TOOL = {
+  name: 'mouseflow_machines',
+  description: 'The computers attached to this account, each by its name: whether it is online (asked for '
+    + 'work in the last 90 seconds), paused from the account, or offline, what it is running, and its '
+    + 'platform. Pass a name from here as `machine` to mouseflow_do (on: "desktop") or mouseflow_run to have '
+    + 'that computer do it; leave `machine` out and the first free one takes it.',
+  inputSchema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+};
+
+/** `machine` у тулов, которые ставят работу: как машину назвали в mouseflow_machines. */
+const MACHINE_ARG = {
+  type: 'string',
+  description: 'Which computer should do it - a name (or id) from mouseflow_machines. Leave it out for '
+    + 'whichever free machine asks first.',
 };
 
 export const STOP_TOOL = {
@@ -303,6 +323,7 @@ export const DO_TOOL = {
         description: 'The case\'s id in the system it came from - "TestRail C1234". Nothing here reads '
           + 'it: it is handed back with the verdict so the result can be written to the right case.',
       },
+      machine: { ...MACHINE_ARG, description: MACHINE_ARG.description + ' Desktop only (on: "desktop").' },
     },
     required: ['goal'],
     additionalProperties: false,
@@ -609,6 +630,7 @@ export const RUN_TOOL = {
           + 'skill that asks for nothing, and with `case`, which carries its own.',
         additionalProperties: true,
       },
+      machine: MACHINE_ARG,
     },
     required: [],
     additionalProperties: false,
@@ -1199,6 +1221,29 @@ export async function callTool(sql, who, params, req) {
     return say(lines.join('\n'));
   }
 
+  if (asked === MACHINES_TOOL.name) {
+    const list = await machinesOf(sql, who.id);
+    if (!list.length) {
+      return say('No computer is attached to this account. Attach one from the app: Devices -> Add machines '
+        + 'gives a code and a one-line install for each computer.');
+    }
+    const running = await sql`
+      select tool_name, args, to_jsonb(q) ->> 'claimed_device' as device, to_jsonb(q) ->> 'machine' as pinned, state
+      from run_queue q where user_id = ${who.id} and state in ('queued', 'claimed')
+    `;
+    const lines = list.map((m) => {
+      const job = running.find((j) => j.device === m.id || j.pinned === m.id);
+      const what = job ? `${job.state === 'queued' ? 'waiting' : 'running'}: ${(job.args && job.args.goal) || job.tool_name}` : null;
+      const cannot = cannotSay(m.caps);
+      const state = (m.paused ? 'paused from the account' : m.online ? 'online' : 'offline')
+        + (cannot ? `, but it ${cannot} - a goal sent to it fails at its first step` : '');
+      const kind = [m.platform, m.version].filter(Boolean).join(' ');
+      return `- ${m.said}${kind ? ` (${kind})` : ''} - ${state}${what ? ` - ${what}` : ''} [id ${m.id}]`;
+    });
+    return say(`${list.length} machine${list.length === 1 ? '' : 's'} on this account:\n${lines.join('\n')}\n`
+      + 'Only an online machine that is not paused picks up work now; the rest take it when they next ask.');
+  }
+
   if (asked === STOP_TOOL.name) {
     const killed = await sql`
       update run_queue set state = 'cancelled', finished_at = now(),
@@ -1259,10 +1304,19 @@ export async function callTool(sql, who, params, req) {
     /* РЕЖИМА ШЛЮЗА ЗДЕСЬ НЕТ НАРОЧНО, и запомненный «Ask first» на MCP не распространяется. Остановка
      * спрашивает человека - в панели или в телеграме, - а этот прогон заказал другой агент, и ждать ответа на
      * вопрос, которого человек не видит, прогон будет до таймаута. Прогон по MCP - автомат. */
+    /* МАШИНА (H5) - только на десктопе: браузерную цель берёт Chrome с расширением, а не агент машины. */
+    let device = null;
+    if (args && args.machine) {
+      if (on !== 'desktop') return say('`machine` picks a computer, so it goes with on: "desktop".', true);
+      const found = findMachine(await machinesOf(sql, who.id), args.machine);
+      if (found.why) return say(found.why, true);
+      device = found.one ? found.one.id : null;
+    }
     return queueAndWait(sql, who, {
       flowId: on === 'desktop' ? DESKTOP_GOAL : BROWSER_GOAL,
       toolName: asked,
       args: { goal, ...(expects ? { [EXPECT_KEY]: expects } : {}), ...(ref ? { [REF_KEY]: ref } : {}) },
+      device,
     });
   }
 
@@ -1278,6 +1332,13 @@ export async function callTool(sql, who, params, req) {
   /* КЕЙС ЗАПУСКАЕТСЯ ЭТИМ ЖЕ ТУЛОМ, тем же путём и с теми же отказами: «прогони это сейчас» - одна просьба,
    * и то, что в одном случае к цели дописываются проверки, не делает её другой. Значения параметров и
    * утверждения читает драйвер из строки кейса при старте; в работе едет только указатель. */
+  /* МАШИНА (H5) - для скилла и для кейса одинаково. */
+  let device = null;
+  if (args && args.machine) {
+    const found = findMachine(await machinesOf(sql, who.id), args.machine);
+    if (found.why) return say(found.why, true);
+    device = found.one ? found.one.id : null;
+  }
   const askedCase = String((args && args.case) || '').trim();
   if (askedCase) {
     const found = await sql`
@@ -1297,6 +1358,7 @@ export async function callTool(sql, who, params, req) {
       /* Имя работы - имя кейса: на Activity читают «Outlook still sends», а не имя тула. */
       toolName: `case:${found[0].name}`.slice(0, 80),
       args: { [CASE_KEY]: { id: found[0].id } },
+      device,
     });
   }
 
@@ -1338,7 +1400,7 @@ export async function callTool(sql, who, params, req) {
   /* The tool name on the row stays the SKILL's, not `mouseflow_run` - it is what "MouseFlow is already busy
    * on that machine (…)" names, and "busy on mouseflow_run" would tell nobody which errand is in progress. */
   return queueAndWait(sql, who, {
-    flowId: entry.flow.id, toolName: entry.structure.toolName, args: skillArgs,
+    flowId: entry.flow.id, toolName: entry.structure.toolName, args: skillArgs, device,
   });
 }
 
@@ -1383,10 +1445,10 @@ async function outcomeOf(sql, who, id, job) {
   return say(out.text, !run);
 }
 
-async function queueAndWait(sql, who, { flowId, toolName, args }) {
+async function queueAndWait(sql, who, { flowId, toolName, args, device = null }) {
   /* Обе проверки и оба отказа - в общей двери: страница тестов ставит работу тем же способом и обязана
    * отказывать теми же словами. Здесь остаётся только то, чего у страницы нет, - ожидание результата. */
-  const put = await queueOne(sql, who.id, { flowId, toolName, args });
+  const put = await queueOne(sql, who.id, { flowId, toolName, args, device });
   if (put.why) return say(put.why, true);
   const id = put.id;
 
@@ -1435,7 +1497,7 @@ async function queueAndWait(sql, who, { flowId, toolName, args }) {
 
 /** Инструменты первого продукта: машина действует. */
 const DO_ONLY = ['mouseflow_run', 'mouseflow_do', 'mouseflow_stop', 'mouseflow_run_status',
-  'mouseflow_case', 'mouseflow_cases', 'mouseflow_case_results'];
+  'mouseflow_case', 'mouseflow_cases', 'mouseflow_case_results', 'mouseflow_machines'];
 
 /** Инструменты второго: человек действует, машина смотрит и рассказывает. */
 const MAKE_ONLY = ['mouseflow_recordings', 'mouseflow_transcript', 'mouseflow_activity',
@@ -1473,7 +1535,7 @@ export const toolsFor = (profile) => {
     SCHEDULE_TOOL, SCHEDULES_TOOL, UNSCHEDULE_TOOL,
     ...CASE_TOOLS,
     START_TOOL, STOP_RECORDING_TOOL,
-    STATUS_TOOL, STOP_TOOL, RUN_STATUS_TOOL, RUN_TOOL, DO_TOOL,
+    STATUS_TOOL, MACHINES_TOOL, STOP_TOOL, RUN_STATUS_TOOL, RUN_TOOL, DO_TOOL,
   ].filter((tool) => allowed.has(tool.name));
 };
 

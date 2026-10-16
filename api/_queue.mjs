@@ -52,6 +52,11 @@ export const BROWSER_GOAL = '#goal.browser';
  * и положить его в любую из них значило бы, что вторая начнёт импортировать первую. */
 export const DESKTOP_GOAL = '#goal.desktop';
 
+/* ПЕРЕЗАГРУЗИТЬ И ВЫКЛЮЧИТЬ МАШИНУ - команды из того же словаря (2026-10-16). Всегда привязаны к одной
+ * машине, и берёт их только агент, объявивший `power` (см. claim). */
+export const MACHINE_RESTART = '#machine.restart';
+export const MACHINE_SHUTDOWN = '#machine.shutdown';
+
 /** Whether a machine has asked for work lately, and when. */
 export async function workerSeen(sql, userId) {
   try {
@@ -79,6 +84,22 @@ export const AGENT_LABEL = 'This computer';
  * он есть на любом развёртывании и пишется на каждом запросе с токеном - для «жив ли» этого достаточно. */
 export const DEVICE_ONLINE_MS = 90_000;
 
+/* Что машина может: `{ canSee, canAct }` под `device.caps.<id>` в user_pref - пишет claim, читают список машин,
+ * MCP и мессенджер. Нет строки - агент старше и не сказал, а не «не может». */
+export const CAPS_PREFIX = 'device.caps.';
+export const capsOf = (raw) => {
+  try {
+    const v = JSON.parse(String(raw || ''));
+    return { canSee: v.canSee === true, canAct: v.canAct === true, power: v.power === true };
+  } catch (_) {
+    return null;
+  }
+};
+/** Почему машина, которая на связи, всё равно не сделает цель - словами, или null. */
+export const cannotSay = (caps) => (!caps ? null
+  : !caps.canSee ? 'cannot see the screen (Screen Recording is not allowed for the agent)'
+    : !caps.canAct ? 'cannot act (Accessibility is not allowed, or it is record-only)' : null);
+
 /** Сколько машин аккаунта сейчас на связи. 0 - ни одной, и это тоже ответ. */
 export async function onlineAgents(sql, userId) {
   try {
@@ -104,6 +125,54 @@ export async function deviceOf(sql, userId, deviceId) {
     from device_token where id = ${String(deviceId)} and user_id = ${userId} and revoked_at is null limit 1
   `;
   return rows.length ? rows[0] : null;
+}
+
+/* МАШИНЫ АККАУНТА СПИСКОМ - для дверей, у которых нет экрана Devices: MCP и мессенджера (Hivelink H5).
+ * Старшие первыми, как на Devices: машина без имени зовётся «This computer #N», и N не должен меняться,
+ * когда привязывают новую. */
+export async function machinesOf(sql, userId) {
+  const rows = await sql`
+    select id, created_at, last_used_at,
+           to_jsonb(device_token) ->> 'name' as name, to_jsonb(device_token) ->> 'hostname' as hostname,
+           to_jsonb(device_token) ->> 'platform' as platform, to_jsonb(device_token) ->> 'agent_version' as version,
+           coalesce(to_jsonb(device_token) ->> 'paused', 'false') = 'true' as paused,
+           (select p.value from user_pref p where p.user_id = device_token.user_id and p.key = ${CAPS_PREFIX} || device_token.id) as caps
+    from device_token
+    where user_id = ${userId} and revoked_at is null and label = ${AGENT_LABEL}
+    order by created_at limit 50
+  `;
+  const now = Date.now();
+  return rows.map((r, i) => ({
+    id: String(r.id),
+    said: r.name || r.hostname || `${AGENT_LABEL} #${i + 1}`,
+    name: r.name || null,
+    hostname: r.hostname || null,
+    platform: r.platform || null,
+    version: r.version || null,
+    paused: !!r.paused,
+    online: !!r.last_used_at && now - new Date(r.last_used_at).getTime() < DEVICE_ONLINE_MS,
+    lastUsedAt: r.last_used_at || null,
+    caps: capsOf(r.caps),
+  }));
+}
+
+/* МАШИНА ПО ТОМУ, КАК ЕЁ НАЗВАЛИ. id - точно; имя, имя компьютера или «This computer #N» - без регистра, и
+ * только когда подходит ровно одна: две машины с похожим именем - это выбор, который нельзя сделать за
+ * человека, и запуск не на той машине хуже отказа. Отказ перечисляет, что есть. */
+export function findMachine(list, asked) {
+  const want = String(asked || '').trim();
+  if (!want) return { one: null };
+  const exact = list.find((m) => m.id === want);
+  if (exact) return { one: exact };
+  const low = want.toLowerCase();
+  const hits = list.filter((m) => [m.said, m.name, m.hostname].some((v) => v && v.toLowerCase() === low));
+  if (hits.length === 1) return { one: hits[0] };
+  const names = list.map((m) => `"${m.said}"`).join(', ') || 'none';
+  return {
+    why: hits.length > 1
+      ? `${hits.length} machines answer to "${want}". Use one of these ids instead: ${hits.map((m) => m.id).join(', ')}.`
+      : `There is no machine called "${want}" on this account. The machines are: ${names}.`,
+  };
 }
 
 /** Как назвать машину в словах отказа: её имя, имя компьютера или, если не знаем ничего, «that machine». */

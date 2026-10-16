@@ -5093,15 +5093,40 @@ enum Enroll {
         return pick.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
     }
 
+    /// Жив ли токен: только явный 401 значит «нет». Спрашивается то, на что токен устройства всегда получает
+    /// 403 («только браузер»), а мёртвый - 401.
+    static func tokenAlive(_ link: Account.Link) -> Bool {
+        guard let url = URL(string: link.base + "/api/sync?tokens=1") else { return true }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer " + link.token, forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 15
+        let done = DispatchSemaphore(value: 0)
+        var status = 0
+        URLSession.shared.dataTask(with: req) { _, response, _ in
+            status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 20)
+        return status != 401
+    }
+
     @discardableResult
     static func run(code: String, name: String, base asked: String) -> Bool {
         if Bundle.main.bundleIdentifier == nil && !attachLoose {
             log("--enroll ignored: a loose binary, not the installed app (pass --account to attach it anyway)")
             return false
         }
-        if Account.link != nil {
-            log("already attached to an account - the enrolment code was not spent")
-            return true
+        /* УЖЕ ПОДКЛЮЧЕНА - ЕСЛИ ТОКЕН ЖИВ. Найдено на живом аккаунте 2026-10-16: токен этой машины отозвали,
+         * агент получил 401 и выключил приём работы, а account.json остался - и код подключения отвечал бы
+         * «already attached», ничего не сделав. Поэтому сначала спрашивается сервер: 401 - токен мёртв, код
+         * тратится и заменяет его; любой другой ответ, включая «нет сети», - токен считается живым, и код
+         * не тратится зря. */
+        if let link = Account.link {
+            if tokenAlive(link) {
+                log("already attached to an account - the enrolment code was not spent")
+                return true
+            }
+            log("the token this Mac had was refused by its account - attaching again with the code")
         }
         let base = baseFor(asked)
         guard let url = URL(string: base + "/api/sync?redeem=1") else {
@@ -5162,6 +5187,10 @@ enum Courier {
      * up, once per run. */
     private static let claimWaitSeconds = 0
     private static let idleSleepSeconds: UInt32 = 3
+    /* СКОЛЬКО ЖДАТЬ В ТИШИНЕ - говорит аккаунт (Hivelink H5): `next` в ответе без работы. Три секунды, пока
+     * аккаунтом пользуются (открыто приложение, недавно ставили работу), и дольше, когда тихо, - так десять
+     * машин не стучат в развёртывание двадцать раз в минуту каждая ради ничего. Нет поля - три, как было. */
+    private static var idleNext: UInt32 = 3
     private static var backoff: UInt32 = 2
 
     enum Claimed {
@@ -5245,7 +5274,7 @@ enum Courier {
             case .idle:
                 backoff = 2
                 // Nothing to do. The sleep is the whole saving - see the note on claimWaitSeconds.
-                sleep(idleSleepSeconds)
+                sleep(idleNext)
             case .job(let job):
                 backoff = 2
                 /* A goal is not carried, it is driven: the deployment decides one action at a time and this
@@ -5256,6 +5285,11 @@ enum Courier {
                 } else {
                     let done = carry(job)
                     report(link, id: job.id, done: done)
+                    /* ПЕРЕЗАГРУЗКА - ПОСЛЕ ОТЧЁТА: после неё отчитаться будет некому. */
+                    if let kind = powerPending {
+                        powerPending = nil
+                        power(link, kind: kind)
+                    }
                 }
             }
         }
@@ -5305,6 +5339,13 @@ enum Courier {
                                   /* Что это за машина - для списка машин в аккаунте (H3). */
                                   "platform": "macos",
                                   "version": VERSION,
+                                  /* И МОЖЕТ ЛИ ОНА СДЕЛАТЬ ЦЕЛЬ: видит ли экран и может ли действовать - те же два
+                                   * факта, что /health, чтобы Devices не называл «online» машину без Screen
+                                   * Recording, на которой любая цель падает на первом шаге (найдено 2026-10-16). */
+                                  "canSee": Permission.screenRecording,
+                                  "canAct": Permission.accessibility && !recordOnly,
+                                  /* Перезагрузить и выключить по команде из аккаунта - умеет с 2026-10-16. */
+                                  "power": !recordOnly,
                                   "wait": claimWaitSeconds]
         guard let body = try? JSONSerialization.data(withJSONObject: ask),
               let (status, data) = request(url, token: link.token, body: body) else {
@@ -5324,6 +5365,12 @@ enum Courier {
         if status == 200 && parsed == nil { return .cut }
         guard status == 200, let raw = parsed as? [String: Any] else {
             return .failed("HTTP \(status)")
+        }
+        /* Подсказка аккаунта о следующем вопросе - в пределах 1-30 с; без неё или с мусором - три. */
+        if let next = raw["next"] as? Int, next >= 1 {
+            idleNext = UInt32(min(30, next))
+        } else {
+            idleNext = idleSleepSeconds
         }
         guard let job = raw["job"] as? [String: Any], let id = job["id"] as? String else { return .idle }
         let args = (job["args"] as? [String: Any]) ?? [:]
@@ -5666,7 +5713,55 @@ enum Courier {
         var body: String?
     }
 
+    /* ПЕРЕЗАГРУЗИТЬ ИЛИ ВЫКЛЮЧИТЬ (2026-10-16). Команда из аккаунта - отчёт «перезагружаюсь» уходит первым,
+     * потом через две секунды окну входа отправляется то же событие, что шлёт пункт меню Apple: 'rest' -
+     * перезапуск, 'shut' - выключение (QA1134). Без sudo и без диалога; программа с несохранённой работой
+     * может его остановить, и тогда агент говорит об этом событием power-failed - работа к тому времени уже
+     * закрыта как начатая. */
+    private static var powerPending: String?
+
+    private static func power(_ link: Account.Link, kind: String) {
+        sleep(2)
+        let code = kind == "shutdown" ? "shut" : "rest"
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        task.arguments = ["-e", "tell application \"loginwindow\" to «event aevt\(code)»"]
+        let errors = Pipe()
+        task.standardError = errors
+        var said = ""
+        do {
+            try task.run()
+            task.waitUntilExit()
+            if task.terminationStatus != 0 {
+                said = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "osascript failed"
+            }
+        } catch {
+            said = "could not run osascript: \(error.localizedDescription)"
+        }
+        if said.isEmpty { log("\(kind) requested from the account"); return }
+        log("\(kind) did not happen: \(said)")
+        guard let url = URL(string: link.base + "/api/mcp?worker=event") else { return }
+        let ask: [String: Any] = ["event": "power-failed", "kind": kind,
+                                  "machine": Host.current().localizedName ?? "this Mac", "said": said]
+        if let body = try? JSONSerialization.data(withJSONObject: ask) {
+            _ = request(url, token: link.token, body: body)
+        }
+    }
+
     private static func carry(_ job: Job) -> Done {
+        if job.command == "#machine.restart" || job.command == "#machine.shutdown" {
+            if recordOnly {
+                return Done(ok: false, said: "This agent is record-only, so it does not restart or shut down the Mac.",
+                            body: nil)
+            }
+            let kind = job.command == "#machine.shutdown" ? "shutdown" : "restart"
+            powerPending = kind
+            return Done(ok: true, said: kind == "shutdown"
+                ? "Shutting down in a moment. It cannot be started again from the account - somebody has to press the power button."
+                : "Restarting in a moment. The agent starts again at login; if the Mac asks for a password at startup (FileVault), it waits there.",
+                body: nil)
+        }
         if job.command == "#record.start" {
             if eventTap == nil {
                 return Done(ok: false, said: "This Mac has no input hook, so nothing would be captured - "
@@ -5989,7 +6084,7 @@ enum PermissionWatch {
     private static func launchdManaged() -> Bool { Autostart.launchdView().ownsThisProcess }
 
     /* What the settings say now, from a process young enough to know. nil when the probe could not run. */
-    private static func probe() -> (accessibility: Bool, screenRecording: Bool)? {
+    static func probe() -> (accessibility: Bool, screenRecording: Bool)? {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: Autostart.binary)
         task.arguments = ["--probe"]
@@ -8244,6 +8339,194 @@ enum Hotkey {
     }
 }
 
+/* ОКНО НАСТРОЙКИ РАЗРЕШЕНИЙ - два шага по очереди (владелец, 2026-10-16: «один скрин с двумя разрешениями,
+ * чтобы юзер клацал и давал одно, а потом запись экрана - как у Обсидиана»).
+ *
+ * ПОЧЕМУ ОНО ПОНАДОБИЛОСЬ. Агент просил Screen Recording через CGRequestScreenCaptureAccess, а macOS
+ * показывает этот вопрос приложению ОДИН РАЗ. Сборка без Developer ID меняет подпись при каждой пересборке, и
+ * запись в TCC остаётся от прежнего бинарника: в настройках переключатель есть (или его нет), а новый
+ * процесс разрешения не получает и спросить второй раз не может. Человек видел «агент не видит экран» и ни
+ * одного вопроса.
+ *
+ * ПОЭТОМУ «Allow» У ЭКРАНА СНАЧАЛА СБРАСЫВАЕТ свою запись (`tccutil reset ScreenCapture <bundle>` - только
+ * для этого приложения и только пока разрешения нет, терять нечего), и тогда системный вопрос появляется
+ * снова; рядом - «Open Settings» на нужный раздел, если macOS всё-таки промолчит. Второй шаг доступен после
+ * первого: по одному вопросу за раз, как просили. Состояние экрана читается дочерним процессом (--probe):
+ * в работающем процессе ответ о записи экрана не обновляется никогда, это измерено (см. PermissionWatch).
+ * Когда оба выданы, PermissionWatch перезапускает агента сам - нажимать ничего не нужно. */
+final class SetupWindow: NSObject, NSWindowDelegate {
+    static let shared = SetupWindow()
+    private var window: NSWindow?
+    private var timer: Timer?
+    private var axState = NSTextField(labelWithString: "")
+    private var srState = NSTextField(labelWithString: "")
+    private var axButton = NSButton(title: "Allow…", target: nil, action: nil)
+    private var srButton = NSButton(title: "Allow…", target: nil, action: nil)
+    private var footer = NSTextField(wrappingLabelWithString: "")
+
+    static var needed: Bool { !(Permission.accessibility && Permission.screenRecording) }
+
+    private func row(_ number: String, _ title: String, _ detail: String, state: NSTextField, button: NSButton,
+                     settings: Selector) -> NSView {
+        let badge = NSTextField(labelWithString: number)
+        badge.font = .boldSystemFont(ofSize: 15)
+        let name = NSTextField(labelWithString: title)
+        name.font = .boldSystemFont(ofSize: 13)
+        let words = NSTextField(wrappingLabelWithString: detail)
+        words.font = .systemFont(ofSize: 11)
+        words.textColor = .secondaryLabelColor
+        words.preferredMaxLayoutWidth = 250
+        state.font = .systemFont(ofSize: 11)
+        let open = NSButton(title: "Open Settings", target: self, action: settings)
+        open.bezelStyle = .inline
+        open.controlSize = .small
+        button.bezelStyle = .rounded
+        button.target = self
+        let text = NSStackView(views: [name, words, state])
+        text.orientation = .vertical
+        text.alignment = .leading
+        text.spacing = 3
+        let buttons = NSStackView(views: [button, open])
+        buttons.orientation = .vertical
+        buttons.alignment = .trailing
+        buttons.spacing = 4
+        let line = NSStackView(views: [badge, text, buttons])
+        line.orientation = .horizontal
+        line.alignment = .top
+        line.spacing = 12
+        return line
+    }
+
+    func show() {
+        DispatchQueue.main.async { [self] in
+            if let shown = window {
+                NSApp.activate(ignoringOtherApps: true)
+                shown.makeKeyAndOrderFront(nil)
+                return
+            }
+            axButton.action = #selector(allowAccessibility)
+            srButton.action = #selector(allowScreen)
+            let head = NSTextField(labelWithString: "MouseFlow Agent needs two permissions")
+            head.font = .boldSystemFont(ofSize: 16)
+            let lead = NSTextField(wrappingLabelWithString:
+                "One at a time: press Allow, switch MouseFlow Agent on in the window macOS shows, then come back for the next.")
+            lead.font = .systemFont(ofSize: 12)
+            lead.textColor = .secondaryLabelColor
+            lead.preferredMaxLayoutWidth = 400
+            footer.font = .systemFont(ofSize: 11)
+            footer.textColor = .secondaryLabelColor
+            footer.preferredMaxLayoutWidth = 400
+            let stack = NSStackView(views: [
+                head, lead,
+                row("1", "Accessibility", "To click, type, and read the names of buttons in other apps.",
+                    state: axState, button: axButton, settings: #selector(openAccessibility)),
+                row("2", "Screen Recording", "To see the screen, so a task can be carried out from what is on it.",
+                    state: srState, button: srButton, settings: #selector(openScreen)),
+                footer,
+            ])
+            stack.orientation = .vertical
+            stack.alignment = .leading
+            stack.spacing = 14
+            stack.edgeInsets = NSEdgeInsets(top: 20, left: 22, bottom: 20, right: 22)
+            let made = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 330),
+                                styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            made.title = "Set Up MouseFlow Agent"
+            made.contentView = stack
+            made.isReleasedWhenClosed = false
+            made.delegate = self
+            made.center()
+            window = made
+            refresh(Permission.accessibility, Permission.screenRecording)
+            NSApp.activate(ignoringOtherApps: true)
+            made.makeKeyAndOrderFront(nil)
+            timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.poll() }
+        }
+    }
+
+    /* Свежий ответ - от дочернего процесса, в фоне; рисуется на главном. */
+    private func poll() {
+        DispatchQueue.global().async {
+            let now = PermissionWatch.probe()
+            let ax = now?.accessibility ?? Permission.accessibility
+            let sr = now?.screenRecording ?? Permission.screenRecording
+            DispatchQueue.main.async { self.refresh(ax, sr) }
+        }
+    }
+
+    private func refresh(_ ax: Bool, _ sr: Bool) {
+        axState.stringValue = ax ? "✓ Allowed" : "Not allowed yet"
+        axState.textColor = ax ? .systemGreen : .secondaryLabelColor
+        axButton.isEnabled = !ax
+        srState.stringValue = sr ? "✓ Allowed" : (ax ? "Not allowed yet" : "After step 1")
+        srState.textColor = sr ? .systemGreen : .secondaryLabelColor
+        srButton.isEnabled = ax && !sr
+        footer.stringValue = ax && sr
+            ? "All set. The agent restarts itself in a few seconds to use them - nothing to press."
+            : "If MouseFlow Agent is already in the list and switched on but this still says Not allowed, switch it off and on again - the entry may belong to an older build."
+        if ax && sr {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in self?.window?.close() }
+        }
+    }
+
+    @objc private func allowAccessibility() {
+        Permission.askForAccessibility()
+        openAccessibility()
+    }
+
+    @objc private func allowScreen() {
+        /* Своя запись - и только своя, и только пока разрешения нет. */
+        if let bundle = Bundle.main.bundleIdentifier, !Permission.screenRecording {
+            let reset = Process()
+            reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            reset.arguments = ["reset", "ScreenCapture", bundle]
+            reset.standardOutput = Pipe()
+            reset.standardError = Pipe()
+            try? reset.run()
+            reset.waitUntilExit()
+        }
+        if #available(macOS 10.15, *) { _ = CGRequestScreenCaptureAccess() }
+        /* НА macOS 15 И НОВЕЕ CGRequestScreenCaptureAccess У ФОНОВОГО ПРИЛОЖЕНИЯ ЧАСТО МОЛЧИТ - увидено на
+         * macOS 26 у владельца 2026-10-16: кнопка нажималась, и не происходило ничего. Системный вопрос надёжно
+         * вызывает попытка спросить ScreenCaptureKit о содержимом экрана - она же и вносит приложение в
+         * список «Screen & System Audio Recording». */
+        if #available(macOS 12.3, *) {
+            SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { _, _ in }
+        }
+        /* И ЕСЛИ macOS ВСЁ РАВНО ПРОМОЛЧАЛА - через две секунды открыть нужный раздел и показать приложение в
+         * Finder: в списке его включают, а если его там нет, «+» и выбрать его (или перетащить из Finder).
+         * Окно, после нажатия на которое не происходит ничего, человек читает как поломку. */
+        /* Проба - дочерний процесс до пяти секунд, поэтому в фоне: окно не должно замирать. */
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard PermissionWatch.probe()?.screenRecording != true else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.openScreen()
+                NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
+                self.footer.stringValue = "In System Settings, switch on MouseFlow Agent under Screen & System Audio "
+                    + "Recording. If it is not in the list, press + and choose it - Finder is showing where it is."
+            }
+        }
+    }
+
+    @objc private func openAccessibility() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc private func openScreen() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        timer?.invalidate()
+        timer = nil
+        window = nil
+    }
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 
@@ -8283,6 +8566,7 @@ final class MenuActions: NSObject, NSMenuDelegate {
             ? "It asks your account for work — nothing reaches in"
             : "Off. Nothing leaves this Mac."
         takingSeparator?.isHidden = link == nil
+        setupItem?.isHidden = !SetupWindow.needed
     }
 
     /* Taking work from the account, switched here because here is where it is visible.
@@ -8300,6 +8584,8 @@ final class MenuActions: NSObject, NSMenuDelegate {
      * Off the main thread: endFromAgent waits up to 1.5s for the resolver - which is still naming the very
      * clicks that operated this menu - and the menu bar must not freeze for it. The flag drops in the first
      * microseconds either way. */
+    @objc func openSetup() { SetupWindow.shared.show() }
+
     @objc func stopAndSave() {
         DispatchQueue.global().async { Recorder.shared.endFromAgent() }
     }
@@ -8423,6 +8709,13 @@ let note = NSMenuItem(title: "Records only between Start and Stop", action: nil,
 note.isEnabled = false
 menu.addItem(note)
 menu.addItem(.separator())
+/* Разрешения - первым пунктом, пока их не хватает: без них остальное меню обещает то, чего агент не сделает. */
+var setupItem: NSMenuItem?
+let setup = NSMenuItem(title: "Set Up Permissions…", action: #selector(MenuActions.openSetup), keyEquivalent: "")
+setup.target = menuActions
+setup.isHidden = !SetupWindow.needed
+menu.addItem(setup)
+setupItem = setup
 /* Visible only while recording - see menuNeedsUpdate. */
 var stopSaveItem: NSMenuItem?
 var stopSaveSeparator: NSMenuItem?
@@ -8561,5 +8854,8 @@ NotificationCenter.default.addObserver(
  * ничего не делает и молчит - привязка появляется позже, и панель прогреется, когда её позовут. */
 Hotkey.resume()
 Panel.shared.warm()
+/* Разрешений не хватает - окно настройки сразу. Только у установленного приложения: свободная сборка
+ * разработчика или тест не должны открывать окна. */
+if SetupWindow.needed && Bundle.main.bundleIdentifier != nil { SetupWindow.shared.show() }
 
 app.run()

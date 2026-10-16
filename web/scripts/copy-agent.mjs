@@ -19,6 +19,7 @@ const files = [
   'mouseflow-agent.ps1',   // Windows: fetched and run in memory by the one-liner
   'mouseflow-agent.swift', // macOS: fetched and compiled on the machine by the installer
   'install-mac.sh',        // macOS: the installer itself
+  'install-windows.ps1',   // Windows: keeps the agent on disk, starts it at logon, refreshes it (Hivelink H4)
 ];
 
 /* ГОТОВЫЕ ПРИЛОЖЕНИЯ ДЛЯ MAC - только нотаризованные. agent/package-mac.sh пишет agent/dist/notarized.txt

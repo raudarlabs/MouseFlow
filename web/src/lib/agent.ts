@@ -843,11 +843,16 @@ export function macEnrollCommand(code: string, name: string): string {
   return `curl -fsSL ${origin}/agent/install-mac.sh | bash -s -- --origin ${origin} --enroll ${code}`
     + (named ? ` --name "${named}"` : '');
 }
-export function windowsEnrollCommand(code: string, name: string): string {
+/* WINDOWS - ЧЕРЕЗ УСТАНОВЩИК (Hivelink H4), а не одной строкой в память: агент на диске, стартует при входе
+ * и обновляется с развёртывания перед каждым стартом. Одной строкой машина выпадала из аккаунта при первой
+ * же перезагрузке, а для парка машин это не крайний случай, а вторник. */
+export function windowsInstallCommand(): string {
   const origin = location.origin;
+  return `& ([scriptblock]::Create((irm ${origin}/agent/install-windows.ps1))) -Origin ${origin}`;
+}
+export function windowsEnrollCommand(code: string, name: string): string {
   const named = shellName(name);
-  return `& ([scriptblock]::Create((irm ${origin}/agent/mouseflow-agent.ps1))) -AllowOrigin ${origin} -Enroll ${code}`
-    + (named ? ` -Name "${named}"` : '');
+  return `${windowsInstallCommand()} -Enroll ${code}` + (named ? ` -Name "${named}"` : '');
 }
 
 /* The label the installer registers with launchd. Stopping and starting go through it rather than through

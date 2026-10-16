@@ -135,6 +135,20 @@ account. A claim with no wait answers in about four tenths of a second; with thr
 is nearer 7. The endpoint still honours a requested wait, capped at 6 seconds, so an agent built before this
 gets a clean answer instead of a cut one.
 
+**How long to sleep is the account's to say (Hivelink H5).** A claim with no job answers `next`: seconds
+until the next ask, 3 while the account is in use (the app is open, or work was queued or closed in the
+last ten minutes) and 15 when it is quiet. An agent clamps it to 1-30 and uses 3 when it is absent — so an
+agent older than this asks every three seconds, as it always did. Ten machines asking every three seconds
+is close to 300,000 function calls a day for one account, nearly all of them answered "nothing".
+
+**`#machine.restart` and `#machine.shutdown` (2026-10-16).** Always pinned to one machine and handed only to
+a claimer that sends `power: true` (record-only agents send false and refuse it in words). The agent
+**reports first** — "restarting in a moment" — because afterwards there is nobody to report, then acts:
+macOS sends loginwindow the same event the Apple menu does (`'rest'` / `'shut'`, QA1134, no sudo, no
+dialog), Windows runs `shutdown.exe /r|/s /t 10 /c "Hivelink: …"`. If the system refuses (an app with
+unsaved work can stop it), the agent sends `?worker=event` `{ event: "power-failed", kind, machine, said }`,
+which goes to the feed.
+
 Three rules that are part of the contract rather than of one implementation:
 
 - **Off until somebody switches it on**, and visible while it is on. Everything else an agent does happens
@@ -154,14 +168,19 @@ with `{code, name, hostname, platform, version}` and no credential: the code is 
 token is written exactly as `POST /account` writes it, with taking **on** — a machine attached from the
 account was attached to be given work; the menu-bar / tray switch is still the stronger one. Rules:
 
-- **An attached machine does not spend a code.** Re-running an installer must not put a second copy of the
-  same machine in the account.
+- **An attached machine does not spend a code — if its token still works.** Re-running an installer must
+  not put a second copy of the same machine in the account. But a revoked token stays in `account.json`, so
+  the agent first asks `GET {base}/api/sync?tokens=1` with it: a device token always gets 403 there, a dead
+  one 401. Only 401 spends the code and replaces the token; no answer at all keeps the old one (found on a
+  live account 2026-10-16: the Mac's token had been revoked and the code would have done nothing).
 - **Before the socket.** `--enroll-only` trades and exits without listening, because the port may already
   be held by the agent this machine is running.
 - **The refusal is one sentence for every reason** — unknown, expired, used up — so a guesser learns nothing.
 - `base` is `--base`, else the pinned origin, else the product's address.
 - From H3 the claim also carries `platform` and `version`, so the account's list of machines can say what
-  each one runs.
+  each one runs — and from 2026-10-16 `canSee` and `canAct`, the same two facts as `/health`, so a machine
+  that is online but cannot take a screenshot is shown as such instead of failing every goal at step one.
+  The deployment keeps them per machine in `user_pref` (`device.caps.<id>`), written only when they change.
 
 What the agent has to understand from a claimed job is deliberately small: `#record.start`, `#record.stop`,
 and a replay `body` in the format it already speaks, with an optional `activate` instruction for the window.
@@ -283,6 +302,16 @@ because without the tree there is no name to resolve.
 **0.8.0** — the build that drains without stopping, thins the pointer path on request, and reports its
 platform and its permissions. An older agent is reported to the user as needing an update, with the command to get the current
 one — so a new implementation should report a version it can actually honour the whole of this table at.
+
+### The setup window (macOS, 2026-10-16)
+
+While Accessibility or Screen Recording is missing, the installed agent opens **Set Up MouseFlow Agent**:
+two steps, one after the other, each with **Allow…** and **Open Settings**, ticked as soon as a fresh
+`--probe` child sees the grant (a running process never sees Screen Recording change). The menu bar keeps
+**Set Up Permissions…** while either is missing. **Allow…** for the screen first runs `tccutil reset
+ScreenCapture <bundle>` — this app only, only while it is not granted — because macOS asks an app once,
+and an ad-hoc rebuild leaves the old binary's entry behind: no prompt, and a switch that does not apply.
+PermissionWatch restarts the agent once the grants land.
 
 ## Coordinates
 

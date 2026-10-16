@@ -83,7 +83,10 @@ export const isAuthPath = (path: string) => AUTH_PATHS.includes(path.replace(/\/
  * /mcp is here because of who reads it: somebody deciding whether to have an account, and the administrator
  * who will never sign in but has to approve connecting an AI to one. A wall in front of the page that
  * explains the product is a door that only opens from inside. */
-export const PUBLIC_PATHS = ['/mcp'];
+/* /tg - мини-приложение в Telegram (2026-10-16): внутри телеграма куки сайта нет, и стена входа там была бы
+ * дверью, которая не открывается никогда. Аккаунт оно узнаёт по подписанному initData, а не по сессии, и без
+ * него ничего не показывает. */
+export const PUBLIC_PATHS = ['/mcp', '/tg'];
 
 export const isPublicPath = (path: string) => PUBLIC_PATHS.includes(path.replace(/\/+$/, '') || '/');
 

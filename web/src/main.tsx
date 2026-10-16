@@ -16,6 +16,7 @@ import { ActivityView } from '@/features/activity/ActivityView';
 import { OverviewView } from '@/features/overview/OverviewView';
 import { AiView } from '@/features/ai/AiView';
 import { DevicesView } from '@/features/devices/DevicesView';
+import { TgApp } from '@/features/tg/TgApp';
 import { SavedSkillsView } from '@/features/saved/SavedSkillsView';
 import { SkillsView } from '@/features/skills/SkillsView';
 import { GalleryView } from '@/features/gallery/GalleryView';
@@ -138,6 +139,8 @@ const routes = [
   createRoute({ getParentRoute: () => rootRoute, path: '/mcp', component: McpView }),
   /* MCP ВНУТРИ HIVELINK - за входом, в обстановке приложения: адрес с профилем продукта и его инструменты. */
   createRoute({ getParentRoute: () => rootRoute, path: '/ai', component: AiView }),
+  /* МИНИ-ПРИЛОЖЕНИЕ В TELEGRAM - без входа и без обстановки: удостоверение несёт подписанный initData. */
+  createRoute({ getParentRoute: () => rootRoute, path: '/tg', component: TgApp }),
   /* The three ways in. Reachable while signed OUT, which is the whole point - the account provider lets
    * these through its wall rather than showing it, because a wall in front of the sign-up page is a door
    * that only opens from inside. */

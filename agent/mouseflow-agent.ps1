@@ -6434,7 +6434,11 @@ namespace MouseFlow
                     "{\"worker\":\"" + Agent.JsonText(Environment.MachineName)
                     /* Что это за машина - для списка машин в аккаунте (H3). */
                     + "\",\"platform\":\"windows\",\"version\":\"" + Agent.Version
-                    + "\",\"kind\":\"agent\",\"steps\":true,\"wait\":"
+                    /* Видит ли экран и может ли действовать - как /health; на Windows видит всегда. */
+                    + "\",\"canSee\":true,\"canAct\":" + (Agent.RecordOnly ? "false" : "true")
+                    /* Перезагрузить и выключить по команде из аккаунта (2026-10-16). */
+                    + ",\"power\":" + (Agent.RecordOnly ? "false" : "true")
+                    + ",\"kind\":\"agent\",\"steps\":true,\"wait\":"
                     + ClaimWaitSeconds.ToString(CultureInfo.InvariantCulture) + "}", out status);
 
                 if (status == 401 || status == 403)
@@ -6486,12 +6490,17 @@ namespace MouseFlow
                 }
 
                 _backoff = 2;
-                object job = Json.Child(Json.Parse(answer), "job");
+                object reply = Json.Parse(answer);
+                object job = Json.Child(reply, "job");
                 string id = Json.Text(job, "id");
                 if (string.IsNullOrEmpty(id))
                 {
-                    // Nothing to do. The sleep is the whole saving - see the arithmetic at the top.
-                    Thread.Sleep(IdleSleepSeconds * 1000);
+                    /* Nothing to do. The sleep is the whole saving - see the arithmetic at the top. HOW LONG is
+                       the account's to say (Hivelink H5): `next`, 1-30 s - three while somebody is using the
+                       account, longer when it is quiet. Absent means three, as before. */
+                    int next = Json.Int(reply, "next", IdleSleepSeconds);
+                    if (next < 1 || next > 30) next = IdleSleepSeconds;
+                    Thread.Sleep(next * 1000);
                     continue;
                 }
 
@@ -6508,6 +6517,13 @@ namespace MouseFlow
                 string said;
                 string body = Carry(job, out ok, out said);
                 Report(root, token, id, ok, said, body);
+                /* ПЕРЕЗАГРУЗКА - ПОСЛЕ ОТЧЁТА: после неё отчитаться будет некому. */
+                if (_powerPending != null)
+                {
+                    string kind = _powerPending;
+                    _powerPending = null;
+                    Power(root, token, kind);
+                }
             }
         }
 
@@ -6797,9 +6813,57 @@ namespace MouseFlow
 
         /* ------------------------------------------------------------------ doing it */
 
+        /* ПЕРЕЗАГРУЗИТЬ ИЛИ ВЫКЛЮЧИТЬ (2026-10-16). Отчёт «перезагружаюсь» уходит первым, потом shutdown.exe с
+           паузой в десять секунд и подписью - тем, кто сидит за машиной, есть миг понять, что происходит. Прав
+           администратора на рабочей станции это не просит. Отказ системы - событием power-failed, потому что
+           работа к тому времени уже закрыта как начатая. */
+        static string _powerPending;
+
+        static void Power(string root, string token, string kind)
+        {
+            string said = null;
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("shutdown.exe",
+                    (kind == "shutdown" ? "/s" : "/r") + " /t 10 /c \"Hivelink: " + kind + " requested from the account\"");
+                psi.UseShellExecute = false;
+                psi.CreateNoWindow = true;
+                psi.RedirectStandardError = true;
+                using (var p = System.Diagnostics.Process.Start(psi))
+                {
+                    string err = p.StandardError.ReadToEnd();
+                    p.WaitForExit(15000);
+                    if (p.ExitCode != 0) said = string.IsNullOrEmpty(err) ? "shutdown.exe exit " + p.ExitCode : err.Trim();
+                }
+            }
+            catch (Exception ex) { said = "could not run shutdown.exe: " + ex.Message; }
+            if (said == null) { Console.WriteLine("[mouseflow] " + kind + " requested from the account"); return; }
+            Console.WriteLine("[mouseflow] " + kind + " did not happen: " + said);
+            int status;
+            Post(root + "/api/mcp?worker=event", token,
+                "{\"event\":\"power-failed\",\"kind\":\"" + Agent.JsonText(kind) + "\",\"machine\":\""
+                + Agent.JsonText(Environment.MachineName) + "\",\"said\":\"" + Agent.JsonText(said) + "\"}", out status);
+        }
+
         static string Carry(object job, out bool ok, out string said)
         {
             string command = Json.Text(job, "command");
+
+            if (command == "#machine.restart" || command == "#machine.shutdown")
+            {
+                if (Agent.RecordOnly)
+                {
+                    ok = false;
+                    said = "This agent is record-only, so it does not restart or shut down the PC.";
+                    return null;
+                }
+                _powerPending = command == "#machine.shutdown" ? "shutdown" : "restart";
+                ok = true;
+                said = _powerPending == "shutdown"
+                    ? "Shutting down in ten seconds. It cannot be started again from the account - somebody has to press the power button."
+                    : "Restarting in ten seconds. The agent starts again when this user logs in (the installer puts it at logon).";
+                return null;
+            }
 
             if (command == "#record.start")
             {
@@ -7487,7 +7551,23 @@ namespace MouseFlow
 if ($Enroll) {
     [MouseFlow.Account]::Load()
     $enrolled = $false
+    # УЖЕ ПОДКЛЮЧЕНА - ЕСЛИ ТОКЕН ЖИВ (найдено 2026-10-16): отозванный токен остаётся в account.json, и код
+    # отвечал бы «already attached», ничего не сделав. Только явный 401 значит «мёртв»; нет сети - живой.
+    $alive = $false
     if ([MouseFlow.Account]::Linked) {
+        $alive = $true
+        try {
+            Invoke-RestMethod -Uri ([MouseFlow.Account]::Base + '/api/sync?tokens=1') -Headers @{ Authorization = 'Bearer ' + [MouseFlow.Account]::Token } -TimeoutSec 15 | Out-Null
+        } catch {
+            $code = 0
+            try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+            if ($code -eq 401) {
+                $alive = $false
+                Write-Host "  enrol       the token this PC had was refused by its account - attaching again with the code"
+            }
+        }
+    }
+    if ($alive) {
         Write-Host "  enrol       already attached to an account - the code was not spent"
         $enrolled = $true
     } else {

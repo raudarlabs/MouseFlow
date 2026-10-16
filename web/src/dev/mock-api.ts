@@ -722,8 +722,9 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
           name: MACHINE_NAMES.dev_a1 ?? 'Office-1', hostname: 'DESKTOP-7K2Q', platform: 'windows', version: '0.29.0',
           seenAt: new Date(Date.now() - 4000).toISOString(), jobs: { days: 30, done: 31, failed: 3, running: 'page:Reply that the invoice is approved' }, paused: !!MACHINE_PAUSED.dev_a1 },
         { id: 'dev_a2', label: 'This computer', createdAt: hoursAgo(120), lastUsedAt: hoursAgo(26),
-          name: MACHINE_NAMES.dev_a2 ?? null, hostname: 'Vics-MacBook-Air', platform: 'macos', version: '0.29.0',
-          seenAt: hoursAgo(26), jobs: { days: 30, done: 12, failed: 1, running: null }, paused: !!MACHINE_PAUSED.dev_a2 },
+          name: MACHINE_NAMES.dev_a2 ?? null, hostname: 'Vics-MacBook-Air', platform: 'macos', version: '0.28.0',
+          seenAt: hoursAgo(26), jobs: { days: 30, done: 12, failed: 1, running: null }, paused: !!MACHINE_PAUSED.dev_a2,
+          caps: { canSee: false, canAct: true } },
         { id: 'dev_a3', label: 'This computer', createdAt: hoursAgo(2), lastUsedAt: null,
           name: MACHINE_NAMES.dev_a3 ?? null, hostname: null, platform: null, version: null, seenAt: null,
           jobs: { days: 30, done: 0, failed: 0, running: null }, paused: !!MACHINE_PAUSED.dev_a3 },
@@ -1177,6 +1178,45 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
 
   /* Страница Create спрашивает это каждые несколько секунд. У мока нет машины - и ответ говорит «ничего»,
    * а не 404, который в консоли читался бы как поломка. */
+  /* МИНИ-ПРИЛОЖЕНИЕ TELEGRAM (2026-10-16): состояние, отправка и стоп - с теми же машинами, что у Devices. */
+  if (url.startsWith('/api/telegram?app=1') && method === 'POST') {
+    let text = '';
+    req.on('data', (chunk) => { text += chunk; });
+    req.on('end', () => {
+      let body: Record<string, unknown> = {};
+      try { body = text ? JSON.parse(text) : {}; } catch (_) { /* empty */ }
+      if (!body.initData) { json(res, 401, { ok: false, why: 'open this from the Hivelink bot in Telegram' }); return; }
+      if (body.action === 'send') {
+        const device = body.device ? String(body.device) : 'dev_a1';
+        FLEET_JOBS.unshift({ id: 'q_tg_' + Date.now().toString(36), device, name: 'mouseflow_do', goal: String(body.goal || ''), at: new Date().toISOString() });
+        json(res, 200, { ok: true, id: FLEET_JOBS[0].id });
+        return;
+      }
+      if (body.action === 'stop') {
+        const at = FLEET_JOBS.findIndex((one) => one.id === body.id);
+        if (at >= 0) FLEET_JOBS.splice(at, 1);
+        json(res, 200, { ok: true, cancelled: at >= 0 });
+        return;
+      }
+      const label = (id: string) => MACHINE_NAMES[id] || MACHINE_LABELS[id] || id;
+      json(res, 200, {
+        ok: true,
+        you: { name: 'Vic' },
+        chosen: null,
+        machines: [
+          { id: 'dev_a1', name: label('dev_a1'), platform: 'windows', online: true, paused: !!MACHINE_PAUSED.dev_a1, cannot: null },
+          { id: 'dev_a2', name: label('dev_a2'), platform: 'macos', online: false, paused: !!MACHINE_PAUSED.dev_a2,
+            cannot: 'cannot see the screen (Screen Recording is not allowed for the agent)' },
+        ],
+        jobs: [
+          ...FLEET_JOBS.slice(0, 3).map((one) => ({ id: one.id, state: 'queued', ok: null, said: null, what: one.goal || one.name, machine: label(one.device), at: one.at })),
+          { id: 'q_tg_old1', state: 'done', ok: true, said: null, what: 'export the September report as PDF', machine: 'Office-1', at: hoursAgo(2) },
+          { id: 'q_tg_old2', state: 'failed', ok: false, said: 'could not take a picture of the screen', what: 'open claude code', machine: 'Vics-MacBook-Air', at: hoursAgo(3) },
+        ],
+      });
+    });
+    return;
+  }
   /* ОЧЕРЕДЬ (H2): команда машинам. Машина на паузе и машина, ни разу не подключавшаяся, отказывают - как
    * сервер; остальные получают работу, и она видна в живой ленте с именем машины. */
   if (url.startsWith('/api/queue') && method === 'POST') {

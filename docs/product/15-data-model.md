@@ -367,8 +367,7 @@ somebody's whole screen. See [25 — Checks and tests](25-tests.md).
 `revoked_at`. **Only a hash is stored**: if this table leaks, what leaks should not be usable. The plaintext
 is shown once, at creation, and never again.
 
-**A device token is also a machine** (Hivelink H1, `db/025_device.sql`, written 2026-10-16 and not yet
-applied). Every attached agent has its own token, so the token's `id` is the machine: `byDeviceToken`
+**A device token is also a machine** (Hivelink H1, `db/025_device.sql`, applied 2026-10-16). Every attached agent has its own token, so the token's `id` is the machine: `byDeviceToken`
 returns it as `deviceId`, the claim writes it into `run_queue.claimed_device`, and `?worker=step|report|state`
 answer only that machine. 025 adds `name` (given by the person, unique per account), `hostname` (what the
 agent sends as `worker`), `platform`, `agent_version` and `seen_at`. A machine pin is `run_queue.machine`

@@ -712,7 +712,8 @@ const missing = [...served].filter((n) => !described.has(n));
 const invented = [...described].filter((n) => !served.has(n));
 check('every tool the server offers is described on the page', missing.length === 0, missing.join(', '));
 check('and nothing is described that the server does not offer', invented.length === 0, invented.join(', '));
-check('eighteen of them, so a count in prose can be trusted', served.size === 18, String(served.size));
+/* Девятнадцать с 2026-10-16: mouseflow_machines (Hivelink H5) - на чём запускать. */
+check('nineteen of them, so a count in prose can be trusted', served.size === 19, String(served.size));
 /* ПЕРЕИМЕНОВАНИЕ, У КОТОРОГО ЕСТЬ ЦЕНА. mouseflow_runs стало mouseflow_run_history, потому что рядом
  * стоит mouseflow_run, который двигает настоящую мышь: имена на одну `s` - плохая пара для того, что
  * выбирают по имени. Клиент забирает список инструментов один раз при подключении, поэтому старое имя
@@ -747,7 +748,8 @@ check('/mcp is a route', /path: '\/mcp'/.test(main));
 const account = readFileSync(
   fileURLToPath(new URL('../web/src/shell/AccountProvider.tsx', import.meta.url)), 'utf8');
 check('and it is readable with no account, or it is a door that opens from inside',
-  /PUBLIC_PATHS = \['\/mcp'\]/.test(account) && /isPublicPath\(location\.pathname\)/.test(account));
+  /* И /tg (2026-10-16): мини-приложение в Telegram, где куки сайта нет; аккаунт оно узнаёт по initData. */
+  /PUBLIC_PATHS = \['\/mcp', '\/tg'\]/.test(account) && /isPublicPath\(location\.pathname\)/.test(account));
 
 /* ------------------------------------------------------------------------------- teams
  *
@@ -5400,7 +5402,7 @@ group('Activity отвечает целиком: идёт, ждёт, было - 
   check('и свой прогон не рисуется второй карточкой «by itself»',
     /if \(job\.source === 'you'\) \{[\s\S]{0,700}?continue;\s*\n\s*\}/.test(create));
   check('источник работы - отдельное поле ответа, и страница Create - это «you»',
-    /source: q\.schedule_id \? 'schedule'\s*: q\.tool_name === 'page' \|\| String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\) \? 'you' : 'chat'/.test(route)
+    /source: q\.schedule_id \? 'schedule'\s*: q\.tool_name === 'page' \|\| String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\)\s*\|\| \(q\.args && q\.args\.via === 'page'\) \? 'you' : 'chat'/.test(route)
       && /source: 'schedule' \| 'you' \| 'chat';/.test(client));
   check('один id на строку очереди, журнал, кадры и скилл - посчитан один раз',
     (create.match(/const runId = `dr_\$\{startedAt\.replace/g) || []).length === 1);
@@ -6212,7 +6214,7 @@ group('коннектор несёт половину набора, если о 
 
   /* Восемнадцать - это весь набор, и он остаётся по умолчанию: профиль сужает по просьбе, а не меняет
    * поведение всем, кто уже настроил коннектор. */
-  check('по умолчанию - весь набор, восемнадцать', names('all').length === 18, String(names('all').length));
+  check('по умолчанию - весь набор, девятнадцать', names('all').length === 19, String(names('all').length));
   check('и опечатка в профиле тоже весь, а не половина наугад',
     names('nonsense').join() === names('all').join() && names('').join() === names('all').join());
 
@@ -6220,7 +6222,7 @@ group('коннектор несёт половину набора, если о 
    * (никому не виден) или стоял бы в обоих без причины. */
   const both = new Set([...names('do'), ...names('make')]);
   check('объединение половин - весь набор, ни инструмента мимо',
-    both.size === 18 && names('all').every((n) => both.has(n)),
+    both.size === 19 && names('all').every((n) => both.has(n)),
     names('all').filter((n) => !both.has(n)).join(','));
   const shared = names('do').filter((n) => names('make').includes(n));
   check('а общих ровно четыре, и это status и расписания',
@@ -6352,7 +6354,7 @@ group('a saved skill runs from the page through the queue, and says what it lack
   /* 'page' ровно - это живые зеркала со страницы; их двери трогают строки по точному имени. */
   check('its job name is not the live mirror\'s, and Logs still reads it as "you"',
     /toolName: `page:\$\{flow\.name\}`/.test(block)
-      && /String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\) \? 'you'/.test(read('../api/mcp.js')));
+      && /String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\)\s*\|\| \(q\.args && q\.args\.via === 'page'\) \? 'you'/.test(read('../api/mcp.js')));
   check('a recording is never given a gate - nobody could answer it', /flow\.kind === 'created' && asked === ONE_WAY/.test(block));
 }
 
@@ -6374,7 +6376,7 @@ group('Hivelink H1: a machine is its device token, one job per machine, and only
     /alter table device_token add column if not exists name\s+text;/.test(migration)
       && /alter table device_token add column if not exists seen_at\s+timestamptz;/.test(migration)
       && /alter table run_queue add column if not exists claimed_device text;/.test(migration)
-      && /НЕ ПРИМЕНЕНА/.test(migration));
+      && /ПРИМЕНЕНА 2026-10-16/.test(migration));
 
   /* ОДНА РАБОТА НА МАШИНУ. Прежнее правило - «что-нибудь в ходу на аккаунте» - больше не стоит ни в
    * постановке, ни в часах расписаний: десять машин - десять мышей. */
@@ -6436,7 +6438,7 @@ group('Hivelink H2: pause from the account, one command to many machines, schedu
 
   check('a paused machine is told there is no work - any agent version understands that',
     /coalesce\(to_jsonb\(device_token\) ->> 'paused', 'false'\) = 'true'/.test(worker)
-      && /if \(halted\.length\) return res\.status\(200\)\.json\(\{ ok: true, job: null \}\);/.test(worker)
+      && /if \(halted\.length\) return res\.status\(200\)\.json\(\{ ok: true, job: null, next: POLL_QUIET_S \}\);/.test(worker)
       && /add column if not exists paused\s+boolean not null default false;/.test(migration));
   check('and it neither gets a pinned job nor counts as a free seat',
     /kind: 'paused'/.test(queue) && /and coalesce\(to_jsonb\(device_token\) ->> 'paused', 'false'\) <> 'true'/.test(queue));
@@ -6499,6 +6501,152 @@ group('Hivelink H3: an enrolment code, traded once per machine by the agent itse
   check('the installer trades the code with the bundled binary and keeps it out of the plist',
     /"\$binary" --enroll "\$enroll" --name "\$machine_name" --base "\$origin" --enroll-only/.test(installer)
       && !/write_login_item[^\n]*enroll/.test(installer));
+}
+
+/* HIVELINK H4 - WINDOWS НА ДИСКЕ, ПРИ ВХОДЕ, ОБНОВЛЯЕТСЯ САМ. */
+group('Hivelink H4: the Windows installer keeps the agent on disk, at logon, refreshed, and never via -File');
+{
+  const inst = read('../agent/install-windows.ps1');
+  const code = inst.split('\n').filter((ln) => !/^\s*#/.test(ln)).join('\n');
+  const copy = read('../web/scripts/copy-agent.mjs');
+  check('it is published beside the agent', /'install-windows\.ps1',/.test(copy));
+  check('nothing is started with -File, so AllSigned never engages', !/-File\b/.test(code)
+    && /\[scriptblock\]::Create\(\[IO\.File\]::ReadAllText\(/.test(code));
+  check('it never exits the person\'s window', !/\bexit\b/.test(code.replace(/-EnrollOnly/g, '')));
+  check('the logon launcher is the same file the agent\'s own autostart writes',
+    /'MouseFlowAgent\.cmd'/.test(inst) && /\\\\MouseFlowAgent\.cmd/.test(read('../agent/mouseflow-agent.ps1')));
+  check('each start refreshes from the deployment and keeps the local copy when that fails',
+    /Invoke-RestMethod -Uri '\$Origin\/agent\/mouseflow-agent\.ps1' -TimeoutSec 20/.test(inst)
+      && /\} catch \{ \}\r?\nif \(-not \(Test-Path `\$agent\)\) \{ return \}/.test(inst));
+  check('an error page is never saved as the agent', (inst.match(/Contains\('public const string Version'\)/g) || []).length === 2);
+  check('origin and port are baked in at install, never read at logon',
+    /-AllowOrigin '\$Origin' -Port \$Port/.test(inst));
+  check('a code is traded in a child process', /& powershell -NoProfile -Command \$command/.test(inst) && /-EnrollOnly/.test(inst));
+  check('and -Uninstall removes it all, and says to remove the PC on Devices too',
+    /if \(\$Uninstall\)/.test(inst) && /remove this PC on Devices too/.test(inst));
+}
+
+/* HIVELINK H5 - МАШИНЫ ИЗ MCP И ИЗ ЧАТА, И ТИШИНА ДЕШЕВЛЕ. */
+group('Hivelink H5: machines by name from MCP and Telegram, and a quiet account polled less');
+{
+  const queue = read('../api/_queue.mjs');
+  const tools = read('../api/_mcp-tools.mjs');
+  const tg = read('../api/telegram.js');
+  const tgWords = read('../api/_telegram.mjs');
+  const worker = read('../api/_mcp-worker.mjs');
+  const live = read('../api/mcp.js');
+  const swift = read('../agent/mouseflow-agent.swift');
+  const ps = read('../agent/mouseflow-agent.ps1');
+
+  check('a machine is found by id exactly, by name only when exactly one answers, never guessed',
+    /if \(hits\.length === 1\) return \{ one: hits\[0\] \};/.test(queue)
+      && /machines answer to/.test(queue) && /There is no machine called/.test(queue));
+  check('MCP lists the machines and both doors that queue work take `machine`',
+    /name: 'mouseflow_machines'/.test(tools) && (tools.match(/machine: \{ \.\.\.MACHINE_ARG|machine: MACHINE_ARG,/g) || []).length === 2
+      && /const found = findMachine\(await machinesOf\(sql, who\.id\), args\.machine\);/.test(tools));
+  check('a machine for a browser goal is refused - Chrome takes those, not a computer\'s agent',
+    /`machine` picks a computer, so it goes with on: "desktop"\./.test(tools));
+  check('and the pick reaches the queue', /const put = await queueOne\(sql, who\.id, \{ flowId, toolName, args, device \}\);/.test(tools));
+  check('Telegram: /machines lists, /use picks, and approved tasks go to the pick',
+    /if \(command\.name === 'machines'\) return \{ act: 'machines' \};/.test(tgWords)
+      && /if \(command\.name === 'use'\) return \{ act: 'use', machine: command\.rest \};/.test(tgWords)
+      && /const device = \(await takeOnce\(sql, userId\)\) \|\| await machineOf\(sql, userId\);/.test(tg) && /\/use NAME/.test(tgWords));
+
+  check('an idle answer says when to ask again: 3 s while the account is in use, 15 s when quiet',
+    /export const POLL_BUSY_S = 3;/.test(worker) && /export const POLL_QUIET_S = 15;/.test(worker)
+      && /job: null, next: await pollHint\(sql, who\.id\)/.test(worker));
+  check('"in use" is the app open or work queued or closed in ten minutes',
+    /key = 'web\.seen' and updated_at > now\(\) - interval '2 minutes'/.test(worker)
+      && /'web\.seen', \$\{new Date\(\)\.toISOString\(\)\}/.test(live) && /updated_at < now\(\) - interval '60 seconds'/.test(live));
+  check('both agents honour the hint within 1-30 s and keep 3 s without it',
+    /idleNext = UInt32\(min\(30, next\)\)/.test(swift) && /sleep\(idleNext\)/.test(swift)
+      && /int next = Json\.Int\(reply, "next", IdleSleepSeconds\);/.test(ps) && /if \(next < 1 \|\| next > 30\) next = IdleSleepSeconds;/.test(ps));
+  check('a goal sent from the page reads as "you" in Logs, not "chat"', /\.\.\.browser, via: 'page' \}/.test(read('../api/queue.js')));
+}
+
+/* ОТОЗВАННЫЙ ТОКЕН НЕ ДЕЛАЕТ МАШИНУ «УЖЕ ПОДКЛЮЧЁННОЙ» (найдено на живом аккаунте 2026-10-16). */
+group('a revoked token does not count as attached: the code re-attaches it, on both agents');
+{
+  const swift = read('../agent/mouseflow-agent.swift');
+  const ps = read('../agent/mouseflow-agent.ps1');
+  check('the Mac asks its account whether the token still works, and only 401 means no',
+    /if tokenAlive\(link\) \{/.test(swift) && /return status != 401/.test(swift)
+      && /link\.base \+ "\/api\/sync\?tokens=1"/.test(swift));
+  check('and so does Windows', /if \(\$code -eq 401\) \{/.test(ps) && /'\/api\/sync\?tokens=1'/.test(ps));
+  check('a device token is refused there with 403, not 401 - the probe depends on it',
+    /if \(who\.via !== 'session'\) return fail\(res, 403, 'only a signed-in browser can list devices'\);/.test(read('../api/sync.js')));
+}
+
+/* МАШИНА НА СВЯЗИ, КОТОРАЯ ЦЕЛЬ НЕ СДЕЛАЕТ (найдено 2026-10-16: Mac без Screen Recording). */
+group('a machine that is online but cannot see or act says so - to Devices, MCP and Telegram');
+{
+  const swift = read('../agent/mouseflow-agent.swift');
+  const ps = read('../agent/mouseflow-agent.ps1');
+  const worker = read('../api/_mcp-worker.mjs');
+  const queue = read('../api/_queue.mjs');
+  check('both agents send canSee and canAct with every claim',
+    /"canSee": Permission\.screenRecording,/.test(swift) && /"canAct": Permission\.accessibility && !recordOnly,/.test(swift)
+      && /canSee\\":true,\\"canAct\\":" \+ \(Agent\.RecordOnly \? "false" : "true"\)/.test(ps));
+  check('the deployment keeps them per machine and writes only when they change',
+    /\$\{CAPS_PREFIX \+ me\}/.test(worker) && /where user_pref\.value <> excluded\.value/.test(worker));
+  check('an agent that did not say is "not known", not "cannot"', /if \(!caps\) return null;|\(!caps \? null/.test(queue));
+  check('MCP and Telegram say it beside the machine',
+    /a goal sent to it fails at its first step/.test(read('../api/_mcp-tools.mjs')) && /cannotSay\(m\.caps\)/.test(read('../api/telegram.js')));
+  check('and the page never receives them as preferences', /key not like 'device\.caps\.%'/.test(read('../api/sync.js')));
+}
+
+/* МЕНЮ КОМАНД БОТА ПУБЛИКУЕТ САМ БОТ (2026-10-16): заведённое руками в BotFather не знало о /machines. */
+group('the bot publishes its own command menu, and /status names the machines');
+{
+  const tg = read('../api/telegram.js');
+  const words = read('../api/_telegram.mjs');
+  check('the menu is one list, and it carries the machine commands',
+    /export const BOT_COMMANDS = \[/.test(words) && /command: 'machines'/.test(words) && /command: 'use'/.test(words));
+  check('it is published with setMyCommands only when the list changed, and a failure costs nothing',
+    /callTelegram\('setMyCommands', \{ commands: BOT_COMMANDS \}\)/.test(tg) && /if \(row && row\.value === wanted\) return;/.test(tg)
+      && tg.indexOf('await ensureCommands(sql);') < tg.indexOf('const update = updateOf(req.body);'));
+  check('every command in the menu is one the bot answers',
+    [...words.matchAll(/command: '([a-z]+)'/g)].map((m) => m[1])
+      .every((c) => c === 'help' || new RegExp(`command\\.name === '${c}'`).test(words)));
+  check('/status lists the machines when there are any', /taking work now:/.test(tg) && /machinesOf\(sql, userId\)\.catch/.test(tg));
+}
+
+/* ПЕРЕЗАГРУЗИТЬ И ВЫКЛЮЧИТЬ ИЗ АККАУНТА (2026-10-16). Отчёт - до команды, отказ системы - событием. */
+group('restart and shut down from the account: reported first, done after, refused where not declared');
+{
+  const swift = read('../agent/mouseflow-agent.swift');
+  const ps = read('../agent/mouseflow-agent.ps1');
+  check('both agents declare power, except record-only', /"power": !recordOnly,/.test(swift)
+    && /",\\"power\\":" \+ \(Agent\.RecordOnly \? "false" : "true"\)/.test(ps));
+  check('both report before they act', /report\(link, id: job\.id, done: done\)\s*\/\*[^*]*\*\/\s*if let kind = powerPending/.test(swift)
+    && /Report\(root, token, id, ok, said, body\);\s*\/\*[^*]*\*\/\s*if \(_powerPending != null\)/.test(ps));
+  check('the Mac asks loginwindow, Windows asks shutdown.exe with ten seconds and a reason',
+    /tell application \\"loginwindow\\" to «event aevt\\\(code\)»/.test(swift)
+      && /\/t 10 \/c \\"Hivelink: /.test(ps));
+  check('and a refusal by the system is said in the feed', /event: 'power-failed'|"event": "power-failed"/.test(swift)
+    && /body\.event === 'power-failed'/.test(read('../api/_mcp-worker.mjs')));
+  check('record-only agents refuse it', /This agent is record-only, so it does not restart or shut down the Mac\./.test(swift)
+    && /This agent is record-only, so it does not restart or shut down the PC\./.test(ps));
+}
+
+/* ОКНО НАСТРОЙКИ РАЗРЕШЕНИЙ НА MAC (2026-10-16): два шага по очереди, и вопрос macOS возвращается. */
+group('the Mac agent asks for its two permissions in a window, one after the other');
+{
+  const swift = read('../agent/mouseflow-agent.swift');
+  check('there is a setup window with the two steps, the second after the first',
+    /final class SetupWindow: NSObject, NSWindowDelegate/.test(swift) && /srButton\.isEnabled = ax && !sr/.test(swift));
+  check('Allow for the screen resets only this app\'s entry, only while it is not granted, then asks',
+    /reset\.arguments = \["reset", "ScreenCapture", bundle\]/.test(swift)
+      && /if let bundle = Bundle\.main\.bundleIdentifier, !Permission\.screenRecording/.test(swift)
+      && swift.indexOf('reset.waitUntilExit()') < swift.indexOf('SCShareableContent.getExcludingDesktopWindows(false'));
+  check('its ticks come from a fresh probe, not from the running process', /let now = PermissionWatch\.probe\(\)/.test(swift));
+  /* Увидено на macOS 26 у владельца: CGRequestScreenCaptureAccess молчал, и кнопка не делала ничего. */
+  check('and when macOS stays silent, ScreenCaptureKit asks, then Settings and Finder open by themselves',
+    /SCShareableContent\.getExcludingDesktopWindows\(false, onScreenWindowsOnly: true\)/.test(swift)
+      && /NSWorkspace\.shared\.activateFileViewerSelecting\(\[Bundle\.main\.bundleURL\]\)/.test(swift));
+  check('it opens by itself when something is missing, and the menu keeps a way back to it',
+    /if SetupWindow\.needed && Bundle\.main\.bundleIdentifier != nil \{ SetupWindow\.shared\.show\(\) \}/.test(swift)
+      && /"Set Up Permissions…"/.test(swift) && /setupItem\?\.isHidden = !SetupWindow\.needed/.test(swift));
 }
 
 /* Exited rather than left to drain. Two servers and three spawned children have been closed and killed by
