@@ -603,7 +603,7 @@ group('лендинг: те же части, что у админки');
   check('алиасы дизайн-системы те же, что в vite.config.ts',
     aliases(landingConfig) !== '' && aliases(landingConfig) === aliases(viteConfig));
   const landingFiles = ['src/landing/Landing.tsx', 'src/landing/WaitlistForm.tsx', 'src/landing/main.tsx',
-    'src/landing/entry-server.tsx', 'src/landing/og.tsx'];
+    'src/landing/entry-server.tsx', 'src/landing/og.tsx', 'src/landing/Sections.tsx', 'src/landing/call-waitlist.ts'];
   const brandFiles = ['src/components/brand/GlassHive.tsx', 'src/components/brand/GlassCell.tsx',
     'src/components/brand/HiveTerminal.tsx', 'src/components/brand/hive-ink.ts', 'src/components/brand/hive-geometry.ts',
     'src/components/brand/hive-machines.ts'];
@@ -671,8 +671,15 @@ group('лендинг: улей детерминирован и рисуется
   check('карточка закрыта, пока на машину не навели',
     /hive-term-on/.test(term) && /\.hive-term \{[\s\S]*?opacity: 0;/.test(read('src/components/brand/brand.css'))
       && /useState<string \| null>\(null\)/.test(read('src/landing/Landing.tsx')));
+  /* Секций после карточек много, а форма одна: каждая кнопка секции - ссылка на неё, а не вторая форма. */
+  {
+    const sec = read('src/landing/Sections.tsx');
+    check('у секций одна форма: кнопки ведут к #waitlist, своих form нет',
+      /href="#waitlist"[\s\S]*?onClick=\{callWaitlist\}/.test(sec) && !/<form\b/.test(sec) && /<MoreSections \/>/.test(read('src/landing/Landing.tsx')));
+  }
   check('кнопка в шапке ведёт к той же форме и называется так же',
     /href="#waitlist" onClick=\{callWaitlist\}/.test(read('src/landing/Landing.tsx'))
+      && /export function callWaitlist/.test(read('src/landing/call-waitlist.ts'))
       && />\s*Join the waitlist\s*<\/Button>/.test(read('src/landing/WaitlistForm.tsx')));
   const server = read('src/landing/entry-server.tsx');
   const client = read('src/landing/main.tsx');

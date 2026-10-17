@@ -19,7 +19,7 @@
  * Rendered to static HTML at build time (entry-server.tsx, scripts/build-landing.mjs) and hydrated by
  * main.tsx, so it must render the same on both sides: nothing here reads the window during render.
  */
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '@insightis/ui/Badge';
 import { buttonVariants } from '@insightis/ui/Button';
 import { Card } from '@insightis/ui/Card';
@@ -30,6 +30,8 @@ import { GlassCell, GlassCellAccent, GlassCellCore, GlassCellPanel } from '@/com
 import { HiveTerminal } from '@/components/brand/HiveTerminal';
 import { HIVE_MACHINES } from '@/components/brand/hive-machines';
 import { WaitlistForm } from './WaitlistForm';
+import { callWaitlist } from './call-waitlist';
+import { MoreSections } from './Sections';
 
 /** The honey "now" dot, the concept's: the one warm light outside the hive. */
 const Dot = () => <i aria-hidden="true" className="landing-dot" />;
@@ -125,27 +127,6 @@ const PROPS: Prop[] = [
     ),
   },
 ];
-
-/* THE HEADER'S "JOIN THE WAITLIST" GOES TO THE ONE FORM. The page has one waitlist and one call to it, said
- * the same way twice; the header's copy is a shortcut, not a second form. On most screens the form is
- * already in view, so a plain #waitlist jump moves nothing and the press looks dead - this brings the form
- * to the middle of the screen, puts the cursor in the address field and lets the field glow once, so the
- * press visibly lands somewhere. Before hydration the href still jumps to #waitlist. */
-function callWaitlist(e: MouseEvent<HTMLAnchorElement>) {
-  const field = document.getElementById('email') as HTMLInputElement | null;
-  const form = document.getElementById('waitlist');
-  if (!field || !form) return;
-  e.preventDefault();
-  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  form.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'center' });
-  field.focus({ preventScroll: true });
-  const box = field.closest('.landing-field');
-  if (box) {
-    box.classList.remove('landing-field-call');
-    void (box as HTMLElement).offsetWidth; // restart the glow when pressed twice
-    box.classList.add('landing-field-call');
-  }
-}
 
 export function Landing({ endpoint }: { endpoint: string }) {
   /* Which machine cell is being pointed at. Null at rest - and on the server, so the prerender and the
@@ -262,6 +243,8 @@ export function Landing({ endpoint }: { endpoint: string }) {
           ))}
         </div>
       </section>
+
+      <MoreSections />
 
       <footer className="landing-foot">
         <div className="landing-foot-in">

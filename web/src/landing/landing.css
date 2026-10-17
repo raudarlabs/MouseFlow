@@ -748,3 +748,381 @@ body {
     animation: none;
   }
 }
+
+
+/* ========== the sections after the value cards (Sections.tsx) ==========
+   Same container, head, cards and chips as the value props; what is new is laid out here. Phone first:
+   one column everywhere, then two or three where the screen has the room. */
+.landing-sec {
+  position: relative;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 56px var(--gutter) 8px;
+}
+
+.landing-sec-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-top: 28px;
+}
+.landing-cta-link {
+  gap: 10px;
+  font-family: theme('fontFamily.display');
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.landing-sec-note {
+  font-size: 13px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* use cases - short cards: the value cards' desktop min-height is for three long bodies, not one goal */
+.landing .landing-use {
+  min-height: 0;
+}
+.landing-uses {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+}
+.landing-use {
+  gap: 14px;
+  padding: 18px 20px 20px;
+}
+.landing .landing-use-team {
+  font-size: 12px;
+  color: hsl(var(--ink-primary));
+  background: hsl(var(--hive-ice) / 0.08);
+  border-color: hsl(var(--hive-ice) / 0.14);
+}
+.landing-use-goal {
+  position: relative;
+  font-size: 16.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-primary));
+  text-wrap: pretty;
+}
+.landing-use-apps {
+  position: relative;
+  margin-top: auto;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: hsl(var(--ink-inactive));
+}
+.landing-apps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+}
+.landing-apps-k {
+  font-size: 12px;
+  color: hsl(var(--ink-inactive));
+  margin-right: 4px;
+}
+.landing-apps-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  color: hsl(var(--ink-body));
+  border: 1px solid hsl(var(--hive-ice) / 0.12);
+  background: hsl(var(--hive-frost) / 0.03);
+}
+
+/* proof + your AI: text beside a mock */
+.landing-split {
+  display: grid;
+  gap: 28px;
+  align-items: center;
+}
+.landing-promises {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  max-width: 36em;
+}
+.landing-promises li {
+  position: relative;
+  padding-left: 22px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+}
+.landing-promises li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.55em;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  background: hsl(var(--brand-primary));
+  box-shadow: 0 0 12px hsl(var(--brand-primary) / 0.5);
+}
+.landing-promises b {
+  color: hsl(var(--ink-primary));
+  font-weight: 600;
+}
+.landing-logs {
+  padding: 0;
+  gap: 0;
+}
+.landing-logs-head {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 18px;
+  font-size: 12px;
+  color: hsl(var(--ink-primary));
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.1);
+}
+.landing-log {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.06);
+}
+.landing-log-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.landing-log-what {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 14px;
+  color: hsl(var(--ink-primary));
+}
+.landing-log-meta {
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+}
+.landing-log-out {
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.landing-log-ok { color: hsl(var(--fb-green)); }
+.landing-log-bad { color: hsl(var(--fb-red-text)); }
+.landing-log-off { color: hsl(var(--ink-secondary)); }
+.landing-log-out.landing-log-ok { background: hsl(var(--fb-green) / 0.14); }
+.landing-log-out.landing-log-bad { background: hsl(var(--fb-red-text) / 0.14); }
+.landing-log-out.landing-log-off { background: hsl(var(--hive-ice) / 0.1); }
+.landing-logs-check {
+  position: relative;
+  padding: 13px 18px 16px;
+  font-size: 12px;
+  color: hsl(var(--ink-body));
+}
+
+/* skills: four steps of honey */
+.landing-honey {
+  display: grid;
+  gap: 12px;
+  margin-top: 28px;
+  counter-reset: none;
+}
+.landing-honey-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px 20px;
+  border-radius: 20px;
+  border: 1px solid hsl(var(--hive-ice) / 0.1);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.05), hsl(var(--hive-frost) / 0.015));
+}
+.landing-honey-step:last-child {
+  border-color: hsl(var(--brand-primary) / 0.35);
+  background: linear-gradient(180deg, hsl(var(--brand-primary) / 0.1), hsl(var(--brand-primary) / 0.02));
+}
+.landing-honey-k {
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+}
+.landing-honey-step:last-child .landing-honey-k {
+  color: hsl(var(--brand-primary));
+}
+.landing-honey-step b {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: hsl(var(--ink-primary));
+}
+.landing-honey-step span:last-child {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+}
+
+/* your AI: a tiny chat */
+.landing-chat {
+  gap: 12px;
+}
+.landing-chat-you {
+  position: relative;
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 11px 14px;
+  border-radius: 16px 16px 4px 16px;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: hsl(var(--ink-primary));
+  background: hsl(var(--hive-ice) / 0.1);
+}
+.landing-chat-tool {
+  position: relative;
+  align-self: flex-start;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  color: hsl(var(--ink-body));
+  border: 1px solid hsl(var(--hive-ice) / 0.12);
+  background: hsl(var(--hive-page) / 0.55);
+}
+.landing-chat-ai {
+  position: relative;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: hsl(var(--ink-body));
+}
+
+/* questions: native <details>, so it works without JS and reads as text to a crawler */
+.landing-faq {
+  display: grid;
+  gap: 10px;
+  margin-top: 26px;
+  max-width: 880px;
+}
+.landing-faq-item {
+  border-radius: 16px;
+  border: 1px solid hsl(var(--hive-ice) / 0.1);
+  background: hsl(var(--hive-frost) / 0.03);
+}
+.landing-faq-item summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  font-family: theme('fontFamily.display');
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.015em;
+  color: hsl(var(--ink-primary));
+}
+.landing-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+.landing-faq-item summary::after {
+  content: '+';
+  font-family: theme('fontFamily.mono');
+  font-weight: 400;
+  font-size: 18px;
+  color: hsl(var(--ink-highlight));
+  transition: transform 0.2s ease;
+}
+.landing-faq-item[open] summary::after {
+  transform: rotate(45deg);
+  color: hsl(var(--brand-primary));
+}
+.landing-faq-item p {
+  padding: 0 18px 18px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: hsl(var(--ink-body));
+  max-width: 44em;
+}
+
+/* the last call */
+.landing-sec:last-of-type {
+  padding-bottom: 24px;
+}
+.landing-final {
+  --glow: hsl(var(--brand-primary) / 0.22);
+  align-items: center;
+  text-align: center;
+  padding: 40px 22px;
+  border-color: hsl(var(--brand-primary) / 0.22);
+}
+.landing .landing-final .landing-final-h,
+.landing .landing-final .landing-final-lead {
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+  justify-self: center;
+}
+.landing-final .landing-sec-cta {
+  justify-content: center;
+}
+
+@media (min-width: 768px) {
+  .landing-sec {
+    padding-top: 80px;
+  }
+  .landing-uses {
+    grid-template-columns: 1fr 1fr;
+  }
+  .landing-honey {
+    grid-template-columns: 1fr 1fr;
+  }
+  .landing-final {
+    padding: 56px 40px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .landing-sec {
+    padding-top: 104px;
+  }
+  .landing-uses {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .landing-split {
+    grid-template-columns: 1fr 1fr;
+    gap: 56px;
+  }
+  /* Beside a mock the head is one column: the value cards' two-column head would leave the title a third
+     of the page wide. */
+  .landing-split .landing-props-head {
+    display: block;
+  }
+  .landing-split .landing-props-head .landing-eyebrow {
+    margin-bottom: 0;
+  }
+  .landing-split .landing-h2 {
+    margin-top: 14px;
+    font-size: 48px;
+  }
+  .landing-split .landing-props-lead {
+    margin-top: 18px;
+    justify-self: start;
+  }
+  .landing-faq-split {
+    align-items: start;
+  }
+  .landing-faq-split .landing-faq {
+    margin-top: 0;
+  }
+  .landing-honey {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .landing-final {
+    padding: 72px 40px;
+  }
+}
