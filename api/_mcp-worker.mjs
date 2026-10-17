@@ -277,6 +277,36 @@ async function saveRecording(sql, who, macro, health) {
  * расписанием или чатом в тишине; поставленная со страницы всегда застаёт три. Агент старше H5 поля не
  * знает и спрашивает каждые три, как раньше. */
 export const POLL_BUSY_S = 3;
+/* Работа-команда (цель, #machine.* и прочие `#…`) в том виде, в каком её получает агент. Одна на новую
+ * выдачу и на возврат своей же после перезапуска - иначе возвращённая разошлась бы с выданной полем. */
+function goalJob(job) {
+  return {
+    id: job.id,
+    toolName: job.tool_name,
+    args: job.args || {},
+    command: job.flow_id,
+    flow: null,
+    /* И ОДНА ИЗ КОМАНД - ЦЕЛЬ. Оба агента смотрят на `goal` РАНЬШЕ, чем на `command`: истина
+     * здесь отправляет их шагать через ?worker=step, ложь - разбирать команду. Без этого поля
+     * свободная цель доходила до конца их разбора и получала «does not understand» - при том
+     * что оба уже умеют всё, что для неё нужно, и объявляют это как `steps: true`. Ни одной
+     * правки в установленных двоичниках, потому что правка была не там. */
+    goal: job.flow_id === DESKTOP_GOAL,
+    /* ГДЕ ИДЁТ ЦЕЛЬ - во вкладке своего браузера агента, если так просили (2026-10-01). Ключ вкладки -
+     * разговор, из которого пришла просьба: прогон идёт там, где человек его видит в панели. */
+    ...(job.flow_id === DESKTOP_GOAL && job.args && job.args.surface === 'browser'
+      ? { surface: 'browser', tab: String(job.args.tab || 'work').slice(0, 80) } : {}),
+    /* РАЗОВЫЙ ПРОГОН С ПРОВЕРКАМИ В БРАУЗЕРЕ (mouseflow_do с `expect`) - цель с проверками
+     * составляется ЗДЕСЬ и едет готовой, тем же полем, что у кейса. Слова «проверь это тулом, а не
+     * глазом» одни на все драйверы (caseGoal); расширение их только исполняет. Старое расширение
+     * поля не знает и пойдёт по голой цели - и отчёт скажет «нет вердикта», а не «прошло»: записи
+     * проверок у такого прогона не будет. Десктопу это не нужно - там цель складывает ?worker=step. */
+    ...(job.flow_id === BROWSER_GOAL && expectsOf(job.args)
+      ? { caseGoal: caseGoal(String((job.args && job.args.goal) || ''), expectsOf(job.args)) }
+      : {}),
+  };
+}
+
 export const POLL_QUIET_S = 15;
 
 /* ЖИВОЙ ЭКРАН УДАЛЁННОЙ МАШИНЫ (владелец, 2026-10-17: «click at 812,54 - ничего непонятно, что было нажато,
@@ -396,11 +426,30 @@ export async function workerRoute(action, req, res, sql, who) {
       /* ОДНА РАБОТА НА МАШИНУ И ЗДЕСЬ: машина, у которой уже есть взятая работа, вторую не получает - ни
        * от расписания, ни от соседней постановки. Через to_jsonb: до 025 колонки нет, и условие ложно. */
       const holding = await sql`
-        select id from run_queue q
+        select id, flow_id, tool_name, args, schedule_id from run_queue q
         where q.user_id = ${who.id} and q.state = 'claimed' and (to_jsonb(q) ->> 'claimed_device') = ${me}
         limit 1
       `;
-      if (holding.length) return res.status(200).json({ ok: true, job: null });
+      /* ДЕРЖИТ - И ВСЁ РАВНО СПРАШИВАЕТ: значит, перезапустилась посреди работы (владелец, 2026-10-17:
+       * партия на маке встала, когда агента переустановили, и висела два часа до «never reported back»).
+       * Оба агента спрашивают работу в том же потоке, в котором ведут цель, - пока ведут, не спрашивают.
+       *
+       * ЦЕЛЬ ОТДАЁТСЯ ЕЙ ЖЕ ОБРАТНО: ход прогона живёт здесь, в `loop`, а не в агенте, и ?worker=step
+       * продолжает с того места. Действия, отданные до перезапуска, получат «no result came back», и модель
+       * посмотрит на свежий снимок - ровно то, что нужно после перерыва.
+       *
+       * ТОЛЬКО ЦЕЛЬ НА РАБОЧЕМ СТОЛЕ. Её берёт и ведёт только агент, в одном потоке со спросом. Расширение
+       * браузера ходит за работой по своему расписанию и может спросить посреди своего прогона - его работа
+       * здесь не трогается; повтор записи тоже: сыгранный заново вслепую, он сделал бы работу дважды. Они
+       * ждут, как раньше, уборки устаревших. */
+      if (holding.length) {
+        const held = holding[0];
+        if (held.flow_id === DESKTOP_GOAL) {
+          await sql`update run_queue set claimed_at = now() where id = ${held.id} and user_id = ${who.id}`;
+          return res.status(200).json({ ok: true, job: goalJob(held), resumed: true });
+        }
+        return res.status(200).json({ ok: true, job: null });
+      }
       /* НА ПАУЗЕ ИЗ АККАУНТА (H2) - работы нет, как на пустой очереди. Агенту не нужно знать слово «пауза»:
        * так она работает на любой его версии. До 025 колонки нет - условие ложно. */
       const halted = await sql`
@@ -579,34 +628,7 @@ export async function workerRoute(action, req, res, sql, who) {
         /* An agent job carries an instruction, not a skill, so there is nothing to look up. Marked by the
          * flow id rather than by a column, because it is the flow id that is absent. */
         if (String(job.flow_id || '').startsWith('#')) {
-          return res.status(200).json({
-            ok: true,
-            job: {
-              id: job.id,
-              toolName: job.tool_name,
-              args: job.args || {},
-              command: job.flow_id,
-              flow: null,
-              /* И ОДНА ИЗ КОМАНД - ЦЕЛЬ. Оба агента смотрят на `goal` РАНЬШЕ, чем на `command`: истина
-               * здесь отправляет их шагать через ?worker=step, ложь - разбирать команду. Без этого поля
-               * свободная цель доходила до конца их разбора и получала «does not understand» - при том
-               * что оба уже умеют всё, что для неё нужно, и объявляют это как `steps: true`. Ни одной
-               * правки в установленных двоичниках, потому что правка была не там. */
-              goal: job.flow_id === DESKTOP_GOAL,
-              /* ГДЕ ИДЁТ ЦЕЛЬ - во вкладке своего браузера агента, если так просили (2026-10-01). Ключ вкладки -
-               * разговор, из которого пришла просьба: прогон идёт там, где человек его видит в панели. */
-              ...(job.flow_id === DESKTOP_GOAL && job.args && job.args.surface === 'browser'
-                ? { surface: 'browser', tab: String(job.args.tab || 'work').slice(0, 80) } : {}),
-              /* РАЗОВЫЙ ПРОГОН С ПРОВЕРКАМИ В БРАУЗЕРЕ (mouseflow_do с `expect`) - цель с проверками
-               * составляется ЗДЕСЬ и едет готовой, тем же полем, что у кейса. Слова «проверь это тулом, а не
-               * глазом» одни на все драйверы (caseGoal); расширение их только исполняет. Старое расширение
-               * поля не знает и пойдёт по голой цели - и отчёт скажет «нет вердикта», а не «прошло»: записи
-               * проверок у такого прогона не будет. Десктопу это не нужно - там цель складывает ?worker=step. */
-              ...(job.flow_id === BROWSER_GOAL && expectsOf(job.args)
-                ? { caseGoal: caseGoal(String((job.args && job.args.goal) || ''), expectsOf(job.args)) }
-                : {}),
-            },
-          });
+          return res.status(200).json({ ok: true, job: goalJob(job) });
         }
         const flow = await sql`
           select client_id, source, kind, name, description, payload, origins

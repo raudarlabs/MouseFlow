@@ -6403,7 +6403,11 @@ group('Hivelink H1: a machine is its device token, one job per machine, and only
       && /catch \(_\) \{ \/\* 025 not applied yet \*\/ \}/.test(claim));
   check('a machine already holding a job is given no second one',
     /\(to_jsonb\(q\) ->> 'claimed_device'\) = \$\{me\}/.test(claim)
-      && /if \(holding\.length\) return res\.status\(200\)\.json\(\{ ok: true, job: null \}\);/.test(claim));
+      && /if \(holding\.length\) \{[\s\S]{0,400}?return res\.status\(200\)\.json\(\{ ok: true, job: null \}\);\s*\}/.test(claim));
+  /* Владелец, 2026-10-17: партия на маке встала при переустановке агента и висела до «never reported back». */
+  check('but the one it holds comes back to it after a restart - a desktop goal only, and as the same job',
+    /if \(held\.flow_id === DESKTOP_GOAL\) \{\s*await sql`update run_queue set claimed_at = now\(\)[^`]*`;\s*return res\.status\(200\)\.json\(\{ ok: true, job: goalJob\(held\), resumed: true \}\);/.test(claim)
+      && /return res\.status\(200\)\.json\(\{ ok: true, job: goalJob\(job\) \}\);/.test(claim));
   check('a pin matches the device id as well as the old computer name',
     /or \(to_jsonb\(q\) ->> 'machine'\) = \$\{by\}/.test(claim) && /or \(to_jsonb\(q\) ->> 'machine'\) = \$\{me \|\| ''\}/.test(claim));
 
