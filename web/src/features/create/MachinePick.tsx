@@ -21,12 +21,14 @@ const dot = (tone: 'good' | 'attention' | 'off') => (
     tone === 'good' ? 'bg-fb-green' : tone === 'attention' ? 'bg-fb-attention' : 'bg-ink-inactive')} />
 );
 
-export const MachinePick = ({ value, onChange, machines, hereOnline, disabled }: {
+export const MachinePick = ({ value, onChange, machines, hereOnline, busyHere, disabled }: {
   value: string;
   onChange: (id: string) => void;
   machines: Device[];
   /** Отвечает ли агент этого компьютера по loopback. */
   hereOnline: boolean;
+  /** Здесь уже идёт прогон - этот компьютер занят, другие свободны. */
+  busyHere?: boolean;
   disabled?: boolean;
 }) => {
   const picked = value === HERE ? null : machines.find((m) => m.id === value) ?? null;
@@ -61,7 +63,7 @@ export const MachinePick = ({ value, onChange, machines, hereOnline, disabled }:
             <span className="flex min-w-0 flex-1 flex-col">
               <span className="font-semibold text-ink-primary">This computer</span>
               <span className="text-[0.74rem] text-ink-inactive">
-                {hereOnline ? 'runs from this tab, live' : 'its agent is not answering'}
+                {busyHere ? 'busy with the run from this tab' : hereOnline ? 'runs from this tab, live' : 'its agent is not answering'}
               </span>
             </span>
             {value === HERE && <Check className="size-4 text-brand-primary" />}

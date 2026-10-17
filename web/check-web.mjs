@@ -544,6 +544,9 @@ group('A run on another computer reads as what it does: its screen, the point it
     && /window\.addEventListener\(NEW_TASK_EVENT, fresh\)/.test(create));
   check('идущее - сверху Recent и подписано', /'In progress' : 'Waiting'/.test(side) && /const live = useLive\(\);/.test(side));
   check('и остановить его можно из карточки', /cancelJob\(turn\.runId!\)/.test(create));
+  /* Владелец, 2026-10-17: «разблокируй выбор другого компьютера» - пока здесь идёт прогон. */
+  check('занят этот компьютер, а не страница', /const locked = running && !remote;/.test(create)
+    && /busyHere=\{running\}/.test(create) && /'Stop here'/.test(create));
 }
 
 group('папки одного продукта не импортируют папки другого');

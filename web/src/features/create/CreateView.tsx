@@ -590,7 +590,7 @@ export const CreateView = () => {
     /* ПЛАН СТРОИТСЯ ПО ЦЕЛИ ЦЕЛИКОМ, приложенное включая: план по одному тексту с исполнением другого -
      * это план, который не о том прогоне, который пойдёт. */
     const text = asked;
-    if (!text || planning || running) return;
+    if (!text || planning || (running && !remote)) return;
     setPlanning(true);
     setPlanProblem(null);
     try {
@@ -938,6 +938,10 @@ export const CreateView = () => {
 
   /* Отказ «агента здесь нет» - про ЭТОТ компьютер; другой его не касается. */
   const blockedNow = remote ? null : blocked;
+  /* ЗАНЯТ ЭТОТ КОМПЬЮТЕР - а не страница (владелец, 2026-10-17: «разблокируй выбор другого компьютера»).
+   * Мышь здесь одна, и второй прогон на ней начать нельзя; но поле, вложения и выбор машины свободны, и
+   * задача другому компьютеру уходит, пока этот работает. Stop для прогона здесь остаётся рядом. */
+  const locked = running && !remote;
 
   const engine = target === 'desktop'
     ? health ? `agent ${health.version}${stale ? ' · out of date' : ''}` : 'agent offline'
@@ -1439,7 +1443,7 @@ export const CreateView = () => {
           * мегабайт, и что взяли не всё. */
         /* Подсказки под полем, и ТОЛЬКО на пустом экране: когда в ленте уже что-то есть, они предлагают
           * начать заново там, где человек продолжает. */
-        below={visible.length === 0 && !openedId && !running ? SUGGESTIONS.map((text) => (
+        below={visible.length === 0 && !openedId && !locked ? SUGGESTIONS.map((text) => (
           <Suggestion key={text} icon={<Sparkles />} onClick={() => setGoal(text)}>
             {text.length > 52 ? `${text.slice(0, 52)}…` : text}
           </Suggestion>
@@ -1470,7 +1474,7 @@ export const CreateView = () => {
                     <button
                       type="button"
                       aria-label={`Remove ${one.name}`}
-                      disabled={running}
+                      disabled={locked}
                       onClick={() => setFiles((was) => was.filter((f) => f.id !== one.id))}
                       className="shrink-0 rounded-full text-ink-inactive hover:text-ink-primary"
                     >
@@ -1536,7 +1540,7 @@ export const CreateView = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={running}
+                  disabled={locked}
                   aria-label="Attach something to this goal"
                   className="px-2"
                 >
@@ -1572,7 +1576,7 @@ export const CreateView = () => {
                 onChange={pickMachine}
                 machines={machines}
                 hereOnline={!!health}
-                disabled={running}
+                busyHere={running}
               />
             )}
 
@@ -1705,17 +1709,19 @@ export const CreateView = () => {
             </Popover>
 
             <span className="ms-auto flex items-center gap-2">
-            {running ? (
+            {running && (
               <Button
-                variant="destructive"
+                variant={locked ? 'destructive' : 'ghost'}
                 size="sm"
                 leftSlot={<Square className="size-4" />}
                 onClick={stop}
                 disabled={stopping}
+                title={locked ? undefined : 'Stop the run on this computer'}
               >
-                {stopping ? 'Stopping…' : 'Stop'}
+                {stopping ? 'Stopping…' : locked ? 'Stop' : 'Stop here'}
               </Button>
-            ) : (
+            )}
+            {locked ? null : (
               /* ОДНА КНОПКА, И НА НЕЙ НАПИСАНО, ЧТО ПРОИЗОЙДЁТ.
                  *
                  * Стрелка рядом - не второе действие, а выбор того, чем эта кнопка является. Пока плана нет,
@@ -1771,7 +1777,7 @@ export const CreateView = () => {
             {/* Микрофон стоит в одном ряду с остальным вводом, потому что это и есть ввод - другой способ
               * набрать то же поле. Прятать его, пока не спросили разрешение, было бы кнопкой, которая
               * появляется после того, как понадобилась. */}
-            {dictation.supported && !running && (
+            {dictation.supported && !locked && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -1813,10 +1819,10 @@ export const CreateView = () => {
             ev.preventDefault();
             void act();
           }}
-          disabled={running}
+          disabled={locked}
           rows={2}
-          placeholder={running
-            ? 'Working…'
+          placeholder={locked
+            ? 'Working… pick another computer below to give it a task meanwhile'
             : dictation.recognising
               ? 'Recognising what you said…'
               : dictation.listening

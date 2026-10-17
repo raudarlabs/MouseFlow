@@ -1125,9 +1125,11 @@ export const actionReport = (moved, streak = 0) => {
   if (moved !== false) return 'done';
   if (streak >= STILL_WARN) {
     return `done — and that is ${streak} turns in a row now with nothing changing on screen. Something `
-      + 'about where you are aiming is wrong, not about how many times you try it. Look at the screenshot '
-      + 'again and do something DIFFERENT — a different control, a different route to the same thing — or '
-      + 'finish with ok false and say what you could not reach.';
+      + 'about where you are aiming is wrong, not about how many times you try it. Often it is the '
+      + 'application saying no without words: a move the game does not allow (a pinned piece, not your '
+      + 'turn), a disabled button, a field that refuses the input - and that is not fixed by trying again. '
+      + 'Look at the screenshot again and do something DIFFERENT — a different control, a different move, a '
+      + 'different route to the same thing — or finish with ok false and say what you could not reach.';
   }
   return STILL_NOTE;
 };
