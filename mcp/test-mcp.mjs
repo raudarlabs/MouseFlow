@@ -5857,7 +5857,9 @@ group('префикс хода кешируется - самое дорогое 
    * заново каждый ход по полной цене - и это было единственной причиной, по которой вложения держали на
    * четырёх тысячах знаков. */
   check('цель тоже попадает в кешируемый префикс',
-    /function withCachedOpening/.test(vision) && /messages: withCachedOpening\(body[.]messages\)/.test(vision));
+    /function withCachedOpening/.test(vision) && /messages: withRollingCache\(withCachedOpening\(body[.]messages\)\)/.test(vision));
+  check('и история за ней - катящейся отметкой перед последним снимком (2026-10-18)',
+    /function withRollingCache\(messages\)/.test(vision));
   /* И КОПИЕЙ, ПО ПРИЧИНЕ ХУЖЕ ОБЩЕГО МАССИВА: loop.messages уезжает в run_queue.loop между ходами, и
    * отметка, поставленная на месте, сохранилась бы В БАЗЕ - то есть вернулась бы во все будущие запросы
    * этого прогона, где она уже не первая. */

@@ -143,6 +143,8 @@ export interface RunStep {
   at?: number;
   /** Только у `expect`: вердикт с доказательством. `pass: null` - проверить не удалось (см. _expect.mjs). */
   outcome?: { pass: boolean | null; how: string; evidence: string };
+  /** Сколько входа этого хода пришло из кеша. */
+  cached?: number;
 }
 
 /** What is already open, in one line each - the mistake a picture cannot prevent. */
@@ -243,6 +245,8 @@ interface Block {
 interface Answer {
   stop_reason?: string;
   content?: Block[];
+  /** Сколько входа пришло из кеша - то же число, что облачный драйвер пишет в шаг (`cached`). */
+  usage?: { cache_read_input_tokens?: number };
 }
 
 async function ask(body: unknown, signal?: AbortSignal) {
@@ -778,6 +782,9 @@ async function runWave(o: {
          * of them paid for one of each. Written onto every step anyway, because the alternative is a shape
          * where some steps have timings and some do not, and whoever reads them later has to know why. */
         ms: { shot: shotMs, model: modelMs, act: 0 },
+        /* СКОЛЬКО ПРИШЛО ИЗ КЕША - как на облачном пути. Без этого числа прогон из вкладки нельзя было
+         * сравнить с облачным: в журнале у него стоял ноль, и было не понять - не кешируется или не пишется. */
+        ...(answer.usage?.cache_read_input_tokens ? { cached: answer.usage.cache_read_input_tokens } : {}),
       };
       steps.push(trace);
 

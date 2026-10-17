@@ -95,13 +95,53 @@ function withCachedOpening(messages) {
   }
   return messages;
 }
+/* ЧЕТВЁРТАЯ ОТМЕТКА - КАТЯЩАЯСЯ, на последнем сообщении, которое уже не изменится (владелец, 2026-10-18:
+ * «сейчас ну ооочень долго»).
+ *
+ * ЗАМЕРЕНО на живых прогонах: модель отвечала по 3-5 с на первых шагах и по 20-60 с к тридцатому, а кеш
+ * читал ровно 10 тысяч токенов на КАЖДОМ шаге - system, tools и цель. Всё, что было сделано за прогон,
+ * каждый ход пересчитывалось заново, и время ответа росло вместе с историей.
+ *
+ * КУДА ЕЁ СТАВИТЬ, решают оба драйвера одинаково: перед каждым ходом они вырезают все старые снимки
+ * (forgetOldPictures), так что следующий запрос отличается от этого начиная с ПОСЛЕДНЕГО сообщения со
+ * снимком - из него картинку вырежут. Всё до него байт в байт повторится. Отметка на сообщении прямо перед
+ * ним - самое далёкое место, до которого следующий ход найдёт префикс в кеше; шаг вперёд - и каждый ход
+ * писал бы в кеш то, что следующий уже не прочтёт.
+ *
+ * Четыре отметки - потолок платформы: system, tools, цель и эта. Если та, что перед снимком, - это и есть
+ * цель (первый ход), второй не ставится. КОПИЕЙ, по той же причине, что у цели: loop.messages едет в базу. */
+function withRollingCache(messages) {
+  if (!Array.isArray(messages) || messages.length < 3) return messages;
+  let lastPicture = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const content = messages[i] && messages[i].content;
+    if (Array.isArray(content) && content.some((part) => part && part.type === 'image')) { lastPicture = i; break; }
+  }
+  const at = (lastPicture === -1 ? messages.length : lastPicture) - 1;
+  if (at < 1) return messages;
+  const target = messages[at];
+  if (!target || typeof target !== 'object') return messages;
+  let content;
+  if (typeof target.content === 'string') {
+    if (!target.content) return messages;
+    content = [{ type: 'text', text: target.content, cache_control: EPHEMERAL }];
+  } else if (Array.isArray(target.content) && target.content.length) {
+    const last = target.content[target.content.length - 1];
+    if (!last || typeof last !== 'object' || last.cache_control || last.type === 'thinking') return messages;
+    content = [...target.content.slice(0, -1), { ...last, cache_control: EPHEMERAL }];
+  } else {
+    return messages;
+  }
+  return [...messages.slice(0, at), { ...target, content }, ...messages.slice(at + 1)];
+}
+
 /* Rebuilt field by field rather than forwarded wholesale, so a caller cannot smuggle in options this is not
  * meant to pay for. */
 export function payloadFor(body) {
   const payload = {
     model: body.model,
     max_tokens: Math.min(Number(body.max_tokens) || 4096, MAX_TOKENS_CAP),
-    messages: withCachedOpening(body.messages),
+    messages: withRollingCache(withCachedOpening(body.messages)),
   };
   if (typeof body.system === 'string' && body.system) {
     payload.system = [{ type: 'text', text: body.system, cache_control: EPHEMERAL }];

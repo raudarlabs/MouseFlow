@@ -99,6 +99,35 @@ group('ЦЕЛЬ ТОЖЕ КЕШИРУЕТСЯ - она не меняется з�
     JSON.stringify(payloadFor({ model: 'claude-opus-5', messages: [] }).messages) === '[]');
 }
 
+group('ИСТОРИЯ ТОЖЕ КЕШИРУЕТСЯ - катящейся отметкой перед последним снимком (2026-10-18, «ооочень долго»)');
+{
+  /* Два хода подряд так, как их собирают оба драйвера: перед следующим ходом все снимки вырезаются
+   * (forgetOldPictures), и добавляются ответ модели, результаты и новый снимок. */
+  const shot = (n) => ({ role: 'user', content: [{ type: 'tool_result', tool_use_id: `t${n}`, content: 'done' },
+    { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: `P${n}` } }, { type: 'text', text: `screen ${n}` }] });
+  const said = (n) => ({ role: 'assistant', content: [{ type: 'text', text: `move ${n}` }, { type: 'tool_use', id: `t${n + 1}`, name: 'click', input: { x: n, y: n } }] });
+  const strip = (list) => list.map((m) => (Array.isArray(m.content)
+    ? { ...m, content: m.content.filter((p) => p.type !== 'image') } : m));
+  const turnK = [{ role: 'user', content: 'Play chess' }, said(0), strip([shot(1)])[0], said(1), shot(2)];
+  const turnNext = [...strip(turnK), said(2), shot(3)];
+  const a = payloadFor({ model: 'claude-opus-5', system: 's', tools: [{ name: 'finish' }], messages: turnK }).messages;
+  const b = payloadFor({ model: 'claude-opus-5', system: 's', tools: [{ name: 'finish' }], messages: turnNext }).messages;
+  const markedAt = (list) => list.map((m, i) => (Array.isArray(m.content) && m.content.some((p) => p.cache_control) ? i : -1)).filter((i) => i >= 0);
+  check('отметка - на сообщении прямо перед последним снимком', JSON.stringify(markedAt(a)) === '[0,3]', JSON.stringify(markedAt(a)));
+  const plain = (list, upto) => JSON.stringify(list.slice(0, upto + 1).map((m) => (Array.isArray(m.content)
+    ? { ...m, content: m.content.map(({ cache_control, ...rest }) => rest) } : m)));
+  check('и следующий ход повторяет всё до неё байт в байт - значит, прочтёт это из кеша',
+    plain(a, 3) === plain(b, 3), `${plain(a, 3).slice(0, 200)} vs ${plain(b, 3).slice(0, 200)}`);
+  check('а сам следующий ход ставит её дальше, перед своим снимком', JSON.stringify(markedAt(b)) === '[0,5]', JSON.stringify(markedAt(b)));
+  const out = payloadFor({ model: 'claude-opus-5', system: 's', tools: [{ name: 'finish' }], messages: turnNext });
+  const marks = (out.system || []).filter((x) => x.cache_control).length + out.tools.filter((x) => x.cache_control).length
+    + markedAt(out.messages).length;
+  check('отметок ровно четыре - потолок платформы', marks === 4, String(marks));
+  check('исходный массив не мутирован', !markedAt(turnNext).length);
+  check('на первом ходу, где перед снимком только цель, вторая не ставится',
+    JSON.stringify(markedAt(payloadFor({ model: 'claude-opus-5', messages: [{ role: 'user', content: 'g' }, shot(1)] }).messages)) === '[0]');
+}
+
 group('НА ЧЁМ ЭТО ДЕРЖИТСЯ: `finish` - последний инструмент, во всех режимах');
 {
   /* Отметка ставится на ПОЗИЦИЮ. Пока finish последний, кешируется вся схема; уедь он из конца - и
