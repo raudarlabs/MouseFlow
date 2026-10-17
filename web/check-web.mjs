@@ -498,8 +498,12 @@ group('Create: a computer to pick, no small print under the field, short suggest
   const pick = read('src/features/create/MachinePick.tsx');
   check('выбор компьютера стоит в строке управления', /<MachinePick\b/.test(create) && /export const HERE = 'here';/.test(pick));
   check('на другом компьютере - очередь, на этом - прогон из вкладки, и кнопка с клавишей зовут одно',
-    /commandMachines\(\{ devices: \[remoteMachine\.id\], goal: text \}\)/.test(create)
+    /commandMachines\(\{ devices: \[remoteMachine\.id\], goal \}\)/.test(create)
       && /const act = \(\) => \(wants === 'run' \? \(remote \? sendRemote\(\) : send\(\)\) : makePlan\(\)\);/.test(create));
+  /* Владелец, 2026-10-17: выбрал NB131, построил план, нажал Run в карточке - и прогон пошёл на этом Маке. */
+  check('и «Run it» в карточке плана - тот же act(), а не прямой send()',
+    !/onClick=\{\(\) => void send\(\)\}/.test(create) && (create.match(/onClick=\{\(\) => void act\(\)\}/g) || []).length >= 2);
+  check('план для другого компьютера не строится по снимку этого', /pinScreen && !remote\)/.test(create));
   check('и отправленное отсюда лента ведёт той же карточкой', /remoteJobs\.current\.add\(put\.id\);/.test(create)
     && /const sentFromHere = remoteJobs\.current\.has\(job\.id\);/.test(create));
   check('отказ «агента здесь нет» не мешает другому компьютеру', /const blockedNow = remote \? null : blocked;/.test(create));

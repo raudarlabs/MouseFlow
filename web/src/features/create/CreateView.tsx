@@ -300,6 +300,10 @@ export const CreateView = () => {
   };
   /** Работы, отправленные ОТСЮДА на другой компьютер: их ведёт лента, а не этот цикл. */
   const remoteJobs = useRef<Set<string>>(new Set());
+
+  /* ДРУГОЙ КОМПЬЮТЕР выбран - и он ещё на аккаунте. Отозванный выбор читается как «этот». */
+  const remoteMachine = target === 'desktop' && machine !== HERE ? machines.find((m) => m.id === machine) ?? null : null;
+  const remote = !!remoteMachine;
   const [blocked, setBlocked] = useState<string | null>('Looking for what can carry this out…');
   const [running, setRunning] = useState(false);
   const [stopping, setStopping] = useState(false);
@@ -562,7 +566,8 @@ export const CreateView = () => {
     setPlanProblem(null);
     try {
       let screen: { png: string; format: string } | null = null;
-      if (target === 'desktop' && pinScreen) {
+      /* Снимок - ЭТОГО экрана; план для другого компьютера по нему строить нельзя. */
+      if (target === 'desktop' && pinScreen && !remote) {
         try {
           const shotNow = await shot(state.port, 900);
           screen = { png: shotNow.png, format: shotNow.format || 'jpeg' };
@@ -578,7 +583,7 @@ export const CreateView = () => {
     } finally {
       setPlanning(false);
     }
-  }, [asked, planning, running, target, pinScreen, state.port]);
+  }, [asked, planning, running, target, pinScreen, remote, state.port]);
 
   const send = useCallback(async () => {
     const text = asked;
@@ -899,9 +904,6 @@ export const CreateView = () => {
    * третьей, о которой тот файл писал, и она же была неверной на тринадцать пикселей. */
   const page = usePageChrome();
 
-  /* ДРУГОЙ КОМПЬЮТЕР выбран - и он ещё на аккаунте. Отозванный выбор читается как «этот». */
-  const remoteMachine = target === 'desktop' && machine !== HERE ? machines.find((m) => m.id === machine) ?? null : null;
-  const remote = !!remoteMachine;
   /* Отказ «агента здесь нет» - про ЭТОТ компьютер; другой его не касается. */
   const blockedNow = remote ? null : blocked;
 
@@ -951,7 +953,13 @@ export const CreateView = () => {
     if (!text || !remoteMachine) return;
     setPlanProblem(null);
     try {
-      const answer = await commandMachines({ devices: [remoteMachine.id], goal: text });
+      /* План, согласованный здесь, едет словами: шлюзов у прогона в очереди нет, но то, о чём договорились,
+       * та машина должна знать. */
+      const agreed = plan && plan.for === text ? plan.plan : null;
+      const goal = agreed
+        ? `${text}\n\nThe plan agreed before the run:\n${agreed.checkpoints.map((p, i) => `${i + 1}. ${p.title}`).join('\n')}`
+        : text;
+      const answer = await commandMachines({ devices: [remoteMachine.id], goal });
       const put = answer.queued[0];
       if (!put) { setPlanProblem(answer.refused[0]?.why ?? 'it was not sent'); return; }
       remoteJobs.current.add(put.id);
@@ -1317,8 +1325,10 @@ export const CreateView = () => {
             <Button variant="ghost" size="sm" onClick={() => setPlan(null)}>
               Edit the wording
             </Button>
-            <Button size="sm" leftSlot={<Send className="size-4" />} onClick={() => void send()}>
-              Run it
+            {/* Через тот же act(), что кнопка внизу и Enter: при построенном плане он запускает, и запускает
+              * ТАМ, где выбрано. Прямой send() здесь гнал прогон на этот компьютер, когда выбран другой. */}
+            <Button size="sm" leftSlot={<Send className="size-4" />} onClick={() => void act()}>
+              {remote ? `Run it on ${machineName(remoteMachine!)}` : 'Run it'}
             </Button>
           </div>
 

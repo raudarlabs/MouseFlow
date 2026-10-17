@@ -611,7 +611,10 @@ export const TOOLS = [
           type: 'string',
           enum: ['present', 'absent', 'value_is', 'value_contains', 'enabled', 'disabled'],
           description: 'present/absent: is it on the window at all. value_is/value_contains: what a field '
-            + 'holds (needs `text`). enabled/disabled: whether it can be used.',
+            + 'holds (needs `text`). enabled/disabled: whether it can be used. Text you TYPED is what a field '
+            + 'holds, not a name on the window: to prove it, use value_contains with `name` = the field (its '
+            + 'label or placeholder) and `text` = what you typed - present with the typed words as the name '
+            + 'fails even when they are plainly there.',
         },
         name: { type: 'string', description: 'The control, as it appears on screen' },
         text: { type: 'string', description: 'For value_is and value_contains' },
