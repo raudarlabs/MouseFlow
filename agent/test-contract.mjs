@@ -1250,7 +1250,7 @@ group('приложенные файлы - часть того, о чём поп
 
   /* И это видно ДО нажатия: перебор запрещает запуск, а не обрезается молча при отправке. */
   check('перебор запрещает запуск, а не обрезается молча',
-    /disabled=\{!!blocked \|\| !asked \|\| left < 0\}/.test(create));
+    /disabled=\{!!blockedNow \|\| !asked \|\| left < 0\}/.test(create));
   check('и сколько места осталось, сказано на экране',
     /characters over the limit/.test(create) && /characters left/.test(create));
 
@@ -1313,7 +1313,8 @@ group('кнопка говорит, что произойдёт, и Enter дел
   check('«что сейчас сделает кнопка» - тоже одно',
     /const wants: StartWith = planned \? 'run' : startWith;/.test(code));
   check('и действие у кнопки с клавишей общее',
-    /const act = \(\) => \(wants === 'run' \? send\(\) : makePlan\(\)\);/.test(code));
+    /* С 2026-10-16 «run» на другом компьютере - sendRemote, но кнопка и клавиша по-прежнему зовут одно `act`. */
+    /const act = \(\) => \(wants === 'run' \? \(remote \? sendRemote\(\) : send\(\)\) : makePlan\(\)\);/.test(code));
 
   /* Обе двери в одно и то же действие. Разными их сделать больше нельзя, не тронув `act`. */
   check('кнопка зовёт его', /onClick=\{\(\) => void act\(\)\}/.test(code));

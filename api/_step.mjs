@@ -11,7 +11,7 @@
  * that file existing. What differs here is only bookkeeping.
  *
  * THE ROW NEVER HOLDS A PICTURE. Every state that goes back to the database goes through pack(), which
- * drops the images. A screenshot is 161KB; a run is up to 240 steps; a queue table that kept them would be
+ * drops the images. A screenshot is 161KB; a run is up to 960 steps; a queue table that kept them would be
  * a picture album with a job id attached. The agent sends a fresh one every request, so there is nothing to
  * keep.
  *
@@ -72,7 +72,7 @@ import { checksOf, expectSaid, judge } from './_expect.mjs';
 /* Какой кадр стоит оставить и как его назвать. Тот же расчёт, что у браузерного драйвера: отчёт, в котором
  * у одного прогона есть картинка провала, а у такого же другого нет, не читают. См. api/_artifact.mjs. */
 import { kindOf, saidOf } from './_artifact.mjs';
-import { DEFAULT_SHOT_W } from './_brain.mjs';
+import { DEFAULT_SHOT_W, busyGaveUp, busyNote, retryWaitMs, retryable } from './_brain.mjs';
 import { callModel } from './_vision.mjs';
 
 /* ПАУЗА ПОСРЕДИ ПРОГОНА - и почему она стоила несравнимо меньше, чем оценивал план (§7.2, шаг 14b).
@@ -594,6 +594,28 @@ export async function advance({ loop, shot, windows, results, caps, ask }) {
     loop.shotWidth = Math.max(MIN_SHOT_W, Math.round(loop.shotWidth / 2));
     return { loop: pack(loop), shrink: loop.shotWidth };
   }
+
+  /* ПЕРЕГРУЖЕНО - ПОДОЖДАТЬ И СПРОСИТЬ СНОВА (см. retryable в api/_brain.mjs). Ход не случился: снимок, ради
+   * которого спрашивали, уходит из разговора (ответы на прошлые действия остаются - на них модель уже
+   * имеет право), шаг не считается, и машина получает одно действие «подожди». Её ответ на него никуда не
+   * едет - pending пуст, - а следующий её запрос принесёт свежий снимок, и решение спросят заново. */
+  if (retryable(answer.status)) {
+    const attempt = loop.retry || 0;
+    const waitMs = retryWaitMs(attempt);
+    if (waitMs == null) return over({ ok: false, error: busyGaveUp(answer.status, loop.stepNo) });
+    loop.messages.pop();
+    loop.stepNo -= 1;
+    loop.turn -= 1;
+    loop.retry = attempt + 1;
+    loop.said.push(busyNote(answer.status, waitMs));
+    return {
+      loop: pack(loop),
+      actions: [{ id: 'retry', kind: 'wait', ms: waitMs, reason: 'the model service is busy' }],
+      step: loop.stepNo,
+      shotWidth: loop.shotWidth,
+    };
+  }
+  loop.retry = 0;
 
   if (answer.status < 200 || answer.status >= 300 || !answer.body) {
     const detail = answer.body && answer.body.error ? String(answer.body.error.message || '') : '';

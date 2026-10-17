@@ -133,3 +133,10 @@ export function openingMessage(
 export const BROWSER_TOOLS: Set<string>;
 /** What the model is told about working inside that tab - before the goal, one wording for both drivers. */
 export const BROWSER_NOTE: string;
+
+export const RETRYABLE_STATUS: Set<number>;
+export const RETRY_WAITS_MS: number[];
+export function retryable(status: number): boolean;
+export function retryWaitMs(attempt: number): number | null;
+export function busyNote(status: number, waitMs: number): string;
+export function busyGaveUp(status: number, stepNo: number): string;

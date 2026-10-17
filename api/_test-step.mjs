@@ -583,6 +583,46 @@ group('still too large at the smallest picture ends the run, with the reason');
     out.done.error);
 }
 
+/* ПЕРЕГРУЗКА МОДЕЛИ - НЕ КОНЕЦ ПРОГОНА (владелец, 2026-10-16: «HTTP 529 - Overloaded» на шаге 28). */
+group('an overloaded model is waited out, not given up on - and the waiting has an end');
+{
+  const loop = start();
+  const ask = scripted([
+    { status: 529, body: { error: { message: 'Overloaded' } } },
+    { status: 529, body: { error: { message: 'Overloaded' } } },
+    answer([says('Opening it.'), use('click', { x: 100, y: 200, label: 'New mail' })]),
+  ]);
+  const first = await advance({ loop, shot: SHOT, windows: WINDOWS, results: [], ask });
+  check('a 529 hands the machine a wait, not an ending', !first.done && first.actions?.[0]?.kind === 'wait'
+    && first.actions[0].ms === 5000, JSON.stringify(first.actions));
+  check('and the step that did not happen is not counted', first.loop.stepNo === 0 && first.loop.turn === 0);
+  check('and its picture is taken back out of the conversation', pictures(first.loop) === 0);
+  const second = await advance({ loop: first.loop, shot: SHOT, windows: WINDOWS, results: [{ id: 'retry', ok: true }], ask });
+  check('the wait grows', second.actions?.[0]?.ms === 10000, JSON.stringify(second.actions));
+  const third = await advance({ loop: second.loop, shot: SHOT, windows: WINDOWS, results: [{ id: 'retry', ok: true }], ask });
+  check('and when the model answers, the run goes on from where it was',
+    !third.done && third.actions?.[0]?.kind === 'do' && third.loop.stepNo === 1, JSON.stringify(third.actions));
+  check('with the counter reset', third.loop.retry === 0);
+  check('and the waiting was said', third.loop.said.some((one) => /overloaded right now; waiting 5s/.test(one)));
+  check('the wait-result is not answered to the model as a tool result',
+    !JSON.stringify(ask.seen[2].messages).includes('"tool_use_id":"retry"'));
+
+  let busy = start();
+  const always = scripted(Array.from({ length: 7 }, () => ({ status: 529, body: null })));
+  let out = null;
+  for (let i = 0; i < 7; i++) {
+    out = await advance({ loop: busy, shot: SHOT, windows: WINDOWS, results: [], ask: always });
+    if (out.done) break;
+    busy = out.loop;
+  }
+  check('six waits, then the run ends with a reason that is not "refused"', out.done && out.done.ok === false
+    && /stayed overloaded for about three minutes/.test(out.done.error) && !/refused/.test(out.done.error), out.done && out.done.error);
+  const rate = await advance({ loop: start(), shot: SHOT, windows: WINDOWS, results: [], ask: scripted([{ status: 429, body: null }]) });
+  check('429 and 5xx are waited out the same way', !rate.done && rate.actions?.[0]?.kind === 'wait');
+  const bad = await advance({ loop: start(), shot: SHOT, windows: WINDOWS, results: [], ask: scripted([{ status: 400, body: { error: { message: 'bad' } } }]) });
+  check('but a 400 is not - it would fail the same way every time', !!bad.done);
+}
+
 group('a refusal and a truncated answer are different things and are said differently');
 {
   const refused = await advance({
