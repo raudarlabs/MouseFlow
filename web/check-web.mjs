@@ -551,6 +551,9 @@ group('A run on another computer reads as what it does: its screen, the point it
       && /\.finally\(\(\) => \{ holdFrame\(false\);/.test(create)
       && /if \(action == "driving"\)/.test(read('../agent/mouseflow-agent.ps1'))
       && /if action == "driving"/.test(read('../agent/mouseflow-agent.swift')));
+  /* Владелец, 2026-10-17: партия на 49-м ходу кончилась «did not answer within 75s». */
+  check('таймаут модели на прогоне со страницы ждёт и спрашивает снова, как облачный',
+    /const status = timedOut \? 504 : 502;\s*const waitMs = retryWaitMs\(retry\);/.test(read('src/lib/desktop-engine.ts')));
   check('приложение раньше сайта', /AN APPLICATION BEFORE A WEBSITE/.test(read('../api/_brain.mjs')));
   check('занят этот компьютер, а не страница', /const locked = running && !remote;/.test(create)
     && /busyHere=\{running\}/.test(create) && /'Stop here'/.test(create));

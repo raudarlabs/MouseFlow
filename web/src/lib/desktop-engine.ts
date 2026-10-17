@@ -501,17 +501,34 @@ async function runWave(o: {
       }, cutoff.signal));
     } catch (err) {
       clearTimeout(timer);
+      if (isAborted()) return { stepNo };
       const timedOut = (err as { name?: string } | null)?.name === 'AbortError';
-      return {
-        stepNo,
-        result: {
-          ok: false,
-          error: timedOut
-            ? `The model did not answer within ${MODEL_TIMEOUT_MS / 1000}s at step ${stepNo}.`
-            : 'Could not reach the MouseFlow server.',
-          steps,
-        },
-      };
+      /* НЕ ОТВЕТИЛА ВОВРЕМЯ ИЛИ СЕТЬ МОРГНУЛА - ЭТО ТА ЖЕ ПЕРЕГРУЗКА, а не конец прогона (владелец,
+       * 2026-10-17: партия на 49-м ходу кончилась «did not answer within 75s»). Облачный драйвер получает
+       * то же самое как 502 и ждёт по тому же расписанию; здесь - так же: 504 за таймаут, 502 за сеть.
+       * Сдаётся, только когда расписание кончилось, и говорит тогда, что именно не ответило. */
+      const status = timedOut ? 504 : 502;
+      const waitMs = retryWaitMs(retry);
+      if (waitMs == null) {
+        return {
+          stepNo,
+          result: {
+            ok: false,
+            error: timedOut
+              ? `The model did not answer within ${MODEL_TIMEOUT_MS / 1000}s at step ${stepNo}, several times in a row.`
+              : 'Could not reach the MouseFlow server, several times in a row.',
+            steps,
+          },
+        };
+      }
+      retry += 1;
+      messages.pop();
+      turn--;
+      stepNo--;
+      onEvent({ type: 'text', text: busyNote(status, waitMs) });
+      await new Promise((done) => setTimeout(done, waitMs));
+      if (isAborted()) return { stepNo };
+      continue;
     }
     clearTimeout(timer);
     const modelMs = Date.now() - modelAt;
