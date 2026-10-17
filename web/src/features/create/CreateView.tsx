@@ -41,7 +41,7 @@ import {
   Thread,
   UserTurn,
 } from '@/components/chat';
-import { AGENT_WANTS, browserMachine, localMachine, shot, windows } from '@/lib/agent';
+import { AGENT_WANTS, browserMachine, doAction, localMachine, shot, windows } from '@/lib/agent';
 import { BROWSER_NOTE } from '../../../../api/_brain.mjs';
 import { askExtension, watchBridge } from '@/lib/bridge';
 import {
@@ -693,6 +693,17 @@ export const CreateView = () => {
         }).catch(() => {});
       };
 
+      /* РАМКА НА ВЕСЬ ПРОГОН, а не на каждое действие (владелец, 2026-10-17: «мигает рамка - агент
+       * отваливается на секунду-две»). Ход модели длиннее шестисекундной аренды действия, и рамка гасла
+       * между шагами. Агенту сказано «идёт» в начале и на каждом ходу, «кончилось» в конце; старый агент
+       * этого слова не знает и ответит ошибкой, которая здесь ничего не значит. Во встроенном браузере рамки
+       * нет - нечего и держать. */
+      const holdFrame = (on: boolean) => {
+        if (inBrowser) return;
+        void doAction(state.port, `action=driving on=${on ? 1 : 0}`).catch(() => {});
+      };
+      holdFrame(true);
+
       void runOnDesktop({
         /* Шлюзы — только когда план действительно спрашивали. Без плана нет границ, и инструмент чекпоинта
          * даже не предлагается модели. */
@@ -726,6 +737,7 @@ export const CreateView = () => {
          * облачный драйвер отдаёт модели то же самое теми же словами. */
         earlier: runs.filter((run) => run.kind === 'agent'),
         onEvent: (event) => {
+          if (event.type === 'turn') holdFrame(true);
           /* СЛОВА ПРОГОНА, отложенные для записи на аккаунт.
            *
            * `user_run.said` существует с самого начала и на этом пути никогда не заполнялся - api/insights.js
@@ -902,7 +914,7 @@ export const CreateView = () => {
             // The run still happened; losing its log is not worth telling the user about.
           }
         })
-        .finally(() => { setRunning(false); setStopping(false); });
+        .finally(() => { holdFrame(false); setRunning(false); setStopping(false); });
       return;
     }
 

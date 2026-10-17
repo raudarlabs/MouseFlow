@@ -548,7 +548,7 @@ namespace MouseFlow
 
     public static class Agent
     {
-        public const string Version = "0.29.1";
+        public const string Version = "0.29.2";
 
         static readonly object Gate = new object();
         static Native.HookProc _proc;   // must outlive the hook or the GC eats it
@@ -2703,10 +2703,16 @@ namespace MouseFlow
              *
              * BEFORE the parse and before the work: the point is to be lit WHILE the machine is being
              * touched, and an action refused a moment later was still an attempt to touch it. */
-            Acting.Touch();
-
             Dictionary<string, string> a = ParseFields(body);
             string action = Get(a, "action", "");
+            /* Не действие над машиной - сообщение о границах прогона; см. Acting.Hold. До Touch, чтобы
+               «прогон кончился» не зажигал рамку ещё на шесть секунд. */
+            if (action == "driving")
+            {
+                Acting.Hold(Get(a, "on", "0") == "1");
+                return null;
+            }
+            Acting.Touch();
             ResetInjection();
             ResetOutput();
 
@@ -7260,7 +7266,34 @@ namespace MouseFlow
              * cannot animate - still show one. /health then reports no `action` driver, which is the
              * truth, because none is lit. */
             if (!Frame.HiddenFromCapture) return;
-            lock (Gate) { _leaseUntil = DateTime.UtcNow.AddSeconds(LeaseSeconds); }
+            /* Продлевает, а НЕ укорачивает: аренда прогона со страницы (Hold) длиннее одиночной. */
+            lock (Gate)
+            {
+                DateTime until = DateTime.UtcNow.AddSeconds(LeaseSeconds);
+                if (until > _leaseUntil) _leaseUntil = until;
+            }
+            Frame.Sync();
+        }
+
+        /* ПРОГОН СО СТРАНИЦЫ ГОВОРИТ О СВОИХ ГРАНИЦАХ (2026-10-17, владелец: «мигает рамка - агент
+           отваливается на секунду-две»). Не отваливался: ход модели длиннее шестисекундной аренды, и между
+           шагами рамка гасла. Теперь страница зажигает её на весь прогон (`action=driving on=1`, повторяя
+           каждый ход) и гасит в конце (`on=0`). Аренда, а не удержание: закрытая посреди прогона вкладка
+           конца не скажет, и рамка сама погаснет через HoldSeconds - не позже. То же правило про Windows
+           без исключения из снимков, что у Touch. */
+        public const double HoldSeconds = 90;
+        public static void Hold(bool on)
+        {
+            if (!Frame.HiddenFromCapture) return;
+            lock (Gate)
+            {
+                if (!on) _leaseUntil = DateTime.UtcNow;
+                else
+                {
+                    DateTime until = DateTime.UtcNow.AddSeconds(HoldSeconds);
+                    if (until > _leaseUntil) _leaseUntil = until;
+                }
+            }
             Frame.Sync();
         }
     }

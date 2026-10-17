@@ -774,7 +774,9 @@ export const autostartEnable = (port: number) =>
  * человеку может только этот нудж. */
 /* 0.29.1 (2026-10-17): open_app ищет среди УСТАНОВЛЕННЫХ приложений по словам названия - «chess» открывает
  * «The Chess Lv.100» из Store, - вместо того чтобы прогон шёл искать приложение в интернете. */
-export const AGENT_WANTS = '0.29.1';
+/* 0.29.2: `action=driving` - страница держит рамку на весь прогон, и та не гаснет между ходами; на маке
+ * open_app знает и имя из Finder. */
+export const AGENT_WANTS = '0.29.2';
 
 /** Numeric, part by part: "0.10.0" is not behind "0.5.0", which a string comparison gets wrong. */
 export function olderThan(running: string | null | undefined, wanted = AGENT_WANTS): boolean {

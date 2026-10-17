@@ -44,7 +44,7 @@ import ScreenCaptureKit
 import Security
 import WebKit
 
-let VERSION = "0.29.1"
+let VERSION = "0.29.2"
 
 // ---------------------------------------------------------------- arguments
 
@@ -3934,7 +3934,13 @@ func installedApps() -> [(name: String, url: URL)] {
         guard let entries = try? fm.contentsOfDirectory(atPath: place) else { continue }
         for entry in entries {
             if entry.hasSuffix(".app") {
-                out.append((String(entry.dropLast(4)), URL(fileURLWithPath: place + "/" + entry)))
+                let url = URL(fileURLWithPath: place + "/" + entry)
+                out.append((String(entry.dropLast(4)), url))
+                /* И под тем именем, каким его показывает Finder: Chess.app на русском маке - «Шахматы», и
+                 * человек, и модель, читающая его цель, назовут его так. */
+                let shown = fm.displayName(atPath: url.path)
+                let bare = shown.hasSuffix(".app") ? String(shown.dropLast(4)) : shown
+                if bare.lowercased() != String(entry.dropLast(4)).lowercased() { out.append((bare, url)) }
                 continue
             }
             var folder: ObjCBool = false
@@ -3983,7 +3989,9 @@ func doOpenApp(_ app: String) -> String? {
         } else {
             let whole = installed.filter { appMatch(want, appWords($0.name)) == 2 }
             let start = installed.filter { appMatch(want, appWords($0.name)) == 1 }
-            let best = whole.isEmpty ? start : whole
+            var best: [(name: String, url: URL)] = []
+            /* Одно приложение под двумя именами (файла и Finder) - это одно совпадение, а не выбор. */
+            for one in (whole.isEmpty ? start : whole) where !best.contains(where: { $0.url == one.url }) { best.append(one) }
             if best.count == 1 { found = best[0].url } else { several = best.map { $0.name } }
         }
     }
@@ -4085,10 +4093,15 @@ func doAction(_ body: String) -> String? {
      *
      * ДО разбора и до выполнения: смысл рамки - гореть, пока машину трогают, а действие, отвергнутое
      * мгновением позже, всё равно было попыткой её тронуть. */
-    Acting.touch()
-
     let fields = parseAction(body)
     let action = (fields["action"] ?? "").lowercased()
+    /* Не действие над машиной - сообщение о границах прогона; см. Acting.hold. До touch(), чтобы «прогон
+     * кончился» не зажигал рамку ещё на шесть секунд. */
+    if action == "driving" {
+        Acting.hold((fields["on"] ?? "0") == "1")
+        return nil
+    }
+    Acting.touch()
     Output.reset()
     /* РЕЖИМ СПРАШИВАЕТСЯ ПЕРВЫМ, и не ради порядка. Он ШИРЕ порога Accessibility: тот пропускает
      * `activate`, потому что поднять окно можно и без разрешения, а режим обязан отвергнуть и это. И
@@ -7843,9 +7856,24 @@ enum Acting {
     }
 
     /// Продлить аренду. Для действия, у которого никто не сообщит о конце.
+    /* Продлевает, а НЕ укорачивает: аренда прогона со страницы (hold) длиннее одиночной, и действие
+     * посреди неё не должно сокращать её до шести секунд. */
     static func touch() {
         gate.lock()
-        leaseUntil = Date().addingTimeInterval(leaseSeconds)
+        leaseUntil = max(leaseUntil, Date().addingTimeInterval(leaseSeconds))
+        gate.unlock()
+        ScreenFrame.sync()
+    }
+
+    /* ПРОГОН СО СТРАНИЦЫ ГОВОРИТ О СВОИХ ГРАНИЦАХ (2026-10-17, владелец: «мигает рамка - агент отваливается
+     * на секунду-две»). Не отваливался: ход модели длиннее шестисекундной аренды, и между шагами рамка
+     * гасла. Теперь страница зажигает её на весь прогон (`action=driving on=1`, повторяя каждый ход) и
+     * гасит в конце (`on=0`). Аренда, а не удержание: закрытая посреди прогона вкладка конца не скажет, и
+     * рамка сама погаснет через holdSeconds - не позже. */
+    static let holdSeconds: TimeInterval = 90
+    static func hold(_ on: Bool) {
+        gate.lock()
+        leaseUntil = on ? max(leaseUntil, Date().addingTimeInterval(holdSeconds)) : Date()
         gate.unlock()
         ScreenFrame.sync()
     }

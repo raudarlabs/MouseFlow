@@ -980,9 +980,20 @@ const firstLine = (text, opener) => {
   return text.slice(brace + 1).split('\n').find((l) => l.trim() && !l.trim().startsWith('/*')
     && !l.trim().startsWith('*') && !l.trim().startsWith('//')) || '';
 };
-check('обе берут аренду в первой строке doAction, а не в маршруте /do',
-  /Acting\.touch\(\)/.test(firstLine(swift, 'func doAction(_ body: String) -> String? {'))
-    && /Acting\.Touch\(\);/.test(firstLine(ps, 'public static string DoAction(string body)')));
+/* Первым делом - и одна оговорка (0.29.2): `action=driving` - не действие над машиной, а слово страницы о
+ * границах прогона, и разбирается ДО аренды, чтобы «прогон кончился» не зажигал рамку ещё на шесть секунд.
+ * Всё остальное по-прежнему берёт аренду раньше, чем что-либо делает. */
+const headOf = (text, opener, until) => {
+  const at = text.indexOf(opener);
+  if (at < 0) return '';
+  const end = text.indexOf(until, at);
+  return end < 0 ? '' : text.slice(at, end);
+};
+const swiftHead = headOf(swift, 'func doAction(_ body: String) -> String? {', 'Output.reset()');
+const psHead = headOf(ps, 'public static string DoAction(string body)', 'ResetInjection();');
+check('обе берут аренду в начале doAction, до любого действия, а не в маршруте /do',
+  /if action == "driving" \{\s*Acting\.hold\(.*\)\n\s*return nil\s*\}\s*Acting\.touch\(\)\s*$/.test(swiftHead)
+    && /if \(action == "driving"\)\s*\{\s*Acting\.Hold\(.*\);\n\s*return null;\s*\}\s*Acting\.Touch\(\);\s*$/.test(psHead));
 check('и ни одна не берёт её в маршруте, где её видели бы только два пути из трёх',
   !/Acting\.touch\(\)[\s\S]{0,200}case "\/account"/.test(swift)
     && !/Acting\.Touch\(\);[\s\S]{0,200}string problem = DoAction\(body\)/.test(ps));
