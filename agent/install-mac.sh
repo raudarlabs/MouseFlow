@@ -247,8 +247,16 @@ NEEDS_TOOLS
   # costing the permissions, which is the single most painful thing about updating this agent. The
   # hardened runtime rides along so a future notarised build is the same signature shape.
   local identity entitlements
+  # Developer ID first - the one a notarised, shareable build needs. Otherwise Apple Development, which any
+  # paid or free Apple account gets from Xcode in one step (2026-10-17): it is not for handing the app to
+  # anyone else, but it is a STABLE identity on this Mac, and that is all the permissions need to survive a
+  # rebuild - System Settings grants to the team's certificate, not to this build's hash.
   identity="$(security find-identity -v -p codesigning 2>/dev/null \
     | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
+  if [ -z "$identity" ]; then
+    identity="$(security find-identity -v -p codesigning 2>/dev/null \
+      | sed -n 's/.*"\(Apple Development: [^"]*\)".*/\1/p' | head -1)"
+  fi
   entitlements="${install_dir}/entitlements.plist"
   write_entitlements "$entitlements"
   if [ -n "$identity" ] \
