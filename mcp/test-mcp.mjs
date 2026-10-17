@@ -4979,7 +4979,7 @@ group('прогон, который машина делает сама, виде
     create.includes("byItself: { scheduleId: job.scheduleId }")
       && /by itself, from a schedule/.test(create) && /by itself, asked from a chat/.test(create));
   check('окончание на глазах объявляется теми же тремя путями и перечитывает историю',
-    /if \(finished && \(before !== undefined \|\| sentFromHere\) && before !== job\.state\) \{[\s\S]{0,400}?announceFinished\(\{[\s\S]{0,300}?bringForward,[\s\S]{0,200}?void reload\(\);/.test(create));
+    /if \(finished && job\.state !== 'cancelled' && \(before !== undefined \|\| sentFromHere\) && before !== job\.state\) \{[\s\S]{0,400}?announceFinished\(\{[\s\S]{0,300}?bringForward,[\s\S]{0,200}?void reload\(\);/.test(create));
   check('а законченное до того, как страница его увидела, не рисуется - оно уже история',
     /if \(before === undefined && finished && !sentFromHere\) \{ seenJobs\.current\.set\(job\.id, job\.state\); continue; \}/.test(create));
   check('мок отвечает «ничего», а не 404', mock.includes("if (url.startsWith('/api/mcp?live=1'))"));
@@ -5395,7 +5395,7 @@ group('Activity отвечает целиком: идёт, ждёт, было - 
       && /job\.id === currentRun\.current && job\.state === 'cancelled' && !abort\.current/.test(create)
       && /Stopped from the Activity page\./.test(create));
   check('и свой прогон не рисуется второй карточкой «by itself»',
-    /if \(job\.source === 'you' && !sentFromHere\) \{[\s\S]{0,700}?continue;\s*\n\s*\}/.test(create));
+    /if \(job\.source === 'you' && \(job\.id === currentRun\.current \|\| job\.id\.startsWith\('dr_'\)\)\) \{[\s\S]{0,700}?continue;\s*\n\s*\}/.test(create));
   check('источник работы - отдельное поле ответа, и страница Create - это «you»',
     /source: q\.schedule_id \? 'schedule'\s*: q\.tool_name === 'page' \|\| String\(q\.tool_name \|\| ''\)\.startsWith\('page:'\)\s*\|\| \(q\.args && q\.args\.via === 'page'\) \? 'you' : 'chat'/.test(route)
       && /source: 'schedule' \| 'you' \| 'chat';/.test(client));

@@ -51,3 +51,9 @@ export const refreshLive = () => look();
 
 /** Когда последний раз спросили - чтобы страница могла сказать «обновлено N с назад», а не молчать. */
 export const liveStamp = () => stamp;
+
+/* «Create» в сайдбаре - это «новая задача», даже когда Create уже открыт: страница тогда очищается от
+ * показанной задачи (идущая продолжает идти и видна в Recent). Событием, а не адресом: роутер не
+ * пересоздаёт страницу, и адрес /create у неё уже есть. */
+export const NEW_TASK_EVENT = 'hivelink:new-task';
+export const startNewTask = () => window.dispatchEvent(new Event(NEW_TASK_EVENT));

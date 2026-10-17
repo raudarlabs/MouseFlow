@@ -21,10 +21,12 @@ import {
   ChartNoAxesColumn,
   ChevronsUpDown,
   CircleDot,
+  Clock,
   FileText,
   FolderOpen,
   LayoutDashboard,
   LayoutGrid,
+  LoaderCircle,
   Monitor,
   PanelLeft,
   Plug,
@@ -49,6 +51,7 @@ import { Typography } from '@insightis/ui/Typography';
 import { hoursOf } from '@/lib/api';
 import { PRODUCTS, PRODUCT_IDS, type Product, screensFor } from '@/lib/product';
 import { useActivityCount } from '@/features/activity/ActivityView';
+import { startNewTask, useLive } from '@/lib/live';
 import { useAccount } from '@/shell/AccountProvider';
 import { goalRuns, titleOf } from '@/features/create/run-history';
 import { chooseProduct, lockedProduct, useProduct } from '@/shell/useProduct';
@@ -113,7 +116,32 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
   /* ДЕСЯТЬ ПОСЛЕДНИХ, СВЕРХУ ВНИЗ. Строки приезжают с аккаунта уже упорядоченными - пересортировывать их
    * здесь значило бы завести второе мнение о том, что такое «недавний». И только прогоны с целью, тем же
    * goalRuns, что читала колонка на Create: повтор записи - реплика без слов, в списке разговоров ей не место. */
-  const recent = useMemo(() => goalRuns(runs, NONE_HIDDEN).slice(0, RECENT), [runs]);
+  const done = useMemo(() => goalRuns(runs, NONE_HIDDEN), [runs]);
+  /* ИДУЩЕЕ - СВЕРХУ RECENT, со статусом (владелец, 2026-10-17: «после того как задача началась, она должна
+   * появиться в Recent, и там статус In progress»). Из общего опроса очереди (lib/live.ts) - того же, что
+   * считает число у Logs, так что второго запроса нет. Кончившееся, но ещё не перечитанное с аккаунта,
+   * остаётся строкой с исходом: иначе задача на секунду пропадала бы из списка между «идёт» и «было». */
+  const live = useLive();
+  const recent = useMemo(() => {
+    const known = new Set(done.map((r) => r.id));
+    const going = live
+      .filter((j) => !known.has(j.id) && j.state !== 'cancelled' && (j.goal || j.name))
+      .map((j) => ({
+        id: j.id,
+        title: j.goal || j.name,
+        tip: `${j.goal || j.name}${j.machine?.name ? ` - on ${j.machine.name}` : ''}`,
+        state: j.state === 'queued' ? 'waiting' as const : j.state === 'claimed' ? 'running' as const
+          : j.ok ? 'ok' as const : 'failed' as const,
+        at: j.startedAt ?? '',
+      }))
+      .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const past = done.map((run) => ({
+      id: run.id, title: titleOf(run), tip: run.goal || titleOf(run),
+      state: (run.outcome === 'ok' ? 'ok' : run.outcome === 'failed' ? 'failed' : 'other') as 'ok' | 'failed' | 'other',
+      at: '',
+    }));
+    return [...going, ...past].slice(0, RECENT);
+  }, [done, live]);
   /* В сборке на один продукт переключателя нет: кнопка, предлагающая половину, которой в этой сборке
    * не существует, - хуже её отсутствия. Знак при этом остаётся и ведёт домой, как вёл до всего этого. */
   const locked = lockedProduct() !== null;
@@ -269,6 +297,8 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
               /* What the first-run tour points at. TanStack's Link spreads what it does not consume onto
                * the anchor, so this needs no wrapper element. */
               data-tour={to}
+              /* «Create» - это новая задача, и когда Create уже открыт. См. NEW_TASK_EVENT. */
+              onClick={to === '/create' ? startNewTask : undefined}
               className={cn(
                 ROW,
                 'text-[0.92rem] text-ink-body hover:bg-state-hover hover:text-ink-primary',
@@ -323,29 +353,45 @@ export const AppSidebar = ({ onOpenSettings }: Props) => {
               See all
             </Link>
           </div>
-          {recent.map((run) => (
-            <Link
-              key={run.id}
-              to="/create/$runId"
-              params={{ runId: run.id }}
-              title={run.goal || titleOf(run)}
-              className={cn(
-                ROW, 'w-full px-2.5 text-[0.82rem] text-ink-body',
-                'hover:bg-state-hover hover:text-ink-primary',
-                path === `/create/${run.id}` && 'bg-state-pressed font-medium text-ink-primary',
-              )}
-            >
-              {/* Точка исхода, а не слово: в строке шириной с сайдбар слово отняло бы у цели половину
-                * места, а узнать «получилось ли» надо одним взглядом. Цвет и подпись - из общего
-                * словаря, чтобы «ok» значило здесь то же, что на Logs. */}
-              <CircleDot
-                className={cn(GLYPH, 'shrink-0',
-                  run.outcome === 'ok' ? 'text-fb-green-text'
-                    : run.outcome === 'failed' ? 'text-fb-red-text' : 'text-ink-inactive')}
-              />
-              <span className="truncate">{titleOf(run)}</span>
-            </Link>
-          ))}
+          {recent.map((run) => {
+            const busy = run.state === 'running' || run.state === 'waiting';
+            return (
+              <Link
+                key={run.id}
+                to="/create/$runId"
+                params={{ runId: run.id }}
+                title={run.tip}
+                className={cn(
+                  ROW, 'w-full px-2.5 text-[0.82rem] text-ink-body',
+                  'hover:bg-state-hover hover:text-ink-primary',
+                  path === `/create/${run.id}` && 'bg-state-pressed font-medium text-ink-primary',
+                )}
+              >
+                {/* Точка исхода, а не слово: в строке шириной с сайдбар слово отняло бы у цели половину
+                  * места, а узнать «получилось ли» надо одним взглядом. Цвет и подпись - из общего
+                  * словаря, чтобы «ok» значило здесь то же, что на Logs. Идущее - крутится, и только оно
+                  * подписано словом: «идёт ли ещё» - вопрос, ради которого на строку и смотрят. */}
+                {run.state === 'running' ? (
+                  <LoaderCircle className={cn(GLYPH, 'shrink-0 animate-spin text-brand-primary')} />
+                ) : run.state === 'waiting' ? (
+                  <Clock className={cn(GLYPH, 'shrink-0 text-fb-attention')} />
+                ) : (
+                  <CircleDot
+                    className={cn(GLYPH, 'shrink-0',
+                      run.state === 'ok' ? 'text-fb-green-text'
+                        : run.state === 'failed' ? 'text-fb-red-text' : 'text-ink-inactive')}
+                  />
+                )}
+                <span className="min-w-0 flex-1 truncate">{run.title}</span>
+                {busy && (
+                  <span className={cn('shrink-0 rounded-full px-1.5 py-px text-[0.64rem] font-semibold',
+                    run.state === 'running' ? 'bg-brand-primary/12 text-brand-primary' : 'bg-fb-attention/12 text-fb-attention')}>
+                    {run.state === 'running' ? 'In progress' : 'Waiting'}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
 

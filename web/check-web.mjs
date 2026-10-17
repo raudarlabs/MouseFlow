@@ -322,8 +322,8 @@ group('история прогонов - в сайдбаре, а открыты�
     /useParams\(\{ strict: false \}\)/.test(create) && /runs\.find\(\(r\) => r\.id === openedId\)/.test(create));
   check('старой истории внутри страницы нет - ни колонкой, ни лентой',
     !/EarlierPanel|<Earlier\b|from '\.\/Earlier'/.test(create), 'EarlierPanel / Earlier');
-  check('открытый прогон рисуется над разговором, и нового приглашения поверх него нет',
-    /<OpenedRun\b/.test(create) && /turns\.length === 0 && !opened \? \(/.test(create));
+  check('открытый прогон рисуется вместо разговора, и нового приглашения поверх него нет',
+    /<OpenedRun\b/.test(create) && /\{!openedId && visible\.length === 0 \? \(/.test(create));
   check('и несуществующий прогон назван, а не выдан за новый разговор',
     /That run is not on this account any more/.test(create));
   /* Всё, что умела колонка, переехало - редизайн, а не вычитание. */
@@ -331,7 +331,7 @@ group('история прогонов - в сайдбаре, а открыты�
     ['Ask again', 'Save as skill', 'Rename', '<Frames runId=', 'onDelete(run.id)', 'provable(run)']
       .every((one) => opened.includes(one)));
   check('в сайдбаре - десять последних прогонов с целью, по тем же правилам, что читала страница',
-    /goalRuns\(runs, NONE_HIDDEN\)\.slice\(0, RECENT\)/.test(side) && /const RECENT = 10;/.test(side)
+    /goalRuns\(runs, NONE_HIDDEN\)/.test(side) && /\[\.\.\.going, \.\.\.past\]\.slice\(0, RECENT\)/.test(side) && /const RECENT = 10;/.test(side)
       && /to="\/create\/\$runId"/.test(side));
   check('только у продукта, который действует', /product === 'do' && !tight && recent\.length > 0/.test(side));
   check('и за всеми - Logs, а не второй полный список', /to="\/logs"[\s\S]{0,300}See all/.test(side));
@@ -533,6 +533,17 @@ group('A run on another computer reads as what it does: its screen, the point it
   check('у клика, наведения, прокрутки и перетаскивания есть «что это» словами',
     (brain.match(/about: ABOUT,/g) || []).length === 4);
   check('и журнал пишет его вместо точки', /const what = label \|\| about;/.test(words));
+
+  /* Владелец, 2026-10-17: «запуск не должен блокировать чат; начатая задача - в Recent со статусом In
+   * progress, открыть - и видеть лог каждого шага». */
+  const side = read('src/shell/AppSidebar.tsx');
+  check('на Create - одна задача: открытая из Recent или последняя отправленная',
+    /const visible = openedId \? \(openedTurn \? \[openedTurn\] : \[\]\) : turns\.filter\(\(t\) => t\.id === focus\);/.test(create)
+      && /visible\.map\(\(turn\) =>/.test(create) && !/\bturns\.map\(\(turn\) =>/.test(create));
+  check('«Create» в сайдбаре - новая задача', /onClick=\{to === '\/create' \? startNewTask : undefined\}/.test(side)
+    && /window\.addEventListener\(NEW_TASK_EVENT, fresh\)/.test(create));
+  check('идущее - сверху Recent и подписано', /'In progress' : 'Waiting'/.test(side) && /const live = useLive\(\);/.test(side));
+  check('и остановить его можно из карточки', /cancelJob\(turn\.runId!\)/.test(create));
 }
 
 group('папки одного продукта не импортируют папки другого');

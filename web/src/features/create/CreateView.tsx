@@ -45,9 +45,10 @@ import { AGENT_WANTS, browserMachine, localMachine, shot, windows } from '@/lib/
 import { BROWSER_NOTE } from '../../../../api/_brain.mjs';
 import { askExtension, watchBridge } from '@/lib/bridge';
 import {
-  type Device, type LiveJob, commandMachines, devices, isMachine, keepArtifact, liveEnd, liveJobs, liveStart, liveStep,
+  type Device, type LiveJob, cancelJob, commandMachines, devices, isMachine, keepArtifact, liveEnd, liveJobs, liveStart, liveStep,
   machineName, push, scheduleAdd, scheduleRemove,
 } from '@/lib/api';
+import { NEW_TASK_EVENT, refreshLive, useLive } from '@/lib/live';
 import { HERE, MachinePick } from './MachinePick';
 import { LiveScreen } from './LiveScreen';
 import {
@@ -149,6 +150,8 @@ interface Turn {
   byItself?: { scheduleId: string | null };
   /** Отправлено отсюда на другой компьютер - его имя (2026-10-16). */
   on?: string | null;
+  /** Под каким id эта задача в очереди и в Recent - им её открывают как `/create/<runId>`. */
+  runId?: string;
   /** Цель отложена, и вот расписание, которым: чтобы отменить можно было ЗДЕСЬ, а не на другой странице. */
   scheduled?: { id: string; nextSaid: string };
 }
@@ -280,6 +283,22 @@ export const CreateView = () => {
     setGoal((now) => (now.trim() ? `${now.replace(/\s+$/, '')} ${said}` : said));
   });
   const [turns, setTurns] = useState<Turn[]>([]);
+  /* КАКАЯ ЗАДАЧА НА ЭКРАНЕ (владелец, 2026-10-17: «запуск не должен блокировать чат - зайти в Create и дать
+   * новую задачу; начатая - в Recent со статусом In progress, а открыть - и видеть лог каждого шага»).
+   *
+   * Одна задача - один разговор, как у чатов. /create показывает только ту, что отправлена отсюда последней
+   * (`focus`), и ничего - после «Create» в сайдбаре (NEW_TASK_EVENT); всё остальное, идущее и законченное,
+   * лежит в Recent и открывается как /create/<runId>. Ленты, куда падают все работы аккаунта подряд, -
+   * Телеграма, расписаний, прошлых отправок, - больше нет: десять карточек друг под другом это не чат,
+   * а журнал, и он есть на Logs. Состояние страницы при этом одно на оба адреса - роутер её не
+   * пересоздаёт, - поэтому идущий прогон переживает переход в Recent и обратно. */
+  const [focus, setFocus] = useState<string | null>(null);
+  const liveNow = useLive();
+  useEffect(() => {
+    const fresh = () => { setFocus(null); setPlan(null); setPlanProblem(null); };
+    window.addEventListener(NEW_TASK_EVENT, fresh);
+    return () => window.removeEventListener(NEW_TASK_EVENT, fresh);
+  }, []);
   /* НА КАКОМ КОМПЬЮТЕРЕ (2026-10-16). HERE - эта вкладка ведёт прогон сама, по loopback; иначе - id машины
    * аккаунта, и работа уходит в очередь. Машины - те же токены агентов, что на Devices. */
   const [machine, setMachine] = useState<string>(() => {
@@ -492,7 +511,9 @@ export const CreateView = () => {
          * здесь останавливается на следующем действии - той же ручкой, что и кнопка Stop на этой странице. */
         /* ОТПРАВЛЕННОЕ ОТСЮДА НА ДРУГОЙ КОМПЬЮТЕР - тоже «you», но вести его некому, кроме этой ленты. */
         const sentFromHere = remoteJobs.current.has(job.id);
-        if (job.source === 'you' && !sentFromHere) {
+        /* Свой - это прогон, который ведёт ЭТА вкладка. Отправленное с неё раньше, до перезагрузки, или с
+         * другой вкладки - такая же работа в очереди, и открыть её из Recent должно быть можно. */
+        if (job.source === 'you' && (job.id === currentRun.current || job.id.startsWith('dr_'))) {
           if (job.id === currentRun.current && job.state === 'cancelled' && !abort.current) {
             abort.current = true;
             updateLive((t) => ({ ...t, feed: [...t.feed, { type: 'text', text: 'Stopped from the Activity page.' }] }));
@@ -505,7 +526,8 @@ export const CreateView = () => {
           spent: step.ms ? { shot: step.ms.shot ?? 0, model: step.ms.model, act: step.ms.act } : undefined,
           at: step.at,
         }));
-        const finished = job.state === 'done' || job.state === 'failed';
+        /* Остановленная - тоже кончилась: иначе её карточка крутилась бы «step 12» вечно. */
+        const finished = job.state === 'done' || job.state === 'failed' || job.state === 'cancelled';
         const before = seenJobs.current.get(job.id);
         /* Законченное до того, как страница его увидела идущим, - не показывается: это история, и она уже
          * в списке справа. Карточка - для того, что происходит или только что произошло НА ГЛАЗАХ. */
@@ -513,12 +535,15 @@ export const CreateView = () => {
         seenJobs.current.set(job.id, job.state);
 
         const turnState: Turn['state'] = !finished ? 'running' : job.ok ? 'ok' : 'failed';
-        const note = finished ? (job.said ?? (job.ok ? 'Done.' : 'It stopped without finishing.')) : undefined;
+        const note = finished
+          ? (job.state === 'cancelled' ? 'Stopped.' : job.said ?? (job.ok ? 'Done.' : 'It stopped without finishing.'))
+          : undefined;
         setTurns((prev) => {
           const have = prev.find((t) => t.id === turnId);
           if (!have) {
             return [...prev, {
               id: turnId,
+              runId: job.id,
               goal: job.goal ?? job.name,
               target: 'desktop',
               at: job.startedAt ?? new Date().toISOString(),
@@ -526,7 +551,9 @@ export const CreateView = () => {
               state: turnState,
               note,
               on: job.machine?.name ?? null,
-              ...(sentFromHere ? {} : { byItself: { scheduleId: job.scheduleId } }),
+              /* «Сама» - только то, что пришло не от человека: расписание или чат. Отправленное им же с
+               * Devices или с этой страницы до перезагрузки - его задача на той машине. */
+              ...(sentFromHere || job.source === 'you' ? {} : { byItself: { scheduleId: job.scheduleId } }),
             }];
           }
           /* Цель обновляется, когда пришла лучшая: работа, увиденная ещё в очереди, могла прийти без неё. */
@@ -538,7 +565,7 @@ export const CreateView = () => {
 
         /* Кончилось на глазах - сказать вслух и перечитать историю. Один раз: состояние сравнивается с тем,
          * что было увидено раньше, а не с «finished». */
-        if (finished && (before !== undefined || sentFromHere) && before !== job.state) {
+        if (finished && job.state !== 'cancelled' && (before !== undefined || sentFromHere) && before !== job.state) {
           void announceFinished({
             outcome: job.ok ? 'ok' : 'failed',
             said: job.said,
@@ -611,9 +638,16 @@ export const CreateView = () => {
 
     const id = `t${Date.now()}`;
     const startedAt = new Date().toISOString();
+    /* ОДИН ID НА ВСЁ: строку очереди, которую этот прогон объявляет, строку журнала, которую он запишет в
+     * конце, кадры, которые он сохранит, скилл, который из него сделают, и строку Recent, которой его
+     * открывают. Раньше он считался дважды в .then; посчитанный здесь один раз, он не может разойтись. */
+    const runId = `dr_${startedAt.replace(/\D/g, '').slice(-12)}`;
     live.current = id;
+    setFocus(id);
+    if (openedId) void navigate({ to: '/create' });
     setTurns((prev) => [...prev, {
       id,
+      runId: target === 'desktop' ? runId : undefined,
       goal: text,
       target,
       at: startedAt,
@@ -638,10 +672,6 @@ export const CreateView = () => {
       /** Что прогон говорил по дороге. Собирается по ходу, пишется в конце. */
       const commentary: string[] = [];
 
-      /* ОДИН ID НА ВСЁ: строку очереди, которую этот прогон объявляет, строку журнала, которую он запишет в
-       * конце, кадры, которые он сохранит, и скилл, который из него сделают. Раньше он считался дважды в
-       * .then; посчитанный здесь один раз, он не может разойтись. */
-      const runId = `dr_${startedAt.replace(/\D/g, '').slice(-12)}`;
       /* ОБЪЯВИТЬ СЕБЯ ОЧЕРЕДИ. Прогон с этой страницы ведёт браузер напрямую с агентом, мимо облака, и без
        * этого объявления он невидим для Activity: «Nothing is running», пока вокруг экрана горит зелёная
        * рамка, и остановить его нечем, кроме убийства агента в трее. Best effort - сеть не повод не начинать. */
@@ -890,7 +920,7 @@ export const CreateView = () => {
     }
     setRunning(true);
     void pollExtension();
-  }, [asked, running, target, state.port, reload, pollExtension, updateLive]);
+  }, [asked, running, target, state.port, reload, pollExtension, updateLive, openedId, navigate]);
 
   const stop = useCallback(async () => {
     setStopping(true);
@@ -940,6 +970,12 @@ export const CreateView = () => {
 
   const planned = !!plan && plan.for === asked;
 
+  /* ЧТО НА ЭКРАНЕ: открытая из Recent задача - её карточка, если страница её ведёт или видела идущей, иначе
+   * запись с аккаунта (OpenedRun); без адреса - только последняя отправленная отсюда. См. `focus`. */
+  const openedTurn = openedId ? turns.find((t) => t.runId === openedId) ?? null : null;
+  const visible = openedId ? (openedTurn ? [openedTurn] : []) : turns.filter((t) => t.id === focus);
+  const openingLive = !!openedId && !openedTurn && !opened && liveNow.some((j) => j.id === openedId);
+
   /* ЧТО СЕЙЧАС СДЕЛАЕТ КНОПКА - и, значит, что сделает Enter, потому что это одно и то же действие.
    *
    * Пока план уже построен для этой формулировки, выбирать нечего: карточка плана на экране, и нажатие
@@ -966,8 +1002,12 @@ export const CreateView = () => {
       if (!put) { setPlanProblem(answer.refused[0]?.why ?? 'it was not sent'); return; }
       remoteJobs.current.add(put.id);
       const name = machineName(remoteMachine);
+      setFocus(`q_${put.id}`);
+      if (openedId) void navigate({ to: '/create' });
+      void refreshLive();
       setTurns((prev) => [...prev, {
         id: `q_${put.id}`,
+        runId: put.id,
         goal: text,
         target: 'desktop',
         at: new Date().toISOString(),
@@ -997,7 +1037,7 @@ export const CreateView = () => {
         {/* ПРОШЛЫЙ ПРОГОН, ОТКРЫТЫЙ ИЗ САЙДБАРА - шапкой разговора, над тем, что просят сейчас. Истории
           * внутри страницы больше нет ни колонкой, ни лентой (владелец, 2026-09-28): десять последних - в
           * сайдбаре, все - на Logs, а открытый читается во всю ширину. См. OpenedRun.tsx. */}
-        {openedId && (opened ? (
+        {openedId && !openedTurn && (opened ? (
           <OpenedRun
             key={opened.id}
             run={opened}
@@ -1008,6 +1048,9 @@ export const CreateView = () => {
             onDelete={async (id) => { await deleteRun(id); void navigate({ to: '/create' }); }}
             onClose={() => void navigate({ to: '/create' })}
           />
+        ) : openingLive ? (
+          /* Идёт, но лента этой страницы ещё не взяла её - один такт опроса. */
+          <StepLine kind="waiting">Opening it…</StepLine>
         ) : (
           /* Нет на аккаунте - сказать это, а не показать пустой экран, будто ссылка открыла новый разговор. */
           <Typography variant="p" className="text-ink-inactive text-[0.85rem]">
@@ -1015,7 +1058,7 @@ export const CreateView = () => {
           </Typography>
         ))}
 
-        {turns.length === 0 && !opened ? (
+        {!openedId && visible.length === 0 ? (
           /* Подсказки ушли ПОД композер - см. Composer.below. На пустом экране между заголовком и полем
              стоял третий блок, и взгляд шёл заголовок → подсказки → поле, то есть мимо поля. */
           <Opener
@@ -1028,7 +1071,7 @@ export const CreateView = () => {
             }
           />
         ) : (
-          turns.map((turn) => {
+          visible.map((turn) => {
             const lastTurnEvent = [...turn.feed].reverse().find((e) => e.type === 'turn');
             const lastEvent = turn.feed[turn.feed.length - 1];
             const waiting = lastEvent?.type === 'waiting' ? lastEvent : null;
@@ -1101,6 +1144,16 @@ export const CreateView = () => {
                           : turn.id.startsWith('q_') && shown.some((e) => e.type === 'tool')
                             ? `step ${shown.filter((e) => e.type === 'tool').length}${turn.on ? ` on ${turn.on}` : ''}`
                             : 'starting…'}
+                        {/* Остановить работу на ТОЙ машине - отсюда же, а не со страницы Logs. */}
+                        {turn.id.startsWith('q_') && turn.runId && (
+                          <button
+                            type="button"
+                            onClick={() => { void cancelJob(turn.runId!).then(() => refreshLive()).catch(() => {}); }}
+                            className="ms-auto rounded-md border border-stroke px-2 py-0.5 text-[0.74rem] text-ink-body hover:bg-state-hover"
+                          >
+                            Stop
+                          </button>
+                        )}
                       </div>
                     ) : undefined
                   }
@@ -1386,7 +1439,7 @@ export const CreateView = () => {
           * мегабайт, и что взяли не всё. */
         /* Подсказки под полем, и ТОЛЬКО на пустом экране: когда в ленте уже что-то есть, они предлагают
           * начать заново там, где человек продолжает. */
-        below={turns.length === 0 && !running ? SUGGESTIONS.map((text) => (
+        below={visible.length === 0 && !openedId && !running ? SUGGESTIONS.map((text) => (
           <Suggestion key={text} icon={<Sparkles />} onClick={() => setGoal(text)}>
             {text.length > 52 ? `${text.slice(0, 52)}…` : text}
           </Suggestion>
