@@ -37,7 +37,7 @@ const DESIGN_SYSTEM = [
 ];
 
 /** The vendored components the landing renders, and the ones they render (Button draws a Spinner). */
-const LANDING_UI = ['Badge', 'Button', 'Card', 'Input', 'Spinner', 'Typography'];
+const LANDING_UI = ['Badge', 'Button', 'IconButton', 'Input', 'Spinner', 'Typography'];
 
 /* In the HTML only. `__SITE_URL__` rather than Vite's `%NAME%`, which is reserved for VITE_ env vars and
  * warns about anything else. */
@@ -75,7 +75,12 @@ export default defineConfig({
       plugins: [
         tailwindcss({
           ...appTailwind,
+          /* The pages themselves too: landing/index.html is where class="dark" is set, and the design
+           * system's dark tokens are written under `.dark` in a Tailwind layer, which Tailwind keeps only
+           * when the class is seen in the content. Without the HTML the theme would hang on the word
+           * "dark" happening to appear in some comment. */
           content: [
+            here('./landing/*.html'),
             here('./src/landing/**/*.{ts,tsx}'),
             here('./src/components/brand/**/*.{ts,tsx}'),
             here('./vendor/insightis-ui/src/components/{' + LANDING_UI.join(',') + '}/**/*.tsx'),

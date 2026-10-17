@@ -1,0 +1,312 @@
+/* THE LANDING'S ONE MOTION LANGUAGE - every curve, duration and distance the page moves by, and the three
+ * mechanisms that move it: scroll reveals, scripted demo cues, and ambient loops.
+ *
+ * No section invents its own curve or timing; a section's stylesheet reads these variables. They are on
+ * :root rather than .landing so a fixed element (the sticky bar) reads the same values.
+ *
+ * THE RULE THAT KEEPS THE PAGE SAFE: nothing here hides anything unless JavaScript has run AND motion is
+ * allowed. The server HTML is the finished page - every reveal visible, every demo at its final cue - and
+ * every "before" state below is written under html.motion plus a second condition that only the running
+ * bundle can set (html.reveals for reveals, [data-run] for demos). The head script sets html.motion before
+ * the first paint; if the bundle then fails to load, nothing is waiting on a script that never came.
+ *
+ * Only transform and opacity move. Colour changes are crossfades between stacked layers, progress is a
+ * scaleX fill, and no width, height, top, left or grid track is ever transitioned.
+ */
+:root {
+  /* Curves. --m-out for every entrance and arrival; --m-inout for anything travelling between two places;
+     --m-pop only for marks of 24px or less (its overshoot peaks under 1.06 at the scales used here);
+     --m-in for exits, at about 0.6x the matching entrance; linear only for progress fills and spinners. */
+  --m-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --m-inout: cubic-bezier(0.65, 0, 0.35, 1);
+  --m-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --m-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Durations. Nothing runs longer than 900ms except progress fills, typing and the night-panel sweep. */
+  --m-fast: 160ms;
+  --m-base: 280ms;
+  --m-slow: 560ms;
+  --m-reveal: 720ms;
+  --m-pulse: 700ms;
+  --m-exit: 170ms;
+  --m-loop: 3.2s;
+
+  /* Stagger: 70ms between siblings, capped at six steps (see the reveal delay below). */
+  --m-stagger: 70ms;
+
+  /* Distances. A reveal rises 20px (14px on a phone, where 20px is a tenth of the screen's height);
+     a line inside a demo rises 6px; a panel also grows from .985. */
+  --m-rise: 20px;
+  --m-rise-sm: 6px;
+  --m-scale-in: 0.985;
+}
+
+@media (max-width: 767px) {
+  :root {
+    --m-rise: 14px;
+  }
+}
+
+/* ── REVEALS ──────────────────────────────────────────────────────────────────────────────────────────
+   [data-reveal]            the element itself rises 20px and fades in      ("up", the default)
+   [data-reveal="panel"]    ...and grows from .985                           (cards, panels)
+   [data-reveal="fade"]     opacity only
+   [data-reveal="group"]    the container never hides; its [data-reveal-item] children reveal together
+                            when the group is 15% in view, each item's value naming its kind (up|panel|fade)
+   --i on an element is its stagger index; --i-base (set by .hl-stage to 3) is added, and the sum is capped
+   at 6, so no group takes more than 420ms to start. .is-in marks a revealed element (a section's CSS may
+   key a one-shot entrance of its own to it: `html.motion .x.is-in .dot { animation: … }`).
+
+   AN ANIMATION, NOT A TRANSITION, and with fill-mode backwards: it holds the "from" frame through its
+   delay, then hands the element back to its own styles. So a card that lifts on hover with `translate`,
+   a deck card placed with `transform`, or a button with its own `transition` list keeps all of it - a
+   transition-based reveal would overwrite their transition lists, and a forwards fill would pin
+   transform: none over them forever. ── */
+@keyframes hl-reveal-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--m-rise), 0);
+  }
+}
+
+@keyframes hl-reveal-panel {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--m-rise), 0) scale(var(--m-scale-in));
+  }
+}
+
+@keyframes hl-reveal-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+html.motion.reveals [data-reveal]:not([data-reveal='group']):not(.is-in),
+html.motion.reveals [data-reveal='group']:not(.is-in) [data-reveal-item] {
+  opacity: 0;
+}
+
+html.motion.reveals [data-reveal].is-in:not([data-reveal='group']),
+html.motion.reveals [data-reveal='group'].is-in [data-reveal-item] {
+  animation-name: hl-reveal-up;
+  animation-duration: var(--m-reveal);
+  animation-timing-function: var(--m-out);
+  animation-fill-mode: backwards;
+  animation-delay: calc(min(var(--i-base, 0) + var(--i, 0), 6) * var(--m-stagger));
+}
+
+html.motion.reveals [data-reveal='panel'].is-in,
+html.motion.reveals [data-reveal='group'].is-in [data-reveal-item='panel'] {
+  animation-name: hl-reveal-panel;
+}
+
+html.motion.reveals [data-reveal='fade'].is-in,
+html.motion.reveals [data-reveal='group'].is-in [data-reveal-item='fade'] {
+  animation-name: hl-reveal-fade;
+}
+
+/* Already on screen when the script arrived (it was painted by the server), or given .is-in back after a
+   re-render: it stays exactly as it is. */
+html.motion.reveals [data-reveal].is-instant,
+html.motion.reveals [data-reveal='group'].is-instant [data-reveal-item] {
+  animation: none;
+}
+
+/* ── DEMO CUES (useTimeline) ──────────────────────────────────────────────────────────────────────────
+   Inside a demo root that a timeline owns ([data-run]), an element with data-cue="<ms>" is hidden until the
+   clock passes that time (.cue-on), and one with data-cue-out="<ms>" leaves again after it (.cue-out).
+   data-fx picks the entrance: fade (default) · rise · rise-lg · pop · left · right · none (the element
+   handles itself, as TypeText does). Exits run at --m-exit on --m-in, so a loop wrapping back to its first
+   frame reads as a quick crossfade. [data-seek] is set for two frames when the clock JUMPS (an act chosen,
+   a resume, the first frame) so a jump never animates. ── */
+html.motion [data-run] [data-cue]:not([data-fx='none']) {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    transform var(--m-base) var(--m-out);
+}
+
+html.motion [data-run] [data-cue]:not([data-fx='none']):not(.cue-on),
+html.motion [data-run] [data-cue]:not([data-fx='none']).cue-out {
+  opacity: 0;
+  transition-duration: var(--m-exit);
+  transition-timing-function: var(--m-in);
+}
+
+html.motion [data-run] [data-cue][data-fx='rise']:not(.cue-on) {
+  transform: translate3d(0, var(--m-rise-sm), 0);
+}
+
+html.motion [data-run] [data-cue][data-fx='rise-lg']:not(.cue-on) {
+  transform: translate3d(0, 10px, 0);
+}
+
+html.motion [data-run] [data-cue][data-fx='left']:not(.cue-on) {
+  transform: translate3d(-12px, 0, 0);
+}
+
+html.motion [data-run] [data-cue][data-fx='right']:not(.cue-on) {
+  transform: translate3d(12px, 0, 0);
+}
+
+html.motion [data-run] [data-cue][data-fx='pop'] {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    transform 260ms var(--m-pop);
+}
+
+html.motion [data-run] [data-cue][data-fx='pop']:not(.cue-on) {
+  transform: scale(0.7);
+}
+
+html.motion [data-run][data-seek] [data-cue],
+html.motion [data-run][data-seek] [data-cue] * {
+  transition: none !important;
+}
+
+/* TRANSIENT: a thing that exists only mid-demo - a spinner, a pending tag, a toast that fades, the cursor.
+   The poster (the server, reduced motion, ?still) never shows it; a running demo shows it between its
+   data-cue and its data-cue-out. */
+.hl-transient {
+  opacity: 0;
+}
+
+html.motion [data-run] .hl-transient.cue-on:not(.cue-out) {
+  opacity: 1;
+}
+
+/* A paused demo freezes everything it is animating with CSS - typing, spinners, its own breathing. */
+[data-run][data-paused],
+[data-run][data-paused] * {
+  animation-play-state: paused !important;
+}
+
+/* ── AMBIENT LOOPS ────────────────────────────────────────────────────────────────────────────────────
+   The only things that move on their own outside a playing demo: the honey live dot, an online ring, the
+   final section's pool and first-night dot, the hero hive. They run only under html.motion, and every
+   section (and the hero) carries data-loop, which the motion system flips to data-play="off" while it is
+   off screen - a breathing dot nobody can see is still a composited layer the phone pays for. ── */
+[data-play='off'],
+[data-play='off'] * {
+  animation-play-state: paused !important;
+}
+
+/* Entrances are not loops: a reveal, or an arrival marked .hl-entrance (the hero's hive), always runs to
+   its end - an entrance frozen at its first frame would be content hidden by a pause. */
+[data-play='off'] [data-reveal],
+[data-play='off'] [data-reveal-item],
+[data-play='off'] .hl-entrance {
+  animation-play-state: running !important;
+}
+
+@keyframes hl-breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes hl-ring {
+  0%,
+  100% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* A one-off ring pulse for a mark that has just arrived: scale 1 → 2.2, opacity .6 → 0. */
+@keyframes hl-pulse {
+  from {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.2);
+  }
+}
+
+@keyframes hl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── SHARED MICRO-MOTIONS ─────────────────────────────────────────────────────────────────────────────
+   The few small movements more than one demo makes. They live here, once, so a press in 04 is the press in
+   05 and a detail opening in 03 opens as an answer does in 08; the kit's .hl-press, .hl-typing and
+   .hl-detail use them. */
+
+/* A pressed button: down to .97 and back, while a flash layer over it fades in and out. */
+@keyframes hl-press {
+  40% {
+    transform: scale(0.97);
+  }
+}
+
+@keyframes hl-flash {
+  25% {
+    opacity: 1;
+  }
+}
+
+/* Somebody is typing: three dots in an opacity wave. */
+@keyframes hl-wave {
+  40% {
+    opacity: 1;
+  }
+}
+
+/* A detail line or an answer opening under its row: it unfolds downwards from 4px above. One direction,
+   one duration, everywhere. */
+@keyframes hl-detail-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+@keyframes hl-detail-out {
+  to {
+    opacity: 0;
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+/* A "Join" press landing on a form: one honey ring, drawn once, grows out from the field and fades. */
+@keyframes hl-call {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.06, 1.3);
+  }
+}
+
+html.motion .hl-breathe {
+  animation: hl-breathe var(--m-loop) ease-in-out infinite;
+}
+
+html.motion .hl-ring {
+  animation: hl-ring var(--m-loop) ease-in-out infinite;
+}
+
+/* will-change only while something animates: a section adds .hl-will for the moment, and it comes off on
+   animationend (or with the class that started it). */
+.hl-will {
+  will-change: transform, opacity;
+}
+
+/* Paper and the print preview get the finished page, whatever the screen was doing. */
+@media print {
+  [data-reveal],
+  [data-reveal-item],
+  [data-cue] {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+}

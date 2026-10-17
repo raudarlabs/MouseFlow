@@ -102,7 +102,7 @@ const DEVICES: Record<string, DeviceKind> = {
   '-1,-2': 'desktop', '2,0': 'laptop', '-3,2': 'server', '1,2': 'server', '0,-2': 'terminal',
 };
 /** The three machines the terminal card talks about, named on the hive itself. */
-export const TAGS: Record<string, string> = { '-2,2': 'finance-pc', '2,-2': 'mac-studio', '1,2': 'office-3' };
+export const TAGS: Record<string, string> = { '-2,2': 'finance-pc', '2,-2': 'mac-studio', '1,2': 'qa-vm-1' };
 
 const ring = (X: number, Y: number, r: number, z: number): Pt[] =>
   ANG.map((a) => [round(X + r * Math.cos(a)), round(Y * K + r * Math.sin(a) * K - z * U)] as const);

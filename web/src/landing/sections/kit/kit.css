@@ -1,0 +1,1604 @@
+/* THE SECTION KIT - one shell, one head, one glass, one status language for all nine story sections.
+ *
+ * A section's own stylesheet lays out its stage and draws its demo; it never redefines what is here. The
+ * tokens below are the page's rhythm: the same spacing scale (4 · 8 · 12 · 16 · 24 · 32 · 48 · 64 · 96 ·
+ * 128 · 160), the same radii ladder (28 · 22 · 14 · 10 · 999), the same glass. Phone first: every value is
+ * the 375-430px one, then 768 and 1200 enhance it. A section reads the variables (var(--hl-gap),
+ * var(--r-tile) …) instead of restating a number, so the rhythm can only change here.
+ *
+ * Colours are tokens or the brand's --hive-* illustration colours, faded - never a literal.
+ */
+
+.landing {
+  /* rhythm */
+  --hl-sec-pad: 96px; /* previous section's last pixel → this section's eyebrow */
+  --hl-seam-gap: 32px; /* seam → eyebrow (part of --hl-sec-pad, not added to it) */
+  --hl-head-gap: 32px; /* head → stage */
+  --hl-gap: 12px; /* gaps inside a stage */
+  --hl-foot-gap: 32px; /* stage → foot link or CTA */
+  --hl-pad: 20px; /* card padding */
+  --hl-row-gap: 8px; /* rows inside a card */
+  /* radii ladder - nothing else */
+  --r-panel: 22px;
+  --r-card: 22px;
+  --r-tile: 14px;
+  --r-chip: 10px;
+  --r-pill: 999px;
+  /* glass that floats over content: the sticky bar, deck controls, the gate card, toasts. Static. */
+  --hl-blur: 12px;
+}
+
+@media (min-width: 768px) {
+  .landing {
+    --hl-sec-pad: 128px;
+    --hl-seam-gap: 48px;
+    --hl-head-gap: 48px;
+    --hl-gap: 16px;
+    --hl-foot-gap: 40px;
+    --hl-pad: 24px;
+    --hl-row-gap: 12px;
+    --r-panel: 28px;
+    --hl-blur: 16px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .landing {
+    --hl-sec-pad: 160px;
+    --hl-seam-gap: 64px;
+    --hl-head-gap: 64px;
+    --hl-gap: 24px;
+    --hl-foot-gap: 48px;
+    --hl-pad: 28px;
+  }
+}
+
+/* ── THE SHELL ─────────────────────────────────────────────────────────────────────────────────────────
+   <section.hl-sec> › .hl-wrap › seam, head, stage, foot. overflow-x: clip on the section (not hidden: the
+   vertical axis stays visible, so shadows and the light pool's bleed upward are not cut), and every grid
+   child min-width: 0 - together that is "no horizontal page overflow at any width from 320px". A full-bleed
+   stage (the deck on a phone) uses margin-inline: calc(-1 * var(--gutter)), never 100vw. */
+.hl-story {
+  position: relative;
+}
+
+.hl-sec {
+  position: relative;
+  overflow-x: clip;
+  padding: calc(var(--hl-sec-pad) - var(--hl-seam-gap)) var(--gutter) 0;
+  /* A jump (nav, a CTA, #faq in the URL) lands with the seam 24px under the 60px sticky bar. */
+  scroll-margin-top: calc(84px - var(--hl-sec-pad) + var(--hl-seam-gap));
+}
+
+.hl-sec:focus {
+  outline: none;
+}
+
+/* The last section adds the rhythm once more before the footer. */
+.hl-story > .hl-sec:last-child {
+  padding-bottom: var(--hl-sec-pad);
+}
+
+.hl-wrap {
+  position: relative;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding-top: var(--hl-seam-gap);
+}
+
+.hl-wrap > *,
+.hl-stage > *,
+.hl-grid > * {
+  min-width: 0;
+}
+
+/* The stage's 12-column grid from 1200 (one column below): sections place their parts with grid-column. */
+.hl-grid {
+  display: grid;
+  gap: var(--hl-gap);
+}
+
+@media (min-width: 1200px) {
+  .hl-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+}
+
+/* The seam: one hairline that fades at both ends, and a hex node where the eyebrow's tick starts. Static. */
+.hl-seam {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--hive-ice) / 0.12) 18%, hsl(var(--hive-ice) / 0.12) 82%, transparent);
+  pointer-events: none;
+}
+
+.hl-seam::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: -4px;
+  width: 7px;
+  height: 8px;
+  background: hsl(var(--hive-ice-2) / 0.45);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+.hl-seam--honey::before {
+  background: hsl(var(--brand-primary) / 0.85);
+}
+
+/* The light pool: one static radial glow behind the section's main visual, bleeding 160px up into the
+   section before it so the change between sections is a gradient, never an edge. z-index -1 against the
+   page (the section makes no stacking context), so it lights the page, never the content above it. */
+.hl-pool {
+  --pool-x: 78%;
+  --pool-c: hsl(var(--hive-ice-2) / 0.11);
+  position: absolute;
+  z-index: -1;
+  left: 0;
+  right: 0;
+  top: -160px;
+  bottom: 0;
+  pointer-events: none;
+  background: radial-gradient(60% 46% at var(--pool-x) 58%, var(--pool-c), transparent 72%);
+}
+
+.hl-pool--left {
+  --pool-x: 22%;
+}
+
+.hl-pool--center {
+  --pool-x: 50%;
+}
+
+.hl-pool--honey {
+  --pool-x: 50%;
+  --pool-c: hsl(var(--brand-primary) / 0.1);
+}
+
+/* ── THE HEAD (identical in all nine) ── */
+.hl-head {
+  display: grid;
+  justify-items: start;
+}
+
+.hl-eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+}
+
+.hl-eyebrow-tick {
+  width: 18px;
+  height: 1px;
+  flex: none;
+  background: linear-gradient(90deg, hsl(var(--hive-ice-2)), transparent);
+}
+
+.hl-eyebrow-num {
+  color: hsl(var(--ink-inactive));
+  font-variant-numeric: tabular-nums;
+}
+
+.hl-eyebrow-hex {
+  width: 7px;
+  height: 8px;
+  flex: none;
+  background: hsl(var(--hive-ice-2) / 0.6);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+.landing .hl-h2 {
+  font-family: theme('fontFamily.display');
+  font-weight: 600;
+  font-size: clamp(30px, 8.4vw, 36px);
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+  max-width: 15em;
+  margin: 16px 0 0;
+  color: hsl(var(--ink-primary));
+}
+
+.landing .hl-lead {
+  margin: 16px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: hsl(var(--ink-body));
+  max-width: 34em;
+  text-wrap: pretty;
+}
+
+.hl-head--center {
+  justify-items: center;
+  text-align: center;
+}
+
+.hl-head--center .hl-eyebrow {
+  justify-content: center;
+}
+
+.landing .hl-head--center .hl-h2,
+.landing .hl-head--center .hl-lead {
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.hl-stage {
+  /* The stage's first item starts after the head's three steps (eyebrow 0, H2 70, lead 140ms). */
+  --i-base: 3;
+  margin-top: var(--hl-head-gap);
+}
+
+.hl-foot {
+  margin-top: var(--hl-foot-gap);
+}
+
+@media (min-width: 768px) {
+  .landing .hl-h2 {
+    font-size: 48px;
+    margin-top: 20px;
+  }
+  .landing .hl-lead {
+    font-size: 17px;
+    margin-top: 20px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .landing .hl-h2 {
+    font-size: 60px;
+  }
+  .landing .hl-lead {
+    font-size: 18px;
+  }
+  /* split: eyebrow on its own row, the title in cols 1-7, the lead in 8-12 sitting on the title's last line */
+  .hl-head--split {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: end;
+  }
+  .hl-head--split .hl-eyebrow {
+    grid-column: 1 / -1;
+  }
+  .landing .hl-head--split .hl-h2 {
+    grid-column: 1 / 8;
+  }
+  .landing .hl-head--split .hl-lead {
+    grid-column: 8 / 13;
+    margin: 0 0 0.35em;
+  }
+  /* stack: the head is a sticky left column (FAQ), the stage the right one */
+  .hl-sec--stack .hl-wrap {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  .hl-sec--stack .hl-head {
+    grid-column: 1 / 5;
+    position: sticky;
+    top: 96px;
+  }
+  .hl-sec--stack .hl-stage,
+  .hl-sec--stack .hl-foot {
+    grid-column: 6 / 13;
+  }
+  .hl-sec--stack .hl-stage {
+    margin-top: 0;
+  }
+  .landing .hl-sec--stack .hl-h2 {
+    font-size: 48px;
+  }
+}
+
+/* The second clause of every H2 is the hero's .landing-grad (landing.css) - so each heading rhymes with
+   "One hive.". Never honey on a heading. */
+
+/* ── TYPE INSIDE STAGES ── */
+.landing .hl-h3 {
+  font-family: theme('fontFamily.display');
+  font-weight: 600;
+  font-size: 19px;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  color: hsl(var(--ink-primary));
+  margin: 0;
+}
+
+.landing .hl-body {
+  font-size: 15px;
+  line-height: 1.6;
+  color: hsl(var(--ink-body));
+  text-wrap: pretty;
+  margin: 0;
+}
+
+.hl-kicker {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+}
+
+.hl-mono {
+  font-family: theme('fontFamily.mono');
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 768px) {
+  .landing .hl-h3 {
+    font-size: 21px;
+  }
+  .landing .hl-body {
+    font-size: 15.5px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .landing .hl-h3 {
+    font-size: 24px;
+  }
+  .landing .hl-body {
+    font-size: 16px;
+  }
+}
+
+/* ── LINKS AND CTAs ── */
+.hl-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  text-decoration: none;
+  border-radius: 8px;
+}
+
+.hl-link-arrow {
+  display: inline-block;
+  color: hsl(var(--hive-ice-2));
+}
+
+.hl-link:hover {
+  color: hsl(var(--ink-highlight));
+}
+
+.hl-link:focus-visible,
+.hl-focus:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html.motion .hl-link-arrow {
+    transition: transform var(--m-fast) var(--m-out);
+  }
+  html.motion .hl-link:hover .hl-link-arrow {
+    transform: translateX(3px);
+  }
+}
+
+.hl-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.landing .hl-cta-btn {
+  height: 52px;
+  gap: 10px;
+  padding: 0 22px 0 26px;
+  font-family: theme('fontFamily.display');
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.55),
+    0 10px 28px -8px hsl(var(--brand-primary) / 0.55);
+}
+
+/* The vendored Button draws its focus ring as a box-shadow, and the CTA's honey glow above replaces it - so
+   the page's one focus ring, the outline, is given back here. Never animated. */
+.landing .hl-cta-btn:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+}
+
+.hl-cta-note {
+  font-size: 13px;
+  color: hsl(var(--ink-inactive));
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .hl-cta {
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+  }
+  .landing .hl-cta-btn {
+    width: auto;
+  }
+  .hl-cta-note {
+    text-align: left;
+  }
+}
+
+@media (min-width: 1200px) {
+  .landing .hl-cta-btn {
+    height: 56px;
+    padding: 0 26px 0 30px;
+    font-size: 16px;
+  }
+}
+
+/* THE HONEY PRIMARY'S HOVER - the page's one, on every honey button (the JoinCtas and the waitlist form's
+   button in the hero and in 09): one frost shine across it per hover, and a press to .97. The shine is a
+   strip that crosses and stays across - it only runs when the pointer arrives, never on the way out - and
+   it sits UNDER the label (z-index -1 inside the button's own stacking context), so it lights the honey and
+   never washes out the words. */
+.landing-shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.landing-shine::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 32%, hsl(var(--hive-frost) / 0.5) 50%, transparent 68%);
+  transform: translateX(-120%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html.motion .landing-shine:hover::after {
+    transform: translateX(120%);
+    transition: transform var(--m-reveal) var(--m-out);
+  }
+}
+
+.landing-shine:active {
+  transform: scale(0.97);
+}
+
+/* ── GLASS ─────────────────────────────────────────────────────────────────────────────────────────────
+   Panel: the one card surface (the value cards' recipe). Its corner glow is a radial gradient painted
+   inside its own box - no overflow clipping needed, so a panel can host an overlapping card or a shadow.
+   Hover (opt-in, for cards): lift 3px with the `translate` property - a reveal animates `transform`, and
+   the two compose - and an ice-2 ring layer fades in. border-color and box-shadow are never animated. */
+.hl-panel {
+  --glow: hsl(var(--hive-ice-2) / 0.18);
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--r-panel);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.07), hsl(var(--hive-frost) / 0.025) 60%, hsl(var(--hive-frost) / 0.02));
+  border: 1px solid hsl(var(--hive-ice) / 0.1);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.08),
+    0 30px 60px -40px hsl(var(--hive-shade) / 0.8);
+}
+
+.hl-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(130px 130px at calc(100% - 40px) 10px, var(--glow), transparent);
+}
+
+.hl-panel--card {
+  border-radius: var(--r-card);
+}
+
+.hl-panel--pad {
+  padding: var(--hl-pad);
+}
+
+.hl-panel--steel {
+  --glow: hsl(var(--hive-steel) / 0.3);
+}
+
+.hl-panel--soft {
+  --glow: hsl(var(--hive-ice) / 0.15);
+}
+
+.hl-panel--honey {
+  --glow: hsl(var(--brand-primary) / 0.18);
+  border-color: hsl(var(--brand-primary) / 0.22);
+}
+
+.hl-panel--hover::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid hsl(var(--hive-ice-2) / 0.3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--m-fast) var(--m-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hl-panel--hover:hover::after {
+    opacity: 1;
+  }
+  html.motion .hl-panel--hover {
+    transition: translate var(--m-fast) var(--m-out);
+  }
+  html.motion .hl-panel--hover:hover {
+    translate: 0 -3px;
+  }
+}
+
+.hl-pbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.hl-pbar-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: hsl(var(--ink-secondary));
+}
+
+.hl-pbar-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+@media (min-width: 768px) {
+  .hl-pbar {
+    padding: 8px 20px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .hl-pbar {
+    min-height: 48px;
+    padding: 8px 24px;
+  }
+}
+
+.hl-tile {
+  position: relative;
+  border-radius: var(--r-tile);
+  background: hsl(var(--hive-page) / 0.55);
+  border: 1px solid hsl(var(--hive-ice) / 0.08);
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.04);
+}
+
+.hl-tile--pad {
+  padding: 12px 14px;
+}
+
+/* Floating glass (sticky bar, deck controls, gate card, toasts): the only backdrop blur, never animated. */
+.hl-float {
+  background: linear-gradient(180deg, hsl(var(--surface-chips) / 0.72), hsl(var(--surface-card) / 0.72));
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.08),
+    0 24px 48px -24px hsl(var(--hive-shade) / 0.9);
+  -webkit-backdrop-filter: blur(var(--hl-blur)) saturate(140%);
+  backdrop-filter: blur(var(--hl-blur)) saturate(140%);
+}
+
+/* A quiet glass pill: segmented controls, filter chips, decorative buttons inside mocks. */
+.hl-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.16);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.08), hsl(var(--hive-frost) / 0.03));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.08);
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+}
+
+/* ── STATUS LANGUAGE (one meaning each, everywhere) ────────────────────────────────────────────────── */
+.hl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  max-width: 100%;
+  padding: 3px 9px;
+  border-radius: var(--r-chip);
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: hsl(var(--ink-primary));
+  background: hsl(var(--hive-page) / 0.55);
+  border: 1px solid hsl(var(--hive-ice) / 0.1);
+}
+
+.hl-chip--wrap {
+  white-space: normal;
+}
+
+.hl-chip--sm {
+  min-height: 20px;
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.hl-chip--lg {
+  min-height: 34px;
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: var(--r-chip);
+}
+
+.hl-chip--pass {
+  color: hsl(var(--fb-green));
+  background: hsl(var(--fb-green) / 0.12);
+  border-color: transparent;
+}
+
+.hl-chip--fail {
+  color: hsl(var(--fb-red-text));
+  background: hsl(var(--fb-red-text) / 0.14);
+  border-color: transparent;
+}
+
+.hl-chip--cannot {
+  color: hsl(var(--fb-attention-text));
+  background: transparent;
+  border: 1px dashed hsl(var(--fb-attention) / 0.4);
+}
+
+.hl-chip--grey {
+  color: hsl(var(--ink-secondary));
+  background: hsl(var(--hive-ice) / 0.1);
+  border-color: transparent;
+}
+
+.hl-chip--missed {
+  color: hsl(var(--ink-secondary));
+  background: transparent;
+  border: 1px dashed hsl(var(--hive-ice) / 0.4);
+}
+
+.hl-chip--live {
+  color: hsl(var(--brand-primary));
+  background: hsl(var(--brand-primary) / 0.1);
+  border-color: hsl(var(--brand-primary) / 0.22);
+}
+
+.hl-chip--steel {
+  color: hsl(var(--ink-primary));
+  background: hsl(var(--hive-steel) / 0.22);
+  border-color: hsl(var(--hive-steel) / 0.35);
+}
+
+.hl-chip--accent {
+  color: hsl(var(--ink-primary));
+  background: hsl(var(--hive-ice-2) / 0.12);
+  border-color: hsl(var(--hive-ice-2) / 0.28);
+}
+
+/* The verdict chip: the big "passed", with a faint inner glow of its own colour. */
+.hl-chip--lg.hl-chip--pass {
+  box-shadow: inset 0 0 18px hsl(var(--fb-green) / 0.18);
+}
+
+.hl-chip--lg.hl-chip--fail {
+  box-shadow: inset 0 0 18px hsl(var(--fb-red-text) / 0.16);
+}
+
+.hl-tier {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 6px;
+  border-radius: var(--r-chip);
+  font-family: theme('fontFamily.mono');
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  white-space: nowrap;
+  border: 1px solid currentColor;
+}
+
+.hl-tier--dom {
+  color: hsl(var(--hive-ice-2));
+  border-color: hsl(var(--hive-ice-2) / 0.35);
+  background: hsl(var(--hive-ice-2) / 0.08);
+}
+
+.hl-tier--tree {
+  color: hsl(var(--hive-ice));
+  border-color: hsl(var(--hive-ice) / 0.3);
+  background: hsl(var(--hive-ice) / 0.06);
+}
+
+.hl-tier--picture {
+  color: hsl(var(--ink-inactive));
+  border-color: hsl(var(--ink-inactive) / 0.35);
+  border-style: dashed;
+  background: transparent;
+}
+
+/* HexDot: a pointy-top hexagon in currentColor. Hollow kinds are a stroke, missed a dashed one. */
+.hl-hexdot {
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+  overflow: visible;
+  color: hsl(var(--hive-ice-2));
+}
+
+.hl-hexdot polygon {
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.hl-hexdot--pass,
+.hl-hexdot--online {
+  color: hsl(var(--fb-green));
+}
+
+.hl-hexdot--fail {
+  color: hsl(var(--fb-red-text));
+}
+
+.hl-hexdot--cannot {
+  color: hsl(var(--fb-attention-text));
+}
+
+.hl-hexdot--grey {
+  color: hsl(var(--hive-ice) / 0.32);
+}
+
+.hl-hexdot--offline {
+  color: hsl(var(--ink-inactive) / 0.45);
+}
+
+.hl-hexdot--ice {
+  color: hsl(var(--hive-ice-2));
+}
+
+.hl-hexdot--steel {
+  color: hsl(var(--hive-steel));
+}
+
+.hl-hexdot--live,
+.hl-hexdot--honey {
+  color: hsl(var(--brand-primary));
+}
+
+.hl-hexdot--live {
+  filter: drop-shadow(0 0 4px hsl(var(--brand-primary) / 0.75));
+}
+
+.hl-hexdot--missed polygon,
+.hl-hexdot--paused polygon,
+.hl-hexdot--empty polygon {
+  fill: none;
+}
+
+.hl-hexdot--missed {
+  color: hsl(var(--hive-ice) / 0.45);
+}
+
+.hl-hexdot--missed polygon {
+  stroke-dasharray: 2 1.6;
+}
+
+.hl-hexdot--paused {
+  color: hsl(var(--hive-ice) / 0.6);
+}
+
+.hl-hexdot--empty {
+  color: hsl(var(--hive-ice) / 0.28);
+}
+
+/* The honey live dot: the one warm light outside the hive. It breathes only with motion allowed. */
+.hl-live {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: hsl(var(--brand-primary));
+  box-shadow:
+    0 0 0 3px hsl(var(--brand-primary) / 0.16),
+    0 0 12px 1px hsl(var(--brand-primary) / 0.7);
+}
+
+html.motion .hl-live {
+  animation: hl-breathe var(--m-loop) ease-in-out infinite;
+}
+
+.hl-nights {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hl-nights-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nights-gap, 5px);
+}
+
+.hl-nights-label {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* ── LINES: logs, steps, checks, the verdict ───────────────────────────────────────────────────────── */
+.hl-lines {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hl-log {
+  display: grid;
+  /* The time column is eight mono characters wide ("02:00:34"), and never wraps. */
+  grid-template-columns: 8.4ch 14px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: baseline;
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+  overflow-wrap: anywhere;
+}
+
+.hl-log-t {
+  white-space: nowrap;
+  color: hsl(var(--ink-inactive));
+  font-variant-numeric: tabular-nums;
+}
+
+.hl-log-x b {
+  font-weight: 500;
+  color: hsl(var(--ink-primary));
+}
+
+.hl-mark {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  /* On the first line of a wrapped entry, not in the middle of the block. */
+  align-self: start;
+  margin-top: 0.3em;
+}
+
+.hl-mark > * {
+  grid-area: 1 / 1;
+}
+
+.hl-mark-tick {
+  width: 10px;
+  height: 10px;
+  color: hsl(var(--hive-ice-2));
+}
+
+.hl-mark--fail .hl-mark-tick {
+  color: hsl(var(--fb-red-text));
+}
+
+.hl-mark--pass .hl-mark-tick {
+  color: hsl(var(--fb-green));
+}
+
+/* The hex spinner: only while a demo is running and the line is in flight (whatever carries it is
+   .hl-transient). Its final state is the tick. It turns only while it is shown. */
+.hl-spin {
+  width: 11px;
+  height: 11px;
+  color: hsl(var(--hive-ice-2));
+}
+
+html.motion [data-run] .hl-spin.cue-on:not(.cue-out),
+html.motion [data-run] .cue-on:not(.cue-out) > .hl-spin {
+  animation: hl-spin 900ms linear infinite;
+}
+
+.hl-step {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: baseline;
+  font-size: 14px;
+  line-height: 1.5;
+  color: hsl(var(--ink-body));
+  overflow-wrap: anywhere;
+}
+
+.hl-step-mark {
+  font-family: theme('fontFamily.mono');
+  color: hsl(var(--hive-ice-2));
+}
+
+.hl-step--fail .hl-step-mark {
+  color: hsl(var(--fb-red-text));
+}
+
+.hl-step--muted {
+  color: hsl(var(--ink-secondary));
+}
+
+.hl-step--muted .hl-step-mark {
+  color: hsl(var(--ink-inactive));
+}
+
+.hl-step-t {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+  font-variant-numeric: tabular-nums;
+}
+
+/* CheckLine: number badge + statement + outcome + tier, then evidence and "what it proves", with a 2px
+   status bar on the left. The outcome is two stacked layers (pending spinner, result) so a demo can
+   resolve it by a crossfade; at rest only the result is there. */
+.hl-check {
+  --st: var(--hive-ice);
+  --st-a: 1;
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px 10px 14px;
+  border-radius: var(--r-tile);
+  background: hsl(var(--hive-page) / 0.45);
+  border: 1px solid hsl(var(--hive-ice) / 0.07);
+}
+
+.hl-check::before,
+.hl-check-bar {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+}
+
+/* The bar's track is neutral; the status colour is a layer over it, so a resolving check lights it by
+   opacity alone. */
+.hl-check::before {
+  background: hsl(var(--hive-ice) / 0.3);
+}
+
+.hl-check-bar {
+  background: hsl(var(--st) / var(--st-a, 1));
+}
+
+.hl-check--pass {
+  --st: var(--fb-green);
+}
+
+.hl-check--fail {
+  --st: var(--fb-red-text);
+}
+
+.hl-check--cannot {
+  --st: var(--fb-attention-text);
+}
+
+.hl-check--notmade,
+.hl-check--pending {
+  --st: var(--hive-ice);
+  --st-a: 0.3;
+}
+
+/* number | statement (wrapping) | outcome + tier: the tags stay on the first line at every width. */
+.hl-check-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 4px 10px;
+}
+
+.hl-check-n {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  color: hsl(var(--ink-secondary));
+  background: hsl(var(--hive-ice) / 0.08);
+}
+
+.hl-check-s {
+  min-width: 0;
+  padding-top: 1px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-primary));
+  overflow-wrap: anywhere;
+}
+
+.hl-check-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hl-outcome {
+  display: inline-grid;
+}
+
+.hl-outcome > * {
+  grid-area: 1 / 1;
+  justify-self: start;
+}
+
+.hl-outcome-wait {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+}
+
+/* "value is" · "present" · "absent" - the kind of a check, before its statement. */
+.hl-check-kind {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  margin-right: 8px;
+  vertical-align: 1px;
+  padding: 1px 7px;
+  border-radius: var(--r-chip);
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  white-space: nowrap;
+  color: hsl(var(--ink-secondary));
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+}
+
+.hl-check-ev {
+  padding-left: 30px;
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--ink-inactive));
+  overflow-wrap: anywhere;
+}
+
+.hl-check--fail .hl-check-ev {
+  color: hsl(var(--fb-red-text) / 0.9);
+}
+
+.hl-check-proves {
+  padding-left: 30px;
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.5;
+  color: hsl(var(--ink-secondary));
+}
+
+.hl-verdict {
+  --st: var(--hive-ice);
+  --st-a: 0.4;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px 14px 12px 17px;
+  border-radius: var(--r-tile);
+  background: hsl(var(--st) / 0.08);
+  border: 1px solid hsl(var(--hive-ice) / 0.07);
+  overflow: hidden;
+}
+
+.hl-verdict::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: hsl(var(--st) / var(--st-a, 1));
+}
+
+.hl-verdict--pass {
+  --st: var(--fb-green);
+  --st-a: 1;
+}
+
+.hl-verdict--fail {
+  --st: var(--fb-red-text);
+  --st-a: 1;
+}
+
+.hl-verdict--grey {
+  --st-a: 0.45;
+  background: hsl(var(--hive-ice) / 0.05);
+}
+
+.hl-verdict-x {
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  color: hsl(var(--ink-secondary));
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 1200px) {
+  .hl-log {
+    font-size: 13px;
+  }
+  .hl-check-s {
+    font-size: 14px;
+  }
+}
+
+/* ── DEMO FRAME CONTROLS ── */
+.hl-iconbtn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.16);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.08), hsl(var(--hive-frost) / 0.03));
+  color: hsl(var(--ink-primary));
+  cursor: pointer;
+  position: relative;
+}
+
+/* 44px touch target around a 32px button. */
+.hl-iconbtn::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+}
+
+.hl-iconbtn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The page's one focus ring - the outline - instead of the design system's ring shadow, so a control in a
+   mock never shows two. Never animated. */
+.hl-iconbtn:focus-visible,
+.hl-textbtn:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hl-iconbtn:hover {
+    background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.14), hsl(var(--hive-frost) / 0.05));
+  }
+}
+
+.hl-iconbtn:active {
+  transform: scale(0.97);
+}
+
+.hl-iconbtn[data-off] {
+  visibility: hidden;
+}
+
+.hl-textbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.hl-textbtn svg {
+  width: 14px;
+  height: 14px;
+  color: hsl(var(--hive-ice-2));
+}
+
+.hl-replay {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.hl-replay.is-on {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* THE CAPTION under every demo - "Illustration of …, played N× faster." - one treatment everywhere: left,
+   under the figure, 12px below it. A section never restyles it. */
+.hl-caption {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  color: hsl(var(--ink-inactive));
+}
+
+/* ── SHARED MICRO-MOTIONS (keyframes in motion.css) ──
+   .hl-press   a demo's button pressed at its cue (data-fx none): .97 and back, an ice flash on a layer.
+   .hl-typing  three dots in an opacity wave while the other side is about to answer (transient).
+   A jump past either (--cue-age) lands after it. */
+.hl-press {
+  position: relative;
+}
+
+.hl-press::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid hsl(var(--hive-ice-2) / 0.7);
+  background: hsl(var(--hive-ice-2) / 0.14);
+  opacity: 0;
+  pointer-events: none;
+}
+
+html.motion [data-run] .hl-press.cue-on {
+  animation: hl-press var(--m-base) var(--m-out);
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+html.motion [data-run] .hl-press.cue-on::after {
+  animation: hl-flash var(--m-slow) var(--m-out);
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+.hl-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hl-typing i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: hsl(var(--hive-ice-2));
+  opacity: 0.35;
+}
+
+html.motion [data-run] .hl-typing.cue-on:not(.cue-out) i {
+  animation: hl-wave calc(3 * var(--m-base)) var(--m-inout) infinite;
+}
+
+html.motion [data-run] .hl-typing.cue-on:not(.cue-out) i:nth-child(2) {
+  animation-delay: var(--m-fast);
+}
+
+html.motion [data-run] .hl-typing.cue-on:not(.cue-out) i:nth-child(3) {
+  animation-delay: calc(2 * var(--m-fast));
+}
+
+/* A detail that opens under its row (03's rows, 08's answers): it unfolds from 4px above. */
+html.motion .hl-detail-in {
+  animation: hl-detail-in var(--m-base) var(--m-out) backwards;
+}
+
+/* ── TYPING ─────────────────────────────────────────────────────────────────────────────────────────────
+   The full string is laid out from the start (each character a span, so wrapping is the real wrapping), and
+   while a demo types it each character arrives by opacity alone - nothing reflows. A 1px ice-2 caret sits
+   after the last visible character and blinks once the line is done. --cue-age (set by the engine) turns
+   a jump past the line into the finished line instead of a replay. */
+.hl-tt-v {
+  white-space: pre-wrap;
+}
+
+.hl-tt-c {
+  position: relative;
+}
+
+html.motion [data-run] .hl-tt:not(.cue-on) .hl-tt-c {
+  opacity: 0;
+}
+
+html.motion [data-run] .hl-tt.cue-on .hl-tt-c {
+  animation: hl-tt-in 1ms linear backwards;
+  animation-delay: calc(var(--i) * var(--tt-step) - var(--cue-age, 0ms));
+}
+
+@keyframes hl-tt-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.hl-tt-c::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 0.12em;
+  bottom: 0.08em;
+  width: 1px;
+  background: hsl(var(--hive-ice-2));
+  opacity: 0;
+}
+
+html.motion [data-run] .hl-tt.cue-on.hl-tt--caret .hl-tt-c::after {
+  animation: hl-tt-caret var(--tt-step) linear;
+  animation-delay: calc((var(--i) + 1) * var(--tt-step) - var(--cue-age, 0ms));
+}
+
+html.motion [data-run] .hl-tt.cue-on.hl-tt--caret .hl-tt-c:last-child::after {
+  animation: hl-tt-caret-end 1.6s steps(1, end);
+  animation-delay: calc((var(--i) + 1) * var(--tt-step) - var(--cue-age, 0ms));
+}
+
+@keyframes hl-tt-caret {
+  from,
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes hl-tt-caret-end {
+  0% {
+    opacity: 1;
+  }
+  31% {
+    opacity: 0;
+  }
+  62% {
+    opacity: 1;
+  }
+  93%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ── LAYERED SWAPS (CueSwap, ClockDigits) ──────────────────────────────────────────────────────────────
+   Every value a thing takes over a demo, stacked in one grid cell so the box is as wide as the widest and
+   never jumps. At rest (the server, reduced motion) only the LAST layer - the final frame - shows. While a
+   demo runs, the layer whose time it is shows; roll layers arrive from below and leave upwards. */
+.hl-swap {
+  display: inline-grid;
+  vertical-align: bottom;
+}
+
+.hl-swap > * {
+  grid-area: 1 / 1;
+}
+
+.hl-swap > :not(:last-child) {
+  opacity: 0;
+}
+
+.hl-swap--roll {
+  overflow: hidden;
+}
+
+html.motion [data-run] .hl-swap > * {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    transform var(--m-base) var(--m-out);
+}
+
+html.motion [data-run] .hl-swap--roll > * {
+  transition:
+    opacity 300ms var(--m-inout),
+    transform 300ms var(--m-inout);
+}
+
+html.motion [data-run] .hl-swap > :not(.cue-on),
+html.motion [data-run] .hl-swap > .cue-out {
+  opacity: 0;
+}
+
+html.motion [data-run] .hl-swap > .cue-on:not(.cue-out) {
+  opacity: 1;
+}
+
+html.motion [data-run] .hl-swap--roll > :not(.cue-on) {
+  transform: translateY(100%);
+}
+
+html.motion [data-run] .hl-swap--roll > .cue-on.cue-out {
+  transform: translateY(-100%);
+}
+
+html.motion [data-run] .hl-swap--slide > :not(.cue-on) {
+  transform: translateY(8px);
+}
+
+html.motion [data-run] .hl-swap--slide > .cue-on.cue-out {
+  transform: translateY(-8px);
+}
+
+.hl-clock {
+  display: inline-flex;
+  font-family: theme('fontFamily.mono');
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hl-clock .hl-swap {
+  min-width: 1ch;
+  justify-items: center;
+}
+
+/* ── DEMO FIGURE ── */
+.hl-demo {
+  position: relative;
+  margin: 0;
+  min-width: 0;
+}
+
+.hl-demo > figcaption {
+  display: block;
+}
+
+/* ── STACKED PANES (acts, sheets, tabs) ───────────────────────────────────────────────────────────────
+   Without a script the panes are simply one under another, each with its own heading - every word is in
+   the page. Once the component is enhanced (data-enhanced, set in an effect, never by html.js alone) the
+   panes share one grid cell, so the box is as tall as the tallest and never jumps, and only the pane whose
+   number the nearest timeline root carries in data-act is shown (or, for a component without a timeline,
+   the pane it marks data-current). The swap is a crossfade; with reduced motion it is instant. */
+.hl-acts[data-enhanced] {
+  display: grid;
+}
+
+.hl-acts[data-enhanced] > [data-act-pane] {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.hl-acts[data-enhanced] > [data-act-pane]:not([data-current]) {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+[data-act='0'] .hl-acts[data-enhanced] > [data-act-pane='0'],
+[data-act='1'] .hl-acts[data-enhanced] > [data-act-pane='1'],
+[data-act='2'] .hl-acts[data-enhanced] > [data-act-pane='2'],
+[data-act='3'] .hl-acts[data-enhanced] > [data-act-pane='3'],
+[data-act='4'] .hl-acts[data-enhanced] > [data-act-pane='4'],
+[data-act='5'] .hl-acts[data-enhanced] > [data-act-pane='5'],
+[data-act='6'] .hl-acts[data-enhanced] > [data-act-pane='6'],
+[data-act='7'] .hl-acts[data-enhanced] > [data-act-pane='7'] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+html.motion .hl-acts[data-enhanced] > [data-act-pane] {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    visibility 0s linear var(--m-base);
+}
+
+html.motion [data-act='0'] .hl-acts[data-enhanced] > [data-act-pane='0'],
+html.motion [data-act='1'] .hl-acts[data-enhanced] > [data-act-pane='1'],
+html.motion [data-act='2'] .hl-acts[data-enhanced] > [data-act-pane='2'],
+html.motion [data-act='3'] .hl-acts[data-enhanced] > [data-act-pane='3'],
+html.motion [data-act='4'] .hl-acts[data-enhanced] > [data-act-pane='4'],
+html.motion [data-act='5'] .hl-acts[data-enhanced] > [data-act-pane='5'],
+html.motion [data-act='6'] .hl-acts[data-enhanced] > [data-act-pane='6'],
+html.motion [data-act='7'] .hl-acts[data-enhanced] > [data-act-pane='7'] {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    visibility 0s;
+}
+
+/* The act label each pane carries for the no-JS page and screen readers ("Written", "Running" …): shown
+   when the panes are stacked, kept for assistive tech only once they are enhanced. */
+.hl-acts[data-enhanced] .hl-act-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.hl-act-label {
+  display: block;
+  margin-bottom: 8px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+/* A progress fill: a scaleX layer over a hairline track - the one thing that moves linearly. Its final
+   state (and the poster's) is full. A section drives it with a cue (data-fx="none") and --fill-ms. */
+.hl-fill {
+  position: relative;
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: hsl(var(--hive-ice) / 0.12);
+}
+
+.hl-fill > i {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: hsl(var(--brand-primary));
+  transform-origin: 0 50%;
+}
+
+html.motion [data-run] .hl-fill[data-cue]:not(.cue-on) > i {
+  transform: scaleX(0);
+}
+
+html.motion [data-run] .hl-fill[data-cue].cue-on > i {
+  animation: hl-fill var(--fill-ms, 1000ms) linear backwards;
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+@keyframes hl-fill {
+  from {
+    transform: scaleX(0);
+  }
+}

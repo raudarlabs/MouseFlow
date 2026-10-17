@@ -9,6 +9,9 @@ import { renderToString } from 'react-dom/server';
 import { Landing } from './Landing';
 import { WAITLIST_ENDPOINT } from './endpoint';
 
+/* The FAQ the page renders, for the build's FAQPage JSON-LD: the same array, so they cannot disagree. */
+export { FAQ } from './sections/Faq';
+
 export function render(): string {
   return renderToString(
     <StrictMode>

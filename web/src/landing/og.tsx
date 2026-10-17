@@ -4,6 +4,7 @@
  * in landing/README.md. Never built or shipped - only its PNGs are. */
 import { createRoot } from 'react-dom/client';
 import './landing.css';
+import './sections/hero.css';
 import { HiveMark } from '@/components/brand/HiveMark';
 import { GlassHive } from '@/components/brand/GlassHive';
 

@@ -1,0 +1,1484 @@
+/* 03 · The night shift - this section's stage. Reads the kit's tokens (var(--hl-gap), var(--r-tile),
+ * var(--m-out) …) and never redefines them. Phone first: every rule is the 375-430px one, then 768 and 1200
+ * enhance it.
+ *
+ * Honey here means one thing - NOW: the marker sweeping the night, its head and the morning it stops at, the
+ * dawn, and the Nightly switch you press (with the CTA, the page's "yours to press"). Everything else is ice
+ * and steel; status colours come from the kit's chips and hexes.
+ *
+ * Nothing below hides content unless a running timeline owns the demo (html.motion [data-run]) or a reveal
+ * is pending (the kit); the server's page is the morning after, complete.
+ */
+
+/* ── THE STAGE ─────────────────────────────────────────────────────────────────────────────────────────
+   The demo root is contained (layout and paint, so its frame-by-frame work stays inside it). Paint
+   containment clips at the box, so the box reaches 64px below its last panel - room for the panels' long
+   shadow - and gives the 64px back with a negative margin. */
+.ns-demo {
+  display: grid;
+  gap: var(--hl-gap);
+  contain: layout paint;
+  padding-bottom: 64px;
+  margin-bottom: -64px;
+}
+
+.ns-demo > *,
+.ns-lower > * {
+  min-width: 0;
+}
+
+.ns-lower {
+  display: grid;
+  gap: var(--hl-gap);
+}
+
+@media (min-width: 1200px) {
+  .ns-lower {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: stretch;
+  }
+  .ns-rows {
+    grid-column: 1 / 8;
+  }
+  .ns-morning-col {
+    grid-column: 8 / 13;
+  }
+}
+
+/* ── LAST NIGHT: the panel ─────────────────────────────────────────────────────────────────────────── */
+.ns-night {
+  overflow: hidden;
+}
+
+.ns-moon {
+  display: none;
+  width: 13px;
+  height: 13px;
+  color: hsl(var(--hive-ice-2));
+}
+
+/* The bar's title, its chip and the Pause button share one line from 400px; under it the moon gives way. */
+@media (min-width: 400px) {
+  .ns-moon {
+    display: block;
+  }
+}
+
+.ns-night-body {
+  position: relative;
+}
+
+/* The night's sky: steel deepest where the night starts, thinning towards the morning. */
+.ns-sky {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, hsl(var(--hive-steel) / 0.1), hsl(var(--hive-steel) / 0.03) 55%, transparent 85%);
+}
+
+/* The dawn: the page's one warm light becomes the morning. A band along the bottom on a phone, the last
+   strip of the panel - the part after 09:00 - from 768. */
+.ns-dawn {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 96px;
+  pointer-events: none;
+  background:
+    radial-gradient(70% 120% at 50% 100%, hsl(var(--brand-primary) / 0.12), transparent 70%),
+    linear-gradient(180deg, transparent, hsl(var(--brand-primary) / 0.05));
+}
+
+html.motion [data-run] .ns-dawn {
+  transition: opacity 1200ms var(--m-inout);
+}
+
+html.motion [data-run] .ns-dawn:not(.cue-on) {
+  opacity: 0;
+}
+
+/* The marker: a honey line with a hex head and a faint warm trail behind it. Shared by both drawings; each
+   places it on its own axis. Static glow - only the wrapper moves. */
+.ns-sweep {
+  position: absolute;
+}
+
+.ns-line {
+  position: absolute;
+  background: hsl(var(--brand-primary));
+  box-shadow: 0 0 10px hsl(var(--brand-primary) / 0.55);
+}
+
+.ns-head {
+  position: absolute;
+}
+
+.ns-trail {
+  position: absolute;
+}
+
+/* The sweep itself has no CSS motion: the panel writes the wrapper's transform from the section's clock on
+   every frame (NightPanel), from −100% where the night starts to its resting place at 09:00. */
+
+/* ── UNDER 768: THE NIGHT AS A RAIL ─────────────────────────────────────────────────────────────────── */
+.ns-h {
+  display: none;
+}
+
+.ns-v {
+  --time-w: 40px;
+  --node-w: 18px;
+  --col-gap: 10px;
+  --rail-x: calc(var(--time-w) + var(--col-gap) + var(--node-w) / 2);
+  position: relative;
+  display: grid;
+  grid-template-rows: var(--v-rows);
+  padding: 16px var(--hl-pad) 20px;
+}
+
+.ns-v-row {
+  grid-column: 1;
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--time-w) var(--node-w) minmax(0, 1fr);
+  column-gap: var(--col-gap);
+  align-items: center;
+  min-width: 0;
+}
+
+.ns-v-time {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: hsl(var(--ink-inactive));
+}
+
+/* The rail is drawn by the rows themselves - a segment above and below each node with a gap round it - so a
+   hollow node (a miss) is not crossed out by the line running through it. */
+.ns-v-node {
+  position: relative;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+}
+
+.ns-v-node::before,
+.ns-v-node::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 1px;
+  margin-left: -0.5px;
+  background: hsl(var(--hive-ice) / 0.14);
+}
+
+.ns-v-node::before {
+  top: 0;
+  bottom: calc(50% + 9px);
+}
+
+.ns-v-node::after {
+  top: calc(50% + 9px);
+  bottom: 0;
+}
+
+.ns-v-node--first::before {
+  display: none;
+}
+
+/* A quiet hour: the rail runs through, with a short tick across it. */
+.ns-v-node--tick::before {
+  bottom: 0;
+}
+
+.ns-v-node--tick::after {
+  top: 50%;
+  bottom: auto;
+  left: calc(50% - 3px);
+  width: 7px;
+  height: 1px;
+  margin: 0;
+  background: hsl(var(--hive-ice) / 0.24);
+}
+
+.ns-v-row--tick .ns-v-time {
+  color: hsl(var(--ink-inactive) / 0.7);
+}
+
+/* Runs line their first line up with the node; a long chip wraps under the name. */
+.ns-v-row--run {
+  align-items: start;
+  padding-top: 11px;
+}
+
+.ns-v-row--run .ns-v-time {
+  line-height: 20px;
+}
+
+.ns-v-row--run .ns-v-node {
+  align-self: stretch;
+  margin-top: -11px;
+  place-items: start center;
+  padding-top: 16px;
+}
+
+.ns-v-row--run .ns-v-node::before {
+  bottom: auto;
+  height: 12px;
+}
+
+.ns-v-row--run .ns-v-node::after {
+  top: 32px;
+}
+
+.ns-v-dot {
+  display: inline-grid;
+}
+
+.ns-v-run {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  min-width: 0;
+  padding-bottom: 10px;
+}
+
+.ns-v-run-n {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -0.01em;
+  color: hsl(var(--ink-primary));
+}
+
+.ns-v-run-st {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.ns-v-run-note {
+  font-size: 13px;
+  line-height: 1.35;
+  color: hsl(var(--ink-secondary));
+}
+
+.ns-v-lane {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.ns-v-lane-n {
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  color: hsl(var(--ink-primary));
+}
+
+.ns-v-lane-p {
+  font-size: 12px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* The morning: 09:00 level with the marker's head on the rail, the word just under the line. */
+.ns-v-row--now {
+  align-items: start;
+  min-height: 36px;
+}
+
+.ns-v-now {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--brand-primary));
+}
+
+.ns-v-row--now > .ns-v-time {
+  margin-top: -8px;
+}
+
+.ns-v-row--now > .ns-v-now:last-child {
+  margin-top: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* The vertical sweep spans the rail's rows and ends where the morning row begins; the box reaches 8px lower
+   so the marker's head is not cut in half at rest. */
+.ns-v-clip {
+  grid-column: 1;
+  position: relative;
+  z-index: 3;
+  overflow: hidden;
+  margin-bottom: -8px;
+  pointer-events: none;
+}
+
+.ns-v-sweep {
+  inset: 0 0 8px 0;
+}
+
+.ns-v-sweep .ns-line {
+  left: var(--rail-x);
+  right: 0;
+  bottom: -0.5px;
+  height: 1px;
+  background: linear-gradient(90deg, hsl(var(--brand-primary)), hsl(var(--brand-primary) / 0.35));
+}
+
+.ns-v-sweep .ns-head {
+  left: calc(var(--rail-x) - 3.5px);
+  bottom: -4px;
+}
+
+.ns-v-sweep .ns-trail {
+  left: var(--rail-x);
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  background: linear-gradient(180deg, transparent, hsl(var(--brand-primary) / 0.045));
+  -webkit-mask-image: linear-gradient(90deg, #000 40%, transparent);
+  mask-image: linear-gradient(90deg, #000 40%, transparent);
+}
+
+/* ── 768 AND UP: LANES ON A TIME SCALE ──────────────────────────────────────────────────────────────────
+   names | the night (01:30 → 09:00), then the morning strip (--dawn) after the now-marker. Every position on
+   the night is a percentage of .ns-track, which stops where the morning begins. */
+@media (min-width: 768px) {
+  .ns-v {
+    display: none;
+  }
+
+  .ns-h {
+    --dawn: 124px;
+    --lane: 72px;
+    --seg-w: 18px;
+    --seg-h: 40px;
+    --names: 100px;
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--names) minmax(0, 1fr);
+    grid-template-rows: 24px var(--lane) var(--lane) 20px;
+    column-gap: 16px;
+    row-gap: 8px;
+    padding: 10px var(--hl-pad) 16px;
+  }
+
+  .ns-sky {
+    background: linear-gradient(90deg, hsl(var(--hive-steel) / 0.12), hsl(var(--hive-steel) / 0.04) 45%, transparent 80%);
+  }
+
+  .ns-dawn {
+    top: 0;
+    left: auto;
+    width: calc(var(--hl-pad) + 150px);
+    height: auto;
+    background:
+      radial-gradient(120% 70% at 100% 100%, hsl(var(--brand-primary) / 0.13), transparent 70%),
+      linear-gradient(90deg, transparent, hsl(var(--brand-primary) / 0.05));
+  }
+}
+
+@media (min-width: 1200px) {
+  .ns-h {
+    --dawn: 136px;
+    --lane: 84px;
+    --seg-w: 22px;
+    --seg-h: 44px;
+    --names: 120px;
+    padding: 12px var(--hl-pad) 20px;
+  }
+  .ns-dawn {
+    width: calc(var(--hl-pad) + 176px);
+  }
+}
+
+.ns-track {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: var(--dawn);
+}
+
+.ns-lane {
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ns-h-name {
+  grid-column: 1;
+}
+
+.ns-lane-n {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+}
+
+.ns-lane-p {
+  padding-left: 16px;
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+  white-space: nowrap;
+}
+
+/* A lane: a strip of page-dark glass. The hairline is an inset shadow, so it takes no width and the lane's
+   track lines up with the axis' to the pixel. */
+.ns-h-lane {
+  grid-column: 2;
+  position: relative;
+  border-radius: var(--r-tile);
+  background: hsl(var(--hive-page) / 0.42);
+  box-shadow: inset 0 0 0 1px hsl(var(--hive-ice) / 0.06);
+}
+
+/* A machine that was not listening: a thinner lane, and a faint hatch over the hours nobody was there. */
+.ns-h-lane--offline {
+  background: hsl(var(--hive-page) / 0.22);
+}
+
+.ns-asleep {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(var(--w) * 1%);
+  border-radius: var(--r-tile) 0 0 var(--r-tile);
+  background: repeating-linear-gradient(135deg, hsl(var(--hive-ice) / 0.05) 0 1px, transparent 1px 8px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18%);
+  mask-image: linear-gradient(90deg, transparent, #000 18%);
+}
+
+.ns-h-hours {
+  grid-column: 2;
+  grid-row: 2 / 4;
+  position: relative;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.ns-h-hours i {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: calc(var(--x) * 1%);
+  width: 1px;
+  background: repeating-linear-gradient(180deg, hsl(var(--hive-ice) / 0.11) 0 3px, transparent 3px 7px);
+}
+
+.ns-h-axis {
+  grid-column: 2;
+  grid-row: 4;
+  position: relative;
+}
+
+.ns-h-hour {
+  position: absolute;
+  top: 2px;
+  left: calc(var(--x) * 1%);
+  transform: translateX(-50%);
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--ink-inactive));
+}
+
+/* 09:00 belongs to the marker: its own honey label says it above the lanes. */
+.ns-h-hour--now {
+  color: hsl(var(--brand-primary) / 0.8);
+}
+
+/* A machine's runs: tiles from the first one's true time, one after another, then their names. */
+.ns-cl {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--x) * 1%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ns-segs {
+  display: flex;
+  gap: 3px;
+}
+
+.ns-seg {
+  --st: var(--hive-ice);
+  display: grid;
+  place-items: center;
+  width: var(--seg-w);
+  height: var(--seg-h);
+  border-radius: var(--r-chip);
+  background: hsl(var(--st) / 0.13);
+  box-shadow: inset 0 0 0 1px hsl(var(--st) / 0.36);
+}
+
+.ns-seg--pass {
+  --st: var(--fb-green);
+}
+
+.ns-seg--fail {
+  --st: var(--fb-red-text);
+}
+
+.ns-seg-dot {
+  display: inline-grid;
+}
+
+.ns-cl-list {
+  display: grid;
+  gap: 2px;
+}
+
+.ns-cl-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 20px;
+  white-space: nowrap;
+}
+
+.ns-t {
+  font-family: theme('fontFamily.mono');
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--ink-inactive));
+}
+
+.ns-n {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  color: hsl(var(--ink-primary));
+}
+
+.ns-cl-line .hl-chip--sm,
+.ns-miss-label .hl-chip--sm {
+  min-height: 18px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+}
+
+/* The miss's words sit over the hatch and the hour lines: they get the page under them. */
+.ns-miss-label .hl-chip--missed {
+  background: hsl(var(--hive-page) / 0.85);
+}
+
+/* What a lane was doing between runs - only where there is room for it. */
+.ns-lane-note {
+  display: none;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--x) * 1%);
+  align-items: center;
+  padding-left: 10px;
+  font-family: theme('fontFamily.mono');
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: hsl(var(--ink-inactive) / 0.8);
+}
+
+@media (min-width: 1200px) {
+  .ns-cl {
+    gap: 14px;
+  }
+  .ns-t {
+    font-size: 11px;
+  }
+  .ns-n {
+    font-size: 13px;
+  }
+  .ns-cl-line .hl-chip--sm,
+  .ns-miss-label .hl-chip--sm {
+    padding: 1px 7px;
+    font-size: 11px;
+  }
+  .ns-lane-note {
+    display: flex;
+  }
+  .ns-miss-w {
+    display: inline;
+  }
+}
+
+/* A miss: a hollow dashed tile over the 47 minutes nobody was there, its words to its left. */
+.ns-miss {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--x) * 1%);
+  width: calc(var(--w) * 1%);
+  height: var(--seg-h);
+  margin: auto 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-chip);
+  border: 1px dashed hsl(var(--hive-ice) / 0.42);
+  background: hsl(var(--hive-page) / 0.7);
+}
+
+/* How long nobody was there - written inside the tile where the tile is wide enough to hold it. */
+.ns-miss-w {
+  display: none;
+  font-family: theme('fontFamily.mono');
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: hsl(var(--ink-inactive));
+}
+
+.ns-miss-label {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc((100 - var(--x)) * 1% + 14px);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.ns-miss-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+/* The horizontal sweep: the wrapper is the night's width, inside a clip as wide as night + morning, so the
+   marker's label can sit in the morning strip at rest and its head and trail are cut where the night
+   starts. */
+.ns-h-clip {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  position: relative;
+  z-index: 3;
+  overflow: hidden;
+  margin-bottom: -4px;
+  pointer-events: none;
+}
+
+.ns-h-sweep {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: var(--dawn);
+}
+
+.ns-h-sweep .ns-line {
+  right: -0.5px;
+  top: 14px;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, hsl(var(--brand-primary)), hsl(var(--brand-primary) / 0.4));
+}
+
+.ns-h-sweep .ns-head {
+  right: -3.5px;
+  top: 8px;
+}
+
+.ns-h-sweep .ns-trail {
+  right: 0;
+  top: 32px;
+  bottom: 4px;
+  width: 22%;
+  background: linear-gradient(90deg, transparent, hsl(var(--brand-primary) / 0.055));
+  -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent);
+  mask-image: linear-gradient(180deg, #000 60%, transparent);
+}
+
+.ns-h-tag {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 4px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: hsl(var(--brand-primary));
+}
+
+/* ── THE ROWS OF NIGHTS ─────────────────────────────────────────────────────────────────────────────── */
+.ns-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.ns-rows-sep {
+  color: hsl(var(--ink-inactive));
+}
+
+.ns-rows-failing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: hsl(var(--fb-red-text));
+}
+
+.ns-rows-note {
+  display: none;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* "oldest on the left": in the bar where it fits on one line with the title, in the legend on a phone. */
+.ns-legend-order {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 768px) {
+  .ns-rows-note {
+    display: inline;
+  }
+  .ns-legend-order {
+    display: none;
+  }
+}
+
+.ns-rows-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+}
+
+/* A row's open state is a tile of page-dark glass under the button and its detail - a layer, so opening a
+   row crossfades it rather than repainting a background. */
+.ns-row {
+  position: relative;
+  border-radius: var(--r-tile);
+}
+
+.ns-row::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: hsl(var(--hive-page) / 0.5);
+  box-shadow: inset 0 0 0 1px hsl(var(--hive-ice) / 0.07);
+  opacity: 0;
+}
+
+.ns-row.is-open::before {
+  opacity: 1;
+}
+
+html.motion .ns-row::before {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+/* The vendored Button, reset to a list row: its own box, padding, wrapping and colours give way to the
+   row's; its focus ring becomes the page's outline. */
+.landing .ns-row-btn {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  height: auto;
+  min-height: 56px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: var(--r-tile);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  transition: none;
+}
+
+.landing .ns-row-btn:hover,
+.landing .ns-row-btn:active {
+  background: transparent;
+}
+
+.landing .ns-row-btn:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+/* The hover: an ice layer fading in behind the row's content. */
+.ns-row-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: hsl(var(--hive-ice) / 0.05);
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ns-row-btn:hover::after {
+    opacity: 1;
+  }
+  html.motion .ns-row-btn::after {
+    transition: opacity var(--m-fast) var(--m-out);
+  }
+}
+
+/* name / sub / dots on a phone - the name keeps the whole width; from 768 the dots take a column. */
+.landing .ns-row-btn > span {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'name'
+    'sub'
+    'dots';
+  min-width: 0;
+  text-align: left;
+}
+
+.ns-row-name {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: theme('fontFamily.display');
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+  color: hsl(var(--ink-primary));
+}
+
+.ns-row-sub {
+  grid-area: sub;
+  min-width: 0;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: hsl(var(--ink-inactive));
+}
+
+.ns-row-dots {
+  grid-area: dots;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+/* The Button sizes every svg inside it to 16px; a night is a 9px hex. */
+.landing .ns-row-dots .hl-hexdot {
+  width: 9px;
+  height: 10.39px;
+}
+
+/* Each night sits on a ghost of itself - a faint hex drawn by the cell - so before the cascade the row
+   already reads as ten nights waiting for their colours, and at rest the coloured hex covers it exactly. */
+.ns-dot {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.ns-dot > * {
+  grid-area: 1 / 1;
+}
+
+.ns-dot::before {
+  content: '';
+  grid-area: 1 / 1;
+  width: 9px;
+  height: 10.39px;
+  background: hsl(var(--hive-ice) / 0.14);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+.ns-dot--missed::before {
+  content: none;
+}
+
+.ns-dot--missed {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.ns-missed-tag {
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  line-height: 1;
+  color: hsl(var(--ink-secondary));
+}
+
+/* The red night's one ring: a pulse, gone at rest. */
+.ns-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px hsl(var(--fb-red-text) / 0.8);
+  opacity: 0;
+  pointer-events: none;
+}
+
+html.motion [data-run] .ns-ring.cue-on {
+  animation: hl-pulse var(--m-pulse) var(--m-out) both;
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+.landing .ns-row-chev {
+  width: 16px;
+  height: 16px;
+  color: hsl(var(--ink-inactive));
+}
+
+.ns-row.is-open .ns-row-chev {
+  transform: rotate(180deg);
+}
+
+html.motion .ns-row-chev {
+  transition: transform var(--m-base) var(--m-inout);
+}
+
+/* The detail line: its height snaps; its words arrive with a 4px rise. Until they do, a pending line holds
+   their place - a chip and a stroke of text, faint - so an open row is never an empty slot. */
+.ns-row-detail {
+  position: relative;
+  padding: 0 14px 14px;
+}
+
+.ns-row-pending {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ns-row-pending i {
+  height: 18px;
+  width: 96px;
+  border-radius: var(--r-chip);
+  background: hsl(var(--hive-ice) / 0.1);
+}
+
+.ns-row-pending i + i {
+  flex: 1;
+  max-width: 280px;
+  height: 8px;
+  border-radius: var(--r-pill);
+}
+
+.ns-row-detail[hidden] {
+  display: none;
+}
+
+.ns-row-detail-in {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+}
+
+.ns-row-detail-in .hl-chip {
+  align-self: center;
+}
+
+/* Opening a row unfolds its line as an FAQ answer does (the kit's hl-detail-in). */
+html.motion .ns-row.is-open .ns-row-detail-in {
+  animation: hl-detail-in var(--m-base) var(--m-out) backwards;
+}
+
+/* The key: two by two on a phone (four words never break across three ragged lines), then "oldest on the
+   left" under it; one line from 768, where the order sits in the bar. */
+.ns-legend {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  align-items: center;
+  gap: 8px 24px;
+  margin: auto 0 0;
+  padding: 12px 16px 14px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+}
+
+.ns-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+@media (min-width: 768px) {
+  .ns-rows-list {
+    padding: 8px 10px;
+  }
+  .landing .ns-row-btn {
+    min-height: 64px;
+    padding: 14px 16px;
+  }
+  .landing .ns-row-btn > span {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'name dots'
+      'sub dots';
+    column-gap: 24px;
+  }
+  .ns-row-dots {
+    margin-top: 0;
+    /* Ten nights and room for a "missed" tag: every row's first night starts in the same column. */
+    min-width: 196px;
+  }
+  .ns-row-detail {
+    padding: 0 16px 14px;
+  }
+  .ns-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    padding: 12px 20px 14px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .ns-rows-list {
+    padding: 10px 12px;
+  }
+  .landing .ns-row-btn {
+    min-height: 72px;
+    padding: 16px 18px;
+  }
+  .ns-row-detail {
+    padding: 0 18px 16px;
+  }
+  .ns-row-name {
+    font-size: 16px;
+  }
+  .ns-legend {
+    padding: 16px 30px 18px;
+  }
+}
+
+/* ── 9 A.M.: THE ANSWER ─────────────────────────────────────────────────────────────────────────────── */
+.ns-morning-col {
+  display: grid;
+}
+
+.ns-morning {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ns-m-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+}
+
+.ns-m-kicker svg {
+  width: 14px;
+  height: 14px;
+  color: hsl(var(--hive-ice-2));
+}
+
+.ns-m-you {
+  align-self: flex-end;
+  max-width: 85%;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--r-tile);
+  background: hsl(var(--hive-ice) / 0.1);
+  font-size: 14px;
+  line-height: 1.45;
+  color: hsl(var(--ink-primary));
+}
+
+.ns-m-tool {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: var(--r-chip);
+  border: 1px solid hsl(var(--hive-ice) / 0.12);
+  background: hsl(var(--hive-page) / 0.55);
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  color: hsl(var(--ink-secondary));
+}
+
+.ns-m-tool > svg {
+  width: 13px;
+  height: 13px;
+  color: hsl(var(--hive-ice-2));
+}
+
+.ns-m-tool-n {
+  color: hsl(var(--ink-primary));
+  overflow-wrap: anywhere;
+}
+
+/* Thinking, then done: three dots that breathe while the tool runs, crossfading to a tick. */
+.ns-m-tool-st {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+}
+
+.ns-m-tool-st > * {
+  grid-area: 1 / 1;
+}
+
+.ns-m-done svg {
+  width: 13px;
+  height: 13px;
+  color: hsl(var(--hive-ice-2));
+}
+
+/* The tool's three thinking dots are the kit's .hl-typing, at the chip's size. */
+.ns-m-wait.hl-typing {
+  gap: 3px;
+}
+
+.ns-m-wait.hl-typing i {
+  width: 4px;
+  height: 4px;
+}
+
+.ns-m-answer {
+  position: relative;
+  padding: 14px 16px;
+  border-radius: var(--r-tile);
+  background: hsl(var(--hive-page) / 0.5);
+  border: 1px solid hsl(var(--hive-ice) / 0.08);
+  font-size: 14px;
+  line-height: 1.6;
+  color: hsl(var(--ink-body));
+}
+
+.ns-m-answer-in {
+  display: grid;
+  gap: 12px;
+}
+
+.ns-m-answer p {
+  margin: 0;
+  text-wrap: pretty;
+}
+
+/* While Claude is still answering, the box holds the answer's shape - a line, the check's tile, four lines -
+   faint and breathing once a loop, so it is never an empty frame. Transient: no poster shows them. */
+.ns-m-pending {
+  position: absolute;
+  inset: 16px 16px auto;
+  display: grid;
+  gap: 12px;
+}
+
+.ns-m-pending > * {
+  display: block;
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: hsl(var(--hive-ice) / 0.1);
+}
+
+.ns-m-pending > b {
+  height: 72px;
+  margin: 4px 0;
+  border-radius: var(--r-tile);
+  background: hsl(var(--hive-page) / 0.6);
+  border: 1px solid hsl(var(--hive-ice) / 0.07);
+}
+
+.ns-m-pending > i:nth-child(1) {
+  width: 84%;
+}
+
+.ns-m-pending > i:nth-child(5) {
+  width: 92%;
+}
+
+.ns-m-pending > i:nth-child(6) {
+  width: 48%;
+}
+
+html.motion [data-run] .ns-m-pending.cue-on:not(.cue-out) {
+  animation: hl-breathe var(--m-loop) ease-in-out infinite;
+}
+
+.ns-m-answer b {
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+}
+
+/* The CheckLine inside a bubble: one step darker than the bubble, so it reads as the product's own line.
+   On a narrow phone its "value is" tag gives the statement the room - the evidence line says the same. */
+.ns-m-check .hl-check {
+  background: hsl(var(--hive-page) / 0.7);
+}
+
+@media (max-width: 479px) {
+  .ns-m-check .hl-check-kind {
+    display: none;
+  }
+  /* The outcome and tier drop under the statement, which keeps the line's whole width. */
+  .ns-m-check .hl-check-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .ns-m-check .hl-check-tags {
+    grid-column: 2;
+  }
+  .ns-m-answer {
+    padding: 12px 14px;
+  }
+}
+
+@media (max-width: 359px) {
+  .ns-morning.hl-panel--pad {
+    padding: 16px;
+  }
+}
+
+.ns-m-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+.ns-m-act {
+  flex: 1 1 auto;
+  min-height: 44px;
+  font-size: 13.5px;
+}
+
+.ns-m-act svg {
+  width: 14px;
+  height: 14px;
+  color: hsl(var(--hive-ice-2));
+}
+
+.ns-m-note {
+  margin: -4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: hsl(var(--ink-inactive));
+}
+
+@media (min-width: 768px) {
+  .ns-m-answer {
+    max-width: 92%;
+  }
+  .ns-m-act {
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .ns-m-answer {
+    max-width: 100%;
+  }
+}
+
+/* ── THE CLOCK AND THE RULES ────────────────────────────────────────────────────────────────────────── */
+.ns-more {
+  display: grid;
+  gap: 24px;
+  margin-top: 32px;
+}
+
+.ns-clock {
+  display: grid;
+  gap: 12px;
+}
+
+.ns-clock-label {
+  margin: 0;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+}
+
+.ns-clock-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ns-sched {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px 0 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.06), hsl(var(--hive-frost) / 0.02));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.06);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+}
+
+.ns-sched svg {
+  width: 14px;
+  height: 14px;
+  color: hsl(var(--hive-ice-2));
+}
+
+.ns-sched-d {
+  font-weight: 500;
+  color: hsl(var(--ink-secondary));
+}
+
+/* The Nightly switch, on: the one thing in the section that is yours to press. */
+.ns-switch {
+  position: relative;
+  width: 24px;
+  height: 14px;
+  flex: none;
+  border-radius: var(--r-pill);
+  background: hsl(var(--brand-primary));
+  box-shadow: 0 0 10px hsl(var(--brand-primary) / 0.35);
+}
+
+.ns-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: hsl(var(--on-accent));
+}
+
+.ns-rules {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ns-rule {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  column-gap: 14px;
+  padding: 16px 0;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.ns-rule-hex {
+  margin-top: 6px;
+}
+
+.landing .ns-rule-t {
+  margin: 0;
+  font-family: theme('fontFamily.display');
+  font-size: 15.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+  color: hsl(var(--ink-primary));
+}
+
+.ns-rule-x {
+  margin: 6px 0 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+  text-wrap: pretty;
+}
+
+@media (min-width: 768px) {
+  .ns-more {
+    gap: 32px;
+    margin-top: 40px;
+  }
+  .ns-rules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .ns-more {
+    margin-top: 32px;
+  }
+  .ns-clock {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 20px;
+  }
+  .ns-rules {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+  .ns-rule {
+    padding: 20px 0 0;
+  }
+  .landing .ns-rule-t {
+    font-size: 16px;
+  }
+  .ns-rule-x {
+    font-size: 15px;
+  }
+}

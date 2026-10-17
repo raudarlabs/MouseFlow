@@ -11,8 +11,15 @@
  *
  * method="post" with no action, for the moment before hydration: a GET would put the address in the URL,
  * in the history and in a referrer, and this way an early press goes nowhere rather than leaking.
+ *
+ * RENDERED TWICE, ONE COMPONENT. The hero has it, and the last section has it again so a reader at the end
+ * of a long page signs up where they are (sections/FinalCall.tsx). Same endpoint, same list, same outcomes.
+ * Each instance takes its own ids from formId/fieldId - the hero keeps the defaults, "waitlist" and
+ * "email", which the header's link and the build's checks name - and derives its note's and honeypot's
+ * from them, so two forms never share an id and the ids are the same on the server and in the browser.
+ * data-waitlist marks every instance for callWaitlist, which picks the one a "Join" press should land on.
  */
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Button } from '@insightis/ui/Button';
 import { Input } from '@insightis/ui/Input';
@@ -37,12 +44,16 @@ const NOTE: Record<Status, string> = {
 export interface WaitlistFormProps {
   endpoint: string;
   className?: string;
+  /** The form's id; unique per instance. Default "waitlist" - the hero's, which #waitlist links name. */
+  formId?: string;
+  /** The address field's id. Default "email". */
+  fieldId?: string;
 }
 
-export function WaitlistForm({ endpoint, className }: WaitlistFormProps) {
-  const uid = useId();
-  const emailId = 'email';
-  const noteId = 'waitlist-note' + uid.replace(/[^A-Za-z0-9_-]/g, '');
+export function WaitlistForm({ endpoint, className, formId = 'waitlist', fieldId = 'email' }: WaitlistFormProps) {
+  const emailId = fieldId;
+  const noteId = formId + '-note';
+  const trapId = formId + '-website';
   const [status, setStatus] = useState<Status>('idle');
   const input = useRef<HTMLInputElement>(null);
   const honey = useRef<HTMLInputElement>(null);
@@ -70,7 +81,7 @@ export function WaitlistForm({ endpoint, className }: WaitlistFormProps) {
   }
 
   return (
-    <form id="waitlist" method="post" noValidate onSubmit={submit} className={cn('w-full max-w-[520px]', className)}>
+    <form id={formId} data-waitlist="" method="post" noValidate onSubmit={submit} className={cn('w-full max-w-[520px]', className)}>
       <label htmlFor={emailId} className="mb-[9px] ml-1 block text-[13px] font-semibold tracking-[0.01em] text-ink-primary">
         Get early access — join the waitlist
       </label>
@@ -83,7 +94,7 @@ export function WaitlistForm({ endpoint, className }: WaitlistFormProps) {
           autoComplete="email"
           autoCapitalize="off"
           spellCheck={false}
-          placeholder="you@work.com"
+          placeholder="you@company.com"
           required
           readOnly={busy}
           aria-invalid={problem || undefined}
@@ -99,16 +110,16 @@ export function WaitlistForm({ endpoint, className }: WaitlistFormProps) {
           rounded="full"
           isLoading={busy}
           rightSlot={busy ? null : <ArrowRight aria-hidden strokeWidth={2.2} />}
-          className="landing-cta h-[50px] shrink-0 gap-2 pl-5 pr-[18px] font-display text-[15px] font-semibold tracking-[-0.01em] max-[389px]:pl-4 max-[389px]:pr-3.5 max-[389px]:text-[14px] min-[1200px]:h-14 min-[1200px]:pl-[26px] min-[1200px]:pr-6 min-[1200px]:text-base"
+          className="landing-cta landing-shine h-[50px] shrink-0 gap-2 pl-5 pr-[18px] font-display text-[15px] font-semibold tracking-[-0.01em] max-[389px]:pl-4 max-[389px]:pr-3.5 max-[389px]:text-[14px] min-[1200px]:h-14 min-[1200px]:pl-[26px] min-[1200px]:pr-6 min-[1200px]:text-base"
         >
-          Join the waitlist
+          Join the hive
         </Button>
       </div>
       {/* The honeypot. Off-screen rather than display:none (some bots skip hidden fields), out of the tab
           order and the accessibility tree, and named like a field a form-filler cannot resist. */}
       <div className="absolute -left-[10000px] top-auto size-px overflow-hidden" aria-hidden="true">
-        <label htmlFor={'website' + noteId}>Website</label>
-        <input id={'website' + noteId} ref={honey} name="website" type="text" tabIndex={-1} autoComplete="off" defaultValue="" />
+        <label htmlFor={trapId}>Website</label>
+        <input id={trapId} ref={honey} name="website" type="text" tabIndex={-1} autoComplete="off" defaultValue="" />
       </div>
       <p
         id={noteId}

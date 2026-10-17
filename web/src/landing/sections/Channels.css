@@ -1,0 +1,724 @@
+/* 05 · Ways in - this section's stage: three glass cards, each with a small thread of product UI in a tile.
+ * Reads the kit's tokens (var(--hl-gap), var(--r-tile), var(--m-out) …) and never redefines them; what is
+ * drawn here is the threads' own furniture - a composer, a plan, a gate, chat bubbles, tool chips.
+ *
+ * Phone first: the cards stack, and each tile is as tall as its finished thread (every bubble is laid out
+ * from the start, so the height never changes while it plays). 768: a card is text beside its demo.
+ * 1200: three columns on a subgrid, so headings, bodies and demos line up across the row.
+ *
+ * Only transform and opacity move. A pressed pill is a .97 press plus a flash layer; a status change is a
+ * crossfade between stacked layers (CueSwap); the waveform never moves - only its unplayed dot pulses. */
+
+/* ── the row ──────────────────────────────────────────────────────────────────────────────────────── */
+.ch-ways {
+  display: grid;
+  gap: var(--hl-gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ch-way {
+  display: grid;
+  min-width: 0;
+}
+
+/* Side by side, the row is the threads' demo root, and a demo that is waiting (not yet half in view)
+   freezes every animation inside it - which would hold the cards' own reveal at its first, invisible
+   frame. A reveal is an entrance, not a loop: it always runs, as motion.css lets it under data-play. */
+.ch-ways[data-paused] > [data-reveal-item] {
+  animation-play-state: running !important;
+}
+
+.ch-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  min-width: 0;
+}
+
+/* Your AI is the row's centre of gravity: a slightly stronger ice glow in its corner. */
+.hl-panel.ch-card--mcp {
+  --glow: hsl(var(--hive-ice-2) / 0.28);
+}
+
+.ch-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+}
+
+.landing .ch-kicker {
+  margin: 0;
+  min-width: 0;
+}
+
+/* The cell's prism sits in the lower part of its 72-unit box: the negative margins put the prism itself,
+   not the box, in the 44px row and on the card's right content edge. */
+.ch-cell {
+  width: 60px;
+  height: 60px;
+  flex: none;
+  margin: -18px -8px -2px 0;
+}
+
+.landing .ch-card .ch-h3 {
+  margin-top: 16px;
+}
+
+.landing .ch-card .ch-body {
+  margin-top: 8px;
+}
+
+.ch-demo {
+  display: grid;
+  margin-top: 24px;
+}
+
+/* ── the tile and its thread ──────────────────────────────────────────────────────────────────────── */
+.ch-tile {
+  display: grid;
+  min-width: 0;
+}
+
+/* The thread is the paint box: its padding is the tile's, so a bubble sliding in 12px from the edge
+   starts exactly at the clip, never cut mid-shape. */
+.ch-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px 12px 12px;
+  border-radius: inherit;
+  contain: layout paint;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-body));
+  text-wrap: pretty;
+}
+
+.ch-thread p {
+  margin: 0;
+}
+
+/* Each chat sits as its app sits: Telegram's messages gather at the bottom over the input; Claude's
+   conversation reads from the top, with its input docked at the foot. */
+.ch-tile--tg .ch-thread {
+  justify-content: flex-end;
+}
+
+.ch-tile--tg .ch-sys {
+  margin-bottom: auto;
+}
+
+.ch-tile--mcp .ch-thread {
+  gap: 12px;
+}
+
+.ch-tile--mcp .ch-input {
+  margin-top: auto;
+}
+
+/* Replay sits on the tile's top-right corner, half over its edge, and only once the thread has ended.
+   Opaque, so the tile's hairline does not run through it; no backdrop blur on something that fades. */
+.ch-tile .ch-replay,
+.ch-tile .ch-replay:hover {
+  position: absolute;
+  z-index: 1;
+  top: -16px;
+  right: 12px;
+  background:
+    linear-gradient(180deg, hsl(var(--hive-frost) / 0.1), hsl(var(--hive-frost) / 0.04)),
+    hsl(var(--surface-card));
+}
+
+/* ── glass pills inside the mocks (decoration) ────────────────────────────────────────────────────── */
+.landing .ch-btn {
+  position: relative;
+  min-height: 28px;
+  padding: 0 11px;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1;
+}
+
+.landing .ch-btn--run,
+.landing .ch-btn--go {
+  border-color: hsl(var(--hive-ice-2) / 0.34);
+  background: linear-gradient(180deg, hsl(var(--hive-ice-2) / 0.16), hsl(var(--hive-ice-2) / 0.07));
+}
+
+.ch-run-dot {
+  width: 10px;
+  justify-items: center;
+  align-items: center;
+}
+
+.ch-run-dot > * {
+  display: grid;
+  place-items: center;
+}
+
+/* Pressed (the kit's .hl-press) and typing (the kit's .hl-typing) are the page's shared micro-motions. */
+
+/* As a bubble it is layered over the slot of the message it announces. */
+.ch-typing--bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 12px 14px;
+  border-radius: var(--r-tile);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.07), hsl(var(--hive-frost) / 0.03));
+  border: 1px solid hsl(var(--hive-ice) / 0.1);
+}
+
+/* ── chat bubbles ─────────────────────────────────────────────────────────────────────────────────── */
+.ch-msg {
+  max-width: 88%;
+  padding: 8px 12px;
+  border-radius: var(--r-tile);
+  overflow-wrap: anywhere;
+}
+
+.ch-msg--you {
+  align-self: flex-end;
+  background: hsl(var(--hive-ice) / 0.1);
+  color: hsl(var(--ink-primary));
+}
+
+.ch-msg--you b {
+  font-weight: 600;
+  color: hsl(var(--ink-highlight));
+}
+
+.ch-msg--them {
+  align-self: flex-start;
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.07), hsl(var(--hive-frost) / 0.03));
+  border: 1px solid hsl(var(--hive-ice) / 0.1);
+  color: hsl(var(--ink-body));
+}
+
+/* The chat's frame, not a message: the connector Claude has, Telegram's day chip. Pinned to the top of
+   the tile while the messages gather at the bottom, as in the real thing. */
+.ch-thread .ch-sys {
+  align-self: center;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: hsl(var(--ink-inactive));
+  background: hsl(var(--hive-ice) / 0.06);
+}
+
+.ch-pop {
+  display: inline-block;
+  vertical-align: 1px;
+}
+
+/* The input at the foot of a chat: empty, its placeholder quiet, one round button on the right. */
+.ch-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  margin-top: 4px;
+  padding: 4px 4px 4px 14px;
+  border-radius: var(--r-pill);
+  background: hsl(var(--hive-page) / 0.7);
+  border: 1px solid hsl(var(--hive-ice) / 0.12);
+}
+
+.ch-input-ph {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: hsl(var(--ink-inactive));
+}
+
+.ch-input-btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  color: hsl(var(--hive-ice-2));
+  background: hsl(var(--hive-ice-2) / 0.14);
+}
+
+.ch-input-btn svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── A · Create: composer, plan, gate ─────────────────────────────────────────────────────────────── */
+.ch-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  border-radius: var(--r-chip);
+  background: hsl(var(--hive-page) / 0.7);
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.04);
+}
+
+.ch-thread .ch-field {
+  min-width: 0;
+  min-height: 2.9em;
+  padding: 2px 0;
+  color: hsl(var(--ink-primary));
+  overflow-wrap: anywhere;
+}
+
+.ch-plan {
+  padding: 10px 12px;
+  border-radius: var(--r-chip);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.06), hsl(var(--hive-frost) / 0.02));
+  border: 1px solid hsl(var(--hive-ice) / 0.1);
+}
+
+.ch-plan-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ch-plan-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+}
+
+.ch-cps {
+  display: grid;
+  gap: 2px;
+  margin: 8px -8px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ch-cp {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 28px;
+  padding: 3px 8px;
+}
+
+/* The row the run stopped at, lit by a layer (a crossfade, not a colour change). */
+.ch-cp-hi {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: var(--r-chip);
+  background: hsl(var(--hive-ice-2) / 0.08);
+  border: 1px solid hsl(var(--hive-ice-2) / 0.16);
+}
+
+.ch-cp-n {
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--ink-inactive));
+}
+
+.ch-cp-x {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ch-cp-m {
+  display: inline-grid;
+  justify-items: end;
+}
+
+.ch-cp-m .hl-swap {
+  justify-items: end;
+  align-items: center;
+}
+
+.ch-cp-m .hl-mark-tick {
+  width: 10px;
+  height: 10px;
+  color: hsl(var(--hive-ice-2));
+}
+
+/* The run's steps in words, streaming in under the plan as the machine works. */
+.ch-steps {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0 4px;
+  list-style: none;
+}
+
+.ch-step {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  column-gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: hsl(var(--ink-secondary));
+  overflow-wrap: anywhere;
+}
+
+.ch-step-m {
+  font-family: theme('fontFamily.mono');
+  color: hsl(var(--hive-ice-2));
+}
+
+.ch-gate {
+  padding: 12px;
+  border-radius: var(--r-chip);
+  background: hsl(var(--hive-ice-2) / 0.06);
+  border: 1px solid hsl(var(--hive-ice-2) / 0.22);
+}
+
+.ch-gate-t b {
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+}
+
+.ch-thread .ch-gate-n {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-secondary));
+}
+
+.ch-gate-b {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.landing .ch-gate-b .ch-btn {
+  min-height: 26px;
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+/* ── B · Claude over MCP: the request, the tool calls, the answer ─────────────────────────────────── */
+.ch-ai {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ch-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+/* The tool calls, one under another and full width, as the chat lays out a tool block: a head (the
+   tool, and on the right what came back) over a hairline and what it was given. A short rail joins each
+   call's mark to the one before it (it arrives with the call it leads to). */
+.ch-tools {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ch-tool {
+  position: relative;
+  min-width: 0;
+  border-radius: var(--r-chip);
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  background: hsl(var(--hive-page));
+  border: 1px solid hsl(var(--hive-ice) / 0.12);
+}
+
+.ch-tool + .ch-tool::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  bottom: 100%;
+  width: 1px;
+  height: 9px;
+  background: hsl(var(--hive-ice-2) / 0.35);
+}
+
+.ch-thread .ch-tool-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 30px;
+  padding: 4px 10px;
+  color: hsl(var(--ink-primary));
+}
+
+.ch-tool-head .hl-mark {
+  align-self: center;
+  margin-top: 0;
+}
+
+.ch-tool-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* What came back, pushed right; when a narrow tile wraps it, it starts its own line under the name. */
+.ch-tool-a {
+  margin-left: auto;
+  color: hsl(var(--ink-secondary));
+}
+
+.ch-args {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 6px 10px 7px 30px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.ch-arg {
+  display: grid;
+  grid-template-columns: 5ch minmax(0, 1fr);
+  column-gap: 10px;
+}
+
+.ch-arg dt {
+  color: hsl(var(--ink-inactive));
+}
+
+.ch-arg dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: hsl(var(--ink-secondary));
+}
+
+.ch-answer {
+  color: hsl(var(--ink-body));
+}
+
+/* ── C · Telegram: command, voice note, plan with its buttons, the outcome ────────────────────────── */
+.ch-cmd {
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+}
+
+.ch-voice {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 8px;
+}
+
+.ch-voice-play {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: hsl(var(--hive-ice-2) / 0.2);
+  color: hsl(var(--hive-ice-2));
+}
+
+.ch-voice-play svg {
+  width: 10px;
+  height: 10px;
+  margin-left: 1px;
+  fill: currentColor;
+}
+
+.ch-voice-body {
+  display: grid;
+  gap: 3px;
+}
+
+.ch-wave {
+  width: 58px;
+  height: 16px;
+  fill: hsl(var(--hive-ice) / 0.6);
+}
+
+.ch-voice-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  color: hsl(var(--ink-secondary));
+}
+
+/* Unplayed: the small dot beside the length. It pulses a few times when the note arrives, then rests. */
+.ch-voice-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: hsl(var(--hive-ice-2));
+}
+
+html.motion [data-run] .ch-voice-dot.cue-on {
+  animation: ch-blink 900ms ease-in-out 3;
+  animation-delay: calc(300ms - var(--cue-age, 0ms));
+}
+
+@keyframes ch-blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+.ch-slot {
+  position: relative;
+  display: grid;
+  justify-items: start;
+}
+
+/* The bot's plan and its inline buttons share one width, as Telegram's keyboard hangs under its message. */
+.ch-bot {
+  display: grid;
+  gap: 6px;
+  max-width: 88%;
+}
+
+.ch-bot .ch-msg {
+  max-width: none;
+}
+
+.ch-heard {
+  color: hsl(var(--ink-secondary));
+}
+
+.ch-thread .ch-tg-plan {
+  margin-top: 6px;
+  color: hsl(var(--ink-primary));
+}
+
+.ch-machine {
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  color: hsl(var(--ink-highlight));
+}
+
+.ch-keys {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.landing .ch-keys .ch-btn {
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.ch-done-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.ch-done-head b {
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+}
+
+.ch-thread .ch-done-x {
+  margin-top: 2px;
+  color: hsl(var(--ink-secondary));
+}
+
+/* ── hover: the card lifts (Panel), its glyph lifts 2px more ──────────────────────────────────────── */
+@media (hover: hover) and (pointer: fine) {
+  html.motion .ch-cell {
+    transition: translate var(--m-fast) var(--m-out);
+  }
+  html.motion .ch-card:hover .ch-cell {
+    translate: 0 -2px;
+  }
+}
+
+/* ── 768: a card is its words beside its demo ─────────────────────────────────────────────────────── */
+@media (min-width: 768px) {
+  .landing .ch-card .ch-body {
+    margin-top: 12px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  .ch-card {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    grid-template-rows: auto auto 1fr;
+    column-gap: 32px;
+  }
+  /* Words beside the demo: the cell leads the column (prism on the text's left edge) and the kicker
+     follows it, rather than the cell floating at the end of a short kicker row. */
+  .ch-top {
+    grid-area: 1 / 1;
+    flex-direction: column-reverse;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .ch-cell {
+    margin: -12px 0 -4px -8px;
+  }
+  .landing .ch-card .ch-h3 {
+    grid-area: 2 / 1;
+  }
+  .landing .ch-card .ch-body {
+    grid-area: 3 / 1;
+  }
+  .ch-demo {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    margin-top: 0;
+  }
+}
+
+/* ── 1200: three columns on one subgrid - headings, bodies and demos on shared lines ──────────────── */
+@media (min-width: 1200px) {
+  .ch-ways {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    row-gap: 0;
+  }
+  .ch-way,
+  .ch-card {
+    grid-row: span 4;
+    grid-template-rows: subgrid;
+    row-gap: 0;
+  }
+  .ch-thread {
+    padding: 18px 14px 14px;
+  }
+}

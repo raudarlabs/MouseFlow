@@ -5,8 +5,9 @@
  *   2. a server build of src/landing/entry-server.tsx into a scratch directory under node_modules, so its
  *      bare imports (react, react-dom/server) resolve against this package's own node_modules;
  *   3. render it, and put the markup into dist-landing/index.html where the comment marks #root - so the
- *      headline, the copy and the form are in the HTML a crawler or a link preview receives - then write
- *      robots.txt and sitemap.xml for SITE_URL.
+ *      headline, the copy and the form are in the HTML a crawler or a link preview receives - add the
+ *      FAQPage JSON-LD from the FAQ the page renders (sections/Faq.tsx, re-exported by entry-server.tsx),
+ *      then write robots.txt and sitemap.xml for SITE_URL.
  *
  * The page is then checked for what it exists to carry. A prerender that silently produced an empty root
  * would still deploy, and still look right in a browser with JavaScript - the failure would only show in
@@ -44,14 +45,22 @@ await build({
   },
 });
 
-const { render } = await import(pathToFileURL(join(ssrOut, 'entry-server.mjs')).href);
+const { render, FAQ } = await import(pathToFileURL(join(ssrOut, 'entry-server.mjs')).href);
 const markup = render();
 rmSync(ssrOut, { recursive: true, force: true });
 
 const pagePath = join(out, 'index.html');
 const page = readFileSync(pagePath, 'utf8');
 if (!page.includes(MARK)) throw new Error('landing: ' + MARK + ' is missing from the built index.html');
-const html = page.replace(MARK, () => markup);
+/* The questions as structured data, from the very array the section renders - never a second copy. `<` is
+   escaped so no answer can close the script element. */
+const faqLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQ.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a } })),
+};
+const faqScript = '<script type="application/ld+json">' + JSON.stringify(faqLd).replace(/</g, '\\u003c') + '</script>\n';
+const html = page.replace(MARK, () => markup).replace('</head>', () => faqScript + '</head>');
 writeFileSync(pagePath, html);
 
 writeFileSync(join(out, 'robots.txt'), `User-agent: *\nAllow: /\n\nSitemap: ${site}/sitemap.xml\n`);
@@ -66,8 +75,22 @@ writeFileSync(
 /* What the static page must carry, checked on the file that will be served. */
 const must = [
   ['the headline', /<h1[^>]*>[\s\S]*Every machine\.[\s\S]*One hive\.[\s\S]*<\/h1>/],
-  ['the copy', /builds your hive from AI agents[\s\S]*?on each of your Windows and Mac[\s\S]*?computers/],
+  ['the copy', /live AI agent on every Windows PC, Mac and test VM/],
   ['the form', /<form[^>]*id="waitlist"/],
+  ['the second form, at the end', /<form[^>]*id="waitlist-final"/],
+  ['01 How it tests', /Watch a live agent run it/],
+  ['03 The night shift', /Read the verdict over coffee/],
+  ['04 For IT', /It lives there\./],
+  ['06 Use cases', /Real jobs\. Real screens\./],
+  ['08 the FAQ', /Does the AI decide whether my test passed\?/],
+  ['the FAQPage JSON-LD', (h) => {
+    const m = h.match(/<script type="application\/ld\+json">(\{"@context":"https:\/\/schema\.org","@type":"FAQPage"[\s\S]*?)<\/script>/);
+    try {
+      return !!m && JSON.parse(m[1]).mainEntity.length === FAQ.length && FAQ.length > 0;
+    } catch {
+      return false;
+    }
+  }],
   ['the email field', /<input[^>]*type="email"/],
   ['the honeypot', /name="website"/],
   ['the canonical link', new RegExp(`<link rel="canonical" href="${site.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/">`)],

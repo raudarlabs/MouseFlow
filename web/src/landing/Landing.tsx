@@ -1,47 +1,29 @@
 /* THE HIVELINK LANDING - hivelink.si, coming soon.
  *
  * The chosen concept, "Glass Hive · Arctic Honey" (hivelink/concepts/05d-glasshive-arctic, owner
- * 2026-10-16), rebuilt from the app's own parts: the design system's Button, Input, Badge, Card and
- * Typography, the palette's tokens, the app's three faces, the shared HiveMark, and the hive drawn by
- * components in brand/ that the admin can use too. One design system for the site and the admin was the
- * decision; a landing written in its own CSS with its own hex values would be the second one.
+ * 2026-10-16), rebuilt from the app's own parts: the design system's Button, Input, Badge and Typography,
+ * the palette's tokens, the app's three faces, the shared HiveMark, and the hive drawn by components in
+ * brand/ that the admin can use too. One design system for the site and the admin was the decision; a
+ * landing written in its own CSS with its own hex values would be the second one.
  *
- * Same composition, copy and feel as the concept, with two deliberate departures:
- *   - the concept's social links went to "#". There are no accounts to link to yet, and a footer of icons
- *     that lead nowhere is worse than none, so the footer has none;
- *   - the concept's form said "you are on the list" without sending anything. This one posts to the
- *     waitlist API and says what the server said (WaitlistForm.tsx, waitlist.ts).
+ * ONE STORY. The hero, then nine sections that follow one test through one week in the hive - how it tests,
+ * why the green is proven, the night shift, the IT side, the ways in, eight real jobs, the rails, the
+ * questions, and the invitation (sections/index.tsx holds the order). Every section is built from one kit
+ * (sections/kit/) and moves by one motion system (motion/), which this component starts once it has
+ * hydrated.
  *
- * Every claim on the page is a product fact: Windows and macOS only, plain words, any app because it works
- * from a picture of the screen, Logs as proof, Skills, schedules and Checks, your own AI over MCP, one
- * account for the whole hive. No numbers, no customers, no quotes - there are none yet to show.
+ * Every claim on the page is a product fact: Windows and macOS only, plain words, a live agent that works
+ * from the screen and the accessibility tree, verdicts the machine decides, Logs as proof, schedules, your
+ * own AI over MCP, Telegram, one account for the whole hive. No numbers, no customers, no quotes - there
+ * are none yet to show. The footer has no social links: there are no accounts to link to yet.
  *
  * Rendered to static HTML at build time (entry-server.tsx, scripts/build-landing.mjs) and hydrated by
  * main.tsx, so it must render the same on both sides: nothing here reads the window during render.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Badge } from '@insightis/ui/Badge';
-import { buttonVariants } from '@insightis/ui/Button';
-import { Card } from '@insightis/ui/Card';
-import { Typography } from '@insightis/ui/Typography';
-import { HiveMark } from '@/components/brand/HiveMark';
-import { GlassHive } from '@/components/brand/GlassHive';
-import { GlassCell, GlassCellAccent, GlassCellCore, GlassCellPanel } from '@/components/brand/GlassCell';
-import { HiveTerminal } from '@/components/brand/HiveTerminal';
-import { HIVE_MACHINES } from '@/components/brand/hive-machines';
-import { WaitlistForm } from './WaitlistForm';
-import { callWaitlist } from './call-waitlist';
-import { MoreSections } from './Sections';
-
-/** The honey "now" dot, the concept's: the one warm light outside the hive. */
-const Dot = () => <i aria-hidden="true" className="landing-dot" />;
-
-const Brand = ({ small }: { small?: boolean }) => (
-  <a className={small ? 'landing-brand landing-brand-sm' : 'landing-brand'} href="./" aria-label="Hivelink home">
-    <HiveMark className="landing-brand-mark" />
-    <b className="font-display">hivelink</b>
-  </a>
-);
+import { useEffect } from 'react';
+import { initMotion } from './motion';
+import { Brand, Hero, HeroHeader, StickyBar } from './sections/Hero';
+import { StorySections } from './sections';
 
 /** The backdrop: a faint hex lattice under the page's cold light and the queen's warm one. */
 function Backdrop() {
@@ -64,188 +46,21 @@ function Backdrop() {
   );
 }
 
-interface Prop {
-  num: string;
-  title: string;
-  body: string;
-  chip: ReactNode;
-  glyph: ReactNode;
-}
-
-const PROPS: Prop[] = [
-  {
-    num: '01',
-    title: 'Tell the hive what to do',
-    body: 'Say it in plain words, for one bee or the whole swarm. Each agent works from a picture of its screen, so it reaches Excel, Explorer and any desktop window, not only a browser tab.',
-    chip: (
-      <>
-        <span className="landing-chip-p">›</span> “reply to Ann: invoice approved”
-      </>
-    ),
-    glyph: (
-      <>
-        <GlassCellPanel d="M4 4.5h16A1.5 1.5 0 0 1 21.5 6v12a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 18V6A1.5 1.5 0 0 1 4 4.5Z" />
-        <GlassCellAccent d="m7 10 3 2.5L7 15M12.5 15.5H17" />
-      </>
-    ),
-  },
-  {
-    num: '02',
-    title: 'One hive, every machine',
-    body: 'Every computer becomes a named cell. One account sees the whole hive: which bees are connected, which are buzzing right now, and what each one did.',
-    chip: (
-      <>
-        <span className="landing-chip-p">●</span> laptop-ann <span className="landing-chip-k">·</span> online now
-      </>
-    ),
-    glyph: (
-      <>
-        <GlassCellCore cx={12} cy={12} r={3} />
-        <circle cx="4.5" cy="6" r="2" />
-        <circle cx="19.5" cy="6" r="2" />
-        <circle cx="4.5" cy="18" r="2" />
-        <circle cx="19.5" cy="18" r="2" />
-        <GlassCellAccent d="M6.3 7.3 9.6 10.2M17.7 7.3l-3.3 2.9M6.3 16.7l3.3-2.9M17.7 16.7l-3.3-2.9" />
-      </>
-    ),
-  },
-  {
-    num: '03',
-    title: 'Every bee brings back proof',
-    body: 'Logs show what was asked, what the bee did and how it ended. A run that worked turns into honey, a Skill: run it again, schedule it, or let Checks test it.',
-    chip: (
-      <>
-        <span className="landing-chip-p">●</span> ok <span className="landing-chip-k">·</span> could not finish{' '}
-        <span className="landing-chip-k">·</span> stopped
-      </>
-    ),
-    glyph: (
-      <>
-        <GlassCellPanel d="M12 2.8 19.8 7.3v9.4L12 21.2 4.2 16.7V7.3Z" />
-        <GlassCellAccent d="m8.4 12.3 2.5 2.5 4.7-5" />
-      </>
-    ),
-  },
-];
-
 export function Landing({ endpoint }: { endpoint: string }) {
-  /* Which machine cell is being pointed at. Null at rest - and on the server, so the prerender and the
-   * first client render agree. */
-  const [pointed, setPointed] = useState<string | null>(null);
-  /* Where the card opens: beside the pointed cell, on whichever side has room, so it never covers the
-   * glass it is talking about. Measured from the cell's own box at the moment it is pointed at - nothing
-   * is read from the window during render. Null keeps the stylesheet's resting place (and the phone's). */
-  const [at, setAt] = useState<{ left: number; top: number } | null>(null);
-  const art = useRef<HTMLDivElement>(null);
-  const term = useRef<HTMLDivElement>(null);
-  /* A touch screen has no "leave": a tap anywhere outside the hive closes the card. */
-  useEffect(() => {
-    if (!pointed) return undefined;
-    const close = (e: PointerEvent) => {
-      if (art.current && !art.current.contains(e.target as Node)) setPointed(null);
-    };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
-  }, [pointed]);
-  function point(key: string | null, cell?: DOMRect) {
-    setPointed(key);
-    const box = art.current?.getBoundingClientRect();
-    if (!key || !cell || !box || !window.matchMedia('(min-width: 1200px)').matches) return;
-    const w = term.current?.offsetWidth ?? 372;
-    const h = term.current?.offsetHeight ?? 260;
-    const gap = 18;
-    const right = cell.right - box.left + gap;
-    const left = right + w <= box.width ? right : Math.max(0, cell.left - box.left - gap - w);
-    const top = Math.min(Math.max(8, cell.top + cell.height / 2 - box.top - h / 2), box.height - h - 8);
-    setAt({ left: Math.round(left), top: Math.round(top) });
-  }
+  /* The motion system starts after hydration: reveals, ambient-loop pausing. Until then - and for ever
+     without a script - the server's HTML is the finished page. */
+  useEffect(() => initMotion(), []);
   return (
     <div className="landing">
       <Backdrop />
-
-      <div className="landing-hero-wrap">
-        <header className="landing-top">
-          <Brand />
-          <span className="landing-soon" aria-hidden="true">
-            <Dot />
-            Early access
-          </span>
-          <nav className="landing-top-cta" aria-label="Primary">
-            <span className="landing-soon">
-              <Dot />
-              Coming soon
-            </span>
-            {/* A link, so it is an <a> - in the Button's own look. Not `<Button asChild>`: the vendored Button
-                wraps its label in a span between two slots, and Radix's Slot refuses more than one child. */}
-            <a href="#waitlist" onClick={callWaitlist} className={buttonVariants({ variant: 'secondary', rounded: 'full', size: 'lg', className: 'landing-glass-btn' })}>
-              Join the waitlist
-            </a>
-          </nav>
-        </header>
-
-        <main className="landing-hero" id="main">
-          <div className="landing-copy">
-            <Badge variant="secondary" rounded="full" className="landing-pill" leftSlot={<Dot />}>
-              Coming soon<i aria-hidden="true" className="landing-pill-sep" />
-              <span className="text-ink-primary">Early access</span>
-            </Badge>
-            <Typography variant="h1" className="landing-h1">
-              <span className="block">Every machine.</span>
-              <span className="landing-grad block">One hive.</span>
-            </Typography>
-            <Typography className="landing-sub">
-              <b>Hivelink</b> builds your hive from AI agents&nbsp;— one worker bee on each of your Windows and Mac
-              computers. Tell the hive what to do in plain words: every bee does the job on its own screen, in any
-              app, and brings back proof it worked.
-            </Typography>
-            <WaitlistForm endpoint={endpoint} className="landing-wait" />
-            <p className="landing-os font-mono">
-              Windows <i aria-hidden="true" /> macOS <i aria-hidden="true" /> one bee on every machine
-            </p>
-          </div>
-
-          <div className="landing-art" ref={art} onMouseLeave={() => setPointed(null)}>
-            <GlassHive className="landing-hive" active={pointed} onPoint={point} />
-            <HiveTerminal
-              ref={term}
-              className="landing-term"
-              style={at ? { left: at.left, top: at.top, bottom: 'auto' } : undefined}
-              machine={pointed ? HIVE_MACHINES[pointed] ?? null : null}
-            />
-          </div>
-        </main>
-      </div>
-
-      <section className="landing-props" aria-labelledby="props-title">
-        <div className="landing-props-head">
-          <p className="landing-eyebrow font-mono">Inside the hive</p>
-          <Typography variant="h2" id="props-title" className="landing-h2">
-            Built for people who keep more than one machine buzzing.
-          </Typography>
-          <Typography className="landing-props-lead">
-            Put a bee on each Windows PC and Mac you use, then hand out work in plain words&nbsp;— yourself, or
-            through your own AI, like Claude, connected over MCP. The hive does the rest.
-          </Typography>
-        </div>
-        <div className="landing-cards">
-          {PROPS.map((p) => (
-            <Card key={p.num} variant="outline" rounded="xl" fullWidth className="landing-card">
-              <div className="landing-card-top">
-                <GlassCell className="landing-cell-ico">{p.glyph}</GlassCell>
-                <span className="font-mono landing-num">{p.num}</span>
-              </div>
-              <Typography variant="h3" className="landing-h3">
-                {p.title}
-              </Typography>
-              <Typography className="landing-card-body">{p.body}</Typography>
-              <span className="landing-chip font-mono">{p.chip}</span>
-            </Card>
-          ))}
-        </div>
-      </section>
-
-      <MoreSections />
-
+      {/* The landmarks: the header is the banner, the sticky bar a navigation, and ONE <main> holds the
+          hero's body and the whole story - so "skip to main content" lands on the product, not on half of it. */}
+      <HeroHeader />
+      <StickyBar />
+      <main id="main" className="landing-main">
+        <Hero endpoint={endpoint} />
+        <StorySections endpoint={endpoint} />
+      </main>
       <footer className="landing-foot">
         <div className="landing-foot-in">
           <Brand small />

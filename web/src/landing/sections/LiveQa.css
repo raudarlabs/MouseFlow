@@ -1,0 +1,1186 @@
+/* 01 · How it tests - this section's stage: the three steps (Write · Run · Judge) and the Run Theater at full
+ * size. Reads the kit's tokens (var(--hl-gap), var(--r-tile), var(--m-out) …) and never redefines them;
+ * the theater's parts are the kit's (theater.css), and this file only lays out what is 01's own - the
+ * steps, the desktop around the Billing window, and the three acts of the side pane.
+ *
+ * Phone first: everything is the 375-430px layout, then 768 and 1024/1200 enhance it. Nothing here hides
+ * content unless the demo's timeline owns the stage (html.motion [data-run]) or a script has switched a
+ * layout on (data-enhanced, data-act): the server HTML is the finished demo.
+ */
+
+/* The demo's root: the steps and the theater share one timeline. A size container, so the split theater can
+   ask for "tall enough for a 16:10 window plus the taskbar" in cqw of the stage's width; the kept frame's
+   ghost is positioned in it. */
+.lqa-demo {
+  position: relative;
+  container-type: inline-size;
+}
+
+/* ── THE STEPS ─────────────────────────────────────────────────────────────────────────────────────── */
+.lqa-steps-row {
+  margin-bottom: 24px;
+}
+
+.lqa-copies {
+  display: grid;
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lqa-copy {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lqa-copy-k,
+.lqa-tab-in {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+}
+
+.lqa-copy-k {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.lqa-tab-n {
+  color: hsl(var(--ink-inactive));
+  font-variant-numeric: tabular-nums;
+}
+
+/* Enhanced on a phone: a glass segmented control - three 44px segments, a pill that slides to the act on
+   show (--m-inout, as everything that travels between two places), a 2px progress track in each - and the
+   active step's title and body under it, all three in one grid cell so the block never jumps. */
+.lqa-steps[data-enhanced] .lqa-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 4px;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.06), hsl(var(--hive-frost) / 0.02));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.06);
+}
+
+.lqa-tabs-pill {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: calc((100% - 8px) / 3);
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.2);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.13), hsl(var(--hive-frost) / 0.05));
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.12),
+    0 8px 18px -10px hsl(var(--hive-shade) / 0.9);
+  pointer-events: none;
+}
+
+[data-act='1'] .lqa-tabs-pill {
+  transform: translateX(100%);
+}
+
+[data-act='2'] .lqa-tabs-pill {
+  transform: translateX(200%);
+}
+
+html.motion .lqa-tabs-pill {
+  transition: transform var(--m-slow) var(--m-inout);
+}
+
+/* The tab: the design system's Button, stripped to the page's own look (its fill, ring and transition-all
+   would fight the pill and the motion rules). */
+.landing .lqa-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 44px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: hsl(var(--ink-primary));
+  opacity: 0.62;
+  box-shadow: none;
+  transition: none;
+}
+
+html.motion .landing .lqa-tab {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.landing .lqa-tab:hover,
+.landing .lqa-tab:active {
+  background: transparent;
+}
+
+.landing .lqa-tab[aria-selected='true'] {
+  opacity: 1;
+}
+
+.landing .lqa-tab:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.lqa-tab > span {
+  display: block;
+  width: 100%;
+}
+
+.lqa-tab-in {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+}
+
+.lqa-tab-l {
+  font-family: theme('fontFamily.display');
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: hsl(var(--ink-primary));
+}
+
+.lqa-copy-k .lqa-tab-l {
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 500;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+}
+
+/* The progress track: a hairline with a scaleX fill the clock drives (Steps.tsx writes the transform).
+   Honey on the act on show - "now" - and ice on the acts already played: two stacked layers, crossfaded. */
+.lqa-track {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 6px;
+  height: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: hsl(var(--hive-ice) / 0.1);
+}
+
+.lqa-track-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 50%;
+}
+
+.lqa-track-ice,
+.lqa-track-honey {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.lqa-track-ice {
+  background: hsl(var(--hive-ice-2) / 0.45);
+}
+
+.lqa-track-honey {
+  background: hsl(var(--brand-primary));
+  opacity: 0;
+}
+
+.lqa-tab[aria-selected='true'] .lqa-track-honey {
+  opacity: 1;
+}
+
+html.motion .lqa-track-honey {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.lqa-steps[data-enhanced] .lqa-copies {
+  margin-top: 12px;
+}
+
+.lqa-steps[data-enhanced] .lqa-copy-k {
+  display: none;
+}
+
+/* Phone: one copy at a time, in one cell. */
+@media (max-width: 767px) {
+  .lqa-steps[data-enhanced] .lqa-copies {
+    display: grid;
+  }
+  .lqa-steps[data-enhanced] .lqa-copy {
+    grid-area: 1 / 1;
+  }
+  .lqa-steps[data-enhanced] .lqa-copy:not([data-current]) {
+    opacity: 0;
+    visibility: hidden;
+  }
+  html.motion .lqa-steps[data-enhanced] .lqa-copy {
+    transition:
+      opacity var(--m-base) var(--m-out),
+      visibility 0s linear var(--m-base);
+  }
+  html.motion .lqa-steps[data-enhanced] .lqa-copy[data-current] {
+    transition:
+      opacity var(--m-base) var(--m-out),
+      visibility 0s;
+  }
+}
+
+/* From 768: three columns, every title and body in view. The active step is at full ink, the others at
+   55% (80% under a fine pointer); each column starts with its track. */
+@media (min-width: 768px) {
+  .lqa-steps-row {
+    margin-bottom: 32px;
+  }
+  .lqa-copies {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: var(--hl-gap);
+  }
+  /* Without a script: a static hairline over each column, where the track will be. */
+  .lqa-steps:not([data-enhanced]) .lqa-copy {
+    padding-top: 18px;
+  }
+  .lqa-steps:not([data-enhanced]) .lqa-copy::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 2px;
+    border-radius: 2px;
+    background: hsl(var(--hive-ice) / 0.12);
+  }
+
+  .lqa-steps[data-enhanced] .lqa-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: var(--hl-gap);
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .lqa-tabs-pill {
+    display: none;
+  }
+  .landing .lqa-tab {
+    height: auto;
+    min-height: 44px;
+    padding: 0 0 6px;
+    border-radius: 6px;
+    justify-content: flex-start;
+    opacity: 0.55;
+  }
+  .lqa-tab-in {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: baseline;
+    justify-content: start;
+    column-gap: 10px;
+    row-gap: 16px;
+  }
+  .lqa-track {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    grid-column: 1 / -1;
+  }
+  .lqa-tab-l {
+    justify-self: start;
+    font-size: 15px;
+  }
+  .lqa-steps[data-enhanced] .lqa-copies {
+    margin-top: 6px;
+  }
+  .lqa-steps[data-enhanced] .lqa-copy {
+    opacity: 0.55;
+    cursor: pointer;
+  }
+  .lqa-steps[data-enhanced] .lqa-copy[data-current] {
+    opacity: 1;
+    cursor: default;
+  }
+  html.motion .lqa-steps[data-enhanced] .lqa-copy {
+    transition: opacity var(--m-base) var(--m-out);
+  }
+}
+
+/* A column is one target: pointing at the tab or at its words lifts both to 80%. */
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .landing .lqa-tab[aria-selected='false']:hover,
+  .lqa-steps:has(.lqa-copy[data-i='0']:not([data-current]):hover) .lqa-tab[data-i='0'],
+  .lqa-steps:has(.lqa-copy[data-i='1']:not([data-current]):hover) .lqa-tab[data-i='1'],
+  .lqa-steps:has(.lqa-copy[data-i='2']:not([data-current]):hover) .lqa-tab[data-i='2'],
+  .lqa-steps[data-enhanced] .lqa-copy:not([data-current]):hover,
+  .lqa-steps:has(.lqa-tab[data-i='0'][aria-selected='false']:hover) .lqa-copy[data-i='0'],
+  .lqa-steps:has(.lqa-tab[data-i='1'][aria-selected='false']:hover) .lqa-copy[data-i='1'],
+  .lqa-steps:has(.lqa-tab[data-i='2'][aria-selected='false']:hover) .lqa-copy[data-i='2'] {
+    opacity: 0.8;
+  }
+}
+
+/* ── THE THEATER ───────────────────────────────────────────────────────────────────────────────────── */
+/* SPLIT FROM 1200, NOT 1024. The side pane carries the product's whole test editor in act 1; at 1024-1199
+   its 43% column is so narrow that the pane grows taller than the screen is wide, and the desktop beside it
+   turns portrait. Under 1200 the theater stays stacked - a widescreen desktop over a full-width pane.
+   From 1200 the screen column must be tall enough for the 16:10 window box plus the taskbar (57% of the
+   stage × 11/16 ≈ 39.2% of its width), whatever the side pane's act needs. */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  .lqa-theater.hl-theater--split .hl-theater-body {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+  .lqa-theater.hl-theater--split .hl-theater-side {
+    border-left: 0;
+    border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+  }
+  .lqa-theater.hl-theater--split .lqa-screen.hl-screen {
+    min-height: 0;
+  }
+}
+
+@media (min-width: 1200px) {
+  .lqa-theater.hl-theater--split .hl-theater-body {
+    min-height: max(440px, 39.2cqw);
+  }
+  /* Split, the screen owns the panel's bottom-left corner: round it with the panel (less its 1px border)
+     so the honey drive border, which inherits the screen's radius, follows the curve instead of being
+     clipped by it. */
+  .lqa-theater.hl-theater--split:has(.lqa-acts[data-enhanced]) .lqa-screen.hl-screen {
+    border-bottom-left-radius: calc(var(--r-panel) - 1px);
+  }
+}
+
+/* WITHOUT A SCRIPT (the server's HTML, a crawler, a bundle that never came) the three acts are not stacked
+   in one cell but laid out whole - so from 1200 the theater is the tablet's: the widescreen desktop on top,
+   and under it the acts side by side, Written | Running | Judged, under the three steps they illustrate. */
+@media (min-width: 1200px) {
+  .lqa-theater.hl-theater--split:has(.lqa-acts:not([data-enhanced])) .hl-theater-body {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+  .lqa-theater.hl-theater--split:has(.lqa-acts:not([data-enhanced])) .hl-theater-side {
+    border-left: 0;
+    border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+  }
+  .lqa-theater.hl-theater--split:has(.lqa-acts:not([data-enhanced])) .lqa-screen.hl-screen {
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+  }
+  .lqa-acts:not([data-enhanced]) {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 48px;
+  }
+}
+
+/* The bar's two crossfading values keep one box: the status hex and the source chip. */
+.lqa-status {
+  vertical-align: middle;
+}
+
+.lqa-source > * {
+  justify-self: start;
+}
+
+/* ── the screen: a Windows 11 desktop - the window in a 16:10 box over the taskbar ──
+   The box is the largest 16:10 that fits the desktop area, centred: on a phone (16:11) it fills it exactly,
+   on a tablet (16:9) wallpaper shows left and right, split it shows above and below. The box is a size
+   container of its own, so the window's cqw sizes are always the window's, whatever is around it. */
+.lqa-theater .lqa-screen.hl-screen {
+  aspect-ratio: 16 / 11;
+}
+
+@media (min-width: 768px) {
+  .lqa-theater .lqa-screen.hl-screen {
+    aspect-ratio: 16 / 9;
+  }
+}
+
+@media (min-width: 1200px) {
+  .lqa-theater.hl-theater--split .lqa-screen.hl-screen {
+    aspect-ratio: auto;
+  }
+}
+
+.lqa-desk {
+  position: absolute;
+  inset: 0 0 6.25cqw;
+  display: grid;
+  place-items: center;
+  container-type: size;
+}
+
+.lqa-view {
+  position: relative;
+  width: min(100cqw, 160cqh);
+  aspect-ratio: 16 / 10;
+  container-type: inline-size;
+}
+
+.lqa-app {
+  position: absolute;
+  inset: 0;
+}
+
+/* 17:40, the test being written: the app is at rest, dimmed, nobody driving. */
+.lqa-demo[data-act='0'] .lqa-app {
+  opacity: 0.6;
+}
+
+html.motion .lqa-app {
+  transition: opacity var(--m-slow) var(--m-out);
+}
+
+/* The app's invoice list, before "New invoice" is pressed: drawn rows. */
+.lqa-list-row {
+  display: flex;
+  align-items: center;
+  gap: 2.4cqw;
+  padding: 0 1.2cqw;
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.lqa-list-row > i {
+  height: max(2px, 0.55cqw);
+  border-radius: 2px;
+  background: hsl(var(--hive-ice) / 0.14);
+}
+
+/* The Total field sits at the window's right edge: its lens tag hangs leftwards, so a phone-width screen
+   never cuts it off. */
+.lqa-lens-end .hl-lens-tag {
+  left: auto;
+  right: -3px;
+}
+
+.lqa-lens-end .hl-lens-tag > span {
+  justify-self: end;
+}
+
+/* The bee's caret leaves a field with its focus ring: the kit lets a finished line blink for 1.6s, which
+   here would leave a caret blinking in "Hours" while "Rate" is being typed. */
+html.motion [data-run] .lqa-screen .hl-tt.cue-on.hl-tt--caret .hl-tt-c:last-child::after {
+  animation: hl-tt-caret 240ms linear;
+  animation-delay: calc((var(--i) + 1) * var(--tt-step) - var(--cue-age, 0ms));
+}
+
+/* The field with the keyboard while the bee types into it. */
+.lqa-focus {
+  z-index: 5;
+  border-radius: max(3px, 0.8cqw);
+  box-shadow:
+    0 0 0 1.5px hsl(var(--hive-ice-2)),
+    0 0 0 max(3px, 0.7cqw) hsl(var(--hive-ice-2) / 0.16);
+  pointer-events: none;
+}
+
+.lqa-taskbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 6.25cqw;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.045), hsl(var(--hive-frost) / 0.02));
+}
+
+.lqa-taskbar-apps {
+  display: flex;
+  align-items: center;
+  gap: 1.3cqw;
+}
+
+.lqa-taskbar-apps > i {
+  position: relative;
+  width: 3.1cqw;
+  aspect-ratio: 1;
+  border-radius: 0.8cqw;
+  border: 1px solid hsl(var(--hive-ice) / 0.16);
+  background: hsl(var(--hive-frost) / 0.04);
+}
+
+.lqa-taskbar-apps > i.is-open {
+  border-color: hsl(var(--hive-ice-2) / 0.45);
+  background: hsl(var(--hive-ice-2) / 0.14);
+}
+
+.lqa-taskbar-apps > i.is-open::after {
+  content: '';
+  position: absolute;
+  left: 32%;
+  right: 32%;
+  bottom: -1.1cqw;
+  height: max(1.5px, 0.35cqw);
+  border-radius: 2px;
+  background: hsl(var(--hive-ice-2));
+}
+
+.lqa-tray {
+  position: absolute;
+  right: 2.6cqw;
+  display: inline-grid;
+}
+
+.lqa-tray > * {
+  display: grid;
+  grid-area: 1 / 1;
+}
+
+/* ── the overlays' poster for an act chosen with reduced motion (no [data-run], data-act set) ──
+   The poster is the screen after the run; when "Write" is chosen it shows 17:40 instead - the list, no form,
+   no night, the test's own chip in the bar. Only ever with a script: data-act is the engine's. */
+.lqa-demo:not([data-run])[data-act='0'] .lqa-form,
+.lqa-demo:not([data-run])[data-act='0'] .hl-screen-tint,
+.lqa-demo:not([data-run])[data-act='0'] .lqa-source > :last-child,
+.lqa-demo:not([data-run])[data-act='0'] .lqa-clock .hl-swap > :not(:first-child) {
+  opacity: 0;
+}
+
+.lqa-demo:not([data-run])[data-act='0'] .lqa-list,
+.lqa-demo:not([data-run])[data-act='0'] .lqa-source > :first-child,
+.lqa-demo:not([data-run])[data-act='0'] .lqa-clock .hl-swap > :first-child {
+  opacity: 1;
+}
+
+/* The kept frame's ghost (useFrameFlight): a frost outline of the screen that shrinks into the chip. */
+.lqa-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 20;
+  opacity: 0;
+  pointer-events: none;
+  transform-origin: 0 0;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--hive-frost) / 0.6);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.12), hsl(var(--hive-frost) / 0.04));
+  box-shadow:
+    0 0 0 1px hsl(var(--hive-ice-2) / 0.2),
+    0 24px 48px -24px hsl(var(--hive-shade) / 0.9);
+}
+
+/* ── THE SIDE PANE: three acts ─────────────────────────────────────────────────────────────────────── */
+.lqa-acts:not([data-enhanced]) > .lqa-pane + .lqa-pane {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+@media (min-width: 1200px) {
+  .lqa-acts:not([data-enhanced]) > .lqa-pane + .lqa-pane {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+.lqa-acts[data-enhanced]:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+  border-radius: var(--r-tile);
+}
+
+.lqa-pane {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.lqa-k {
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+.lqa-pane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-height: 24px;
+}
+
+.lqa-pane-head > .hl-swap > * {
+  justify-self: end;
+}
+
+.lqa-pane-title,
+.lqa-test-name {
+  font-family: theme('fontFamily.display');
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: hsl(var(--ink-primary));
+}
+
+/* act 1 · the test, as the editor shows it */
+.lqa-test {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.lqa-test-sub {
+  font-size: 12.5px;
+  color: hsl(var(--ink-inactive));
+}
+
+.lqa-goal {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.lqa-goal-text {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: hsl(var(--ink-primary));
+  overflow-wrap: anywhere;
+}
+
+.lqa-prompt {
+  font-family: theme('fontFamily.mono');
+  color: hsl(var(--hive-ice-2));
+}
+
+.lqa-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* From 768 the tile is a two-column form: Goal and Inputs as labels on the left, as the editor lays it out. */
+@media (min-width: 768px) {
+  .lqa-goal {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    column-gap: 14px;
+  }
+  .lqa-goal > .lqa-k {
+    padding-top: 1px;
+  }
+  .lqa-goal > .lqa-inputs-k {
+    align-self: center;
+  }
+}
+
+@media (max-width: 767px) {
+  .lqa-inputs-k {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+.lqa-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 9px;
+  border-radius: var(--r-chip);
+  border: 1px solid hsl(var(--hive-ice) / 0.12);
+  background: hsl(var(--hive-ice) / 0.05);
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+}
+
+.lqa-input-k {
+  color: hsl(var(--ink-inactive));
+}
+
+.lqa-must {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 0 -4px;
+}
+
+.lqa-count {
+  color: hsl(var(--ink-secondary));
+}
+
+.lqa-checks {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lqa-crow {
+  position: relative;
+  padding: 8px 12px 9px;
+  border-radius: var(--r-tile);
+  border: 1px solid hsl(var(--hive-ice) / 0.07);
+  background: hsl(var(--hive-page) / 0.45);
+}
+
+.lqa-crow-body {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The number badge leads the statement on a phone (the full width goes to the words); from 768 it stands
+   in its own gutter, as CheckLine's does. */
+.lqa-crow-s .hl-check-n {
+  display: inline-grid;
+  margin-right: 8px;
+  vertical-align: 1px;
+}
+
+@media (min-width: 768px) {
+  .lqa-crow {
+    padding-left: 42px;
+  }
+  .lqa-crow-s .hl-check-n {
+    position: absolute;
+    left: 12px;
+    top: 9px;
+    margin: 0;
+  }
+}
+
+.lqa-crow-s {
+  padding-top: 1px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-primary));
+  overflow-wrap: anywhere;
+}
+
+/* What it proves, then When? on a line of its own - the same shape for every check, whatever its words. */
+.lqa-crow-meta {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lqa-crow-why {
+  font-size: 13px;
+  line-height: 1.45;
+  color: hsl(var(--ink-secondary));
+}
+
+.lqa-crow-k {
+  margin-right: 4px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  color: hsl(var(--ink-inactive));
+}
+
+.lqa-when {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: var(--r-chip);
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  background: hsl(var(--hive-ice) / 0.05);
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  line-height: 1.35;
+  color: hsl(var(--ink-secondary));
+}
+
+.lqa-when-ico {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: hsl(var(--hive-ice-2));
+}
+
+.lqa-when-k {
+  color: hsl(var(--ink-primary));
+}
+
+/* The schedule: the Nightly switch (the only honey control - "yours to press"), what it means, the next run
+   it makes, and Test now - which takes the same queue the 02:00 run will. Decorative controls; the words
+   are real text. */
+.lqa-sched {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 10px;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.lqa-sched-x {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.lqa-next {
+  flex-basis: 100%;
+  margin-top: 4px;
+}
+
+.lqa-testnow.hl-pill {
+  align-self: center;
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+/* On a phone the decorative Test now gives its row to the words. */
+@media (max-width: 767px) {
+  .lqa-testnow.hl-pill {
+    display: none;
+  }
+}
+
+.lqa-switch {
+  position: relative;
+  flex: none;
+  margin-top: 1px;
+  width: 34px;
+  height: 18px;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.25);
+  background: hsl(var(--hive-page) / 0.6);
+}
+
+.lqa-switch-on {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: hsl(var(--brand-primary));
+  box-shadow: 0 0 12px hsl(var(--brand-primary) / 0.4);
+}
+
+.lqa-switch-knob {
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: hsl(var(--hive-frost));
+  box-shadow: 0 1px 3px hsl(var(--hive-shade) / 0.6);
+  transform: translateX(16px);
+}
+
+html.motion [data-run] .lqa-switch-knob {
+  transition: transform 260ms var(--m-inout);
+}
+
+html.motion [data-run] .lqa-switch-knob:not(.cue-on) {
+  transform: none;
+}
+
+.lqa-nightly-l {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+}
+
+.lqa-nightly-when {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* act 2 · the run, as Logs writes it */
+.lqa-log {
+  gap: 6px;
+}
+
+/* A check in the log is a row of its own: a faint tile and a 2px status bar that lights when it resolves.
+   The tile's padding is given back by a negative margin, so the time column stays in line. */
+.lqa-logcheck {
+  position: relative;
+  margin: 2px -10px;
+  padding: 7px 10px;
+  border-radius: var(--r-tile);
+  border: 1px solid hsl(var(--hive-ice) / 0.07);
+  background: hsl(var(--hive-page) / 0.5);
+}
+
+.lqa-logcheck::before,
+.lqa-logcheck-bar {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 2px;
+}
+
+.lqa-logcheck::before {
+  background: hsl(var(--hive-ice) / 0.3);
+}
+
+.lqa-logcheck-bar {
+  background: hsl(var(--fb-green));
+}
+
+.lqa-logcheck-s {
+  color: hsl(var(--ink-primary));
+}
+
+.lqa-logcheck-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: 1px;
+}
+
+.lqa-logcheck-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* The run's row in Logs, at the foot of the act - where the schedule sits in act 1 and the row of nights
+   in act 3, so the three acts end on the same line. */
+.lqa-runfoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin: 4px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  color: hsl(var(--ink-primary));
+}
+
+.lqa-runfoot > .lqa-k {
+  flex-basis: 100%;
+}
+
+@media (min-width: 768px) {
+  .lqa-runfoot > .lqa-k {
+    flex-basis: auto;
+    margin-right: 4px;
+  }
+}
+
+.lqa-runfoot-v {
+  white-space: nowrap;
+}
+
+.lqa-acts[data-enhanced] .lqa-run {
+  grid-template-rows: auto auto 1fr;
+}
+
+.lqa-acts[data-enhanced] .lqa-run > .lqa-runfoot {
+  align-self: end;
+}
+
+/* act 3 · the verdict and what it rests on. With the acts in one cell the pane is as tall as the tallest
+   act, and the row of nights settles at its foot - as the schedule does in act 1. */
+.lqa-acts[data-enhanced] .lqa-judge {
+  grid-template-rows: auto auto auto auto 1fr;
+}
+
+.lqa-acts[data-enhanced] .lqa-judge > .lqa-row {
+  align-self: end;
+}
+
+.lqa-evid {
+  display: grid;
+  gap: 8px;
+}
+.lqa-evidence {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0 0 0 2px;
+  list-style: none;
+}
+
+.lqa-ev {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 10px;
+  row-gap: 2px;
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-body));
+  overflow-wrap: anywhere;
+}
+
+/* The sentence the check proves, under its evidence and in line with it (past the number's gutter). */
+.lqa-ev-why {
+  grid-column: 2 / -1;
+  font-family: theme('fontFamily.sans');
+  font-size: 13px;
+  line-height: 1.45;
+  color: hsl(var(--ink-secondary));
+}
+
+.lqa-ev-why > .lqa-crow-k {
+  color: hsl(var(--fb-green) / 0.85);
+}
+
+/* The kept frame: the screen just watched, small, with its ring on what the check read - the kit's frozen
+   frame, the one 02 lines up night by night. The flight from the screen lands here. */
+.lqa-kept {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 16px;
+}
+
+.lqa-kept-frame {
+  display: block;
+  border-radius: 10px;
+}
+
+.lqa-kept-frame .hl-frame {
+  --frame-w: 128px;
+}
+
+.lqa-kept-x {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lqa-kept-t {
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: hsl(var(--ink-primary));
+}
+
+.lqa-kept-sub {
+  font-size: 13px;
+  line-height: 1.45;
+  color: hsl(var(--ink-secondary));
+  text-wrap: pretty;
+}
+
+@media (min-width: 1200px) {
+  .lqa-kept-frame .hl-frame {
+    --frame-w: 160px;
+  }
+}
+
+.lqa-row {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.lqa-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  align-self: stretch;
+}
+
+.lqa-row-hint {
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  color: hsl(var(--ink-inactive));
+}
+
+.lqa-nights {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lqa-tonight {
+  margin-left: 6px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  color: hsl(var(--fb-green));
+}
+
+/* Tonight's dot: it pops in, and a ring of its colour pulses out once (hl-pulse, 700ms). */
+.lqa-night-new {
+  position: relative;
+  display: inline-grid;
+}
+
+.lqa-night-new::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--fb-green) / 0.55);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+html.motion [data-run] .lqa-night-new.cue-on::after {
+  animation: hl-pulse var(--m-pulse) var(--m-out) both;
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+.lqa-row-line {
+  font-size: 13.5px;
+  color: hsl(var(--ink-body));
+}
+
+@media (min-width: 768px) {
+  .lqa-pane-title,
+  .lqa-test-name {
+    font-size: 16px;
+  }
+  .lqa-nights {
+    gap: 6px;
+  }
+}

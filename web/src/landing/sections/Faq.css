@@ -1,0 +1,575 @@
+/* 08 · Questions - quiet glass rows after the dense demos. Native <details>, so it works without JS, with the
+ * keyboard and for crawlers. Reads the kit's tokens and never redefines them.
+ *
+ * Phone first: the head, 32px, then three topics of four rows. From 1200 the head and the topic index are
+ * a sticky left column (cols 1-4, 96px from the top, clear of the 60px bar) and the list is cols 6-12, at
+ * most 760 wide - the kit's "stack" head, with the index added under it.
+ *
+ * A row is a tile (radius 14, ice/10% hairline, frost/3% glass). Open, it gains three layers, each faded by
+ * opacity alone: a brighter glass with a faint ice-2 light in its top-left corner (::before), an ice-2 rail
+ * down its left edge that draws from the top (::after, scaleY), and the honey +/× (the glyph's second
+ * layer). "Open" below is [open] without .is-closing, so a closing row lets go of all three while its
+ * answer fades, and the height snaps only once nothing is left to see snap.
+ */
+
+/* The head is inside the stage here, so the kit's head → stage gap is the columns' own gap instead. */
+.hl-sec .hl-faq-stage {
+  margin-top: 0;
+}
+
+.hl-faq-cols {
+  display: grid;
+  gap: var(--hl-head-gap);
+}
+
+.hl-faq-cols > * {
+  min-width: 0;
+}
+
+/* The head's reveals keep their own 0 / 70 / 140ms (the stage adds three steps to everything else). */
+.hl-faq-side {
+  --i-base: 0;
+}
+
+/* ── THE TOPIC INDEX (1200 and up) ── */
+.hl-faq-nav {
+  display: none;
+  position: relative;
+  padding-left: 20px;
+}
+
+/* Its rail: the hairline the marker travels on. */
+.hl-faq-nav::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: hsl(var(--hive-ice) / 0.12);
+}
+
+.hl-faq-nav ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hl-faq-nav a {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 44px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: hsl(var(--ink-secondary));
+  text-decoration: none;
+}
+
+.hl-faq-nav a:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+}
+
+.hl-faq-nav-n {
+  flex: none;
+  width: 44px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--ink-inactive));
+}
+
+/* The label twice in one cell - dim, then lit on top - so "you are here" is an opacity crossfade. */
+.hl-faq-lit {
+  display: grid;
+}
+
+.hl-faq-lit > * {
+  grid-area: 1 / 1;
+}
+
+.hl-faq-lit-on {
+  color: hsl(var(--ink-primary));
+  opacity: 0;
+}
+
+/* The marker: a 2px ice-2 bar on the rail beside the current topic, one 44px row per step. Drawn only once
+   the script has said where the reader is (data-at); without it the index is three plain links. */
+.hl-faq-mark {
+  position: absolute;
+  left: -0.5px;
+  top: 12px;
+  width: 2px;
+  height: 20px;
+  border-radius: 2px;
+  background: hsl(var(--hive-ice-2));
+  box-shadow: 0 0 10px hsl(var(--hive-ice-2) / 0.45);
+  opacity: 0;
+}
+
+.hl-faq-nav[data-at] .hl-faq-mark {
+  opacity: 1;
+}
+
+.hl-faq-nav[data-at='1'] .hl-faq-mark {
+  transform: translate3d(0, 44px, 0);
+}
+
+.hl-faq-nav[data-at='2'] .hl-faq-mark {
+  transform: translate3d(0, 88px, 0);
+}
+
+.hl-faq-nav[data-at='0'] li:nth-child(1) .hl-faq-lit-on,
+.hl-faq-nav[data-at='1'] li:nth-child(2) .hl-faq-lit-on,
+.hl-faq-nav[data-at='2'] li:nth-child(3) .hl-faq-lit-on {
+  opacity: 1;
+}
+
+/* ── THE LIST: three topics of four ── */
+.hl-faq {
+  --topic-gap: 32px;
+  display: grid;
+  max-width: 760px;
+}
+
+/* Topics are spaced by padding, not by a gap, so they touch: the index's band always lies on one of them,
+   even when a jump lands it where a gap would have been. */
+.hl-faq-topic {
+  display: grid;
+  gap: 8px;
+}
+
+.hl-faq-topic + .hl-faq-topic {
+  padding-top: var(--topic-gap);
+}
+
+/* A topic's heading: the eyebrow's voice, a step quieter - a hex, the words, a hairline to the edge, and
+   (from 768, where the rows are numbered) which rows it holds. */
+.landing .hl-faq-th {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+  /* The index (or a /#faq-fits link) lands the heading 24px under the 60px sticky bar. */
+  scroll-margin-top: 84px;
+}
+
+.hl-faq-th:focus {
+  outline: none;
+}
+
+.hl-faq-th-hex {
+  width: 7px;
+  height: 8px;
+  flex: none;
+  background: hsl(var(--hive-ice-2) / 0.6);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+.hl-faq-th-rule {
+  flex: 1;
+  min-width: 16px;
+  height: 1px;
+  background: linear-gradient(90deg, hsl(var(--hive-ice) / 0.14), hsl(var(--hive-ice) / 0.04));
+}
+
+.hl-faq-th-n {
+  display: none;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--ink-inactive));
+}
+
+/* ── A ROW ── */
+.hl-faq-item {
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--r-tile);
+  border: 1px solid hsl(var(--hive-ice) / 0.1);
+  background: hsl(var(--hive-frost) / 0.03);
+  /* A link to one answer (/#faq-shell) lands the row 24px under the 60px sticky bar, not beneath it. */
+  scroll-margin-top: 84px;
+}
+
+/* The open glass: brighter, lit from the rail's end, with a hairline a step brighter laid over the row's own. */
+.hl-faq-item::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  border: 1px solid hsl(var(--hive-ice) / 0.07);
+  background:
+    radial-gradient(360px 180px at 0 0, hsl(var(--hive-ice-2) / 0.075), transparent 72%),
+    hsl(var(--hive-frost) / 0.03);
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.05);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* The rail: the CheckLine's status bar, in ice-2 - "this is the one you are reading". */
+.hl-faq-item::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, hsl(var(--hive-ice-2)), hsl(var(--hive-ice-2) / 0.12));
+  opacity: 0;
+  transform: scaleY(0);
+  transform-origin: 50% 0;
+  pointer-events: none;
+}
+
+.hl-faq-item[open]:not(.is-closing)::before {
+  opacity: 1;
+}
+
+.hl-faq-item[open]:not(.is-closing)::after {
+  opacity: 1;
+  transform: none;
+}
+
+/* ── THE QUESTION ── */
+.hl-faq-q {
+  --q-size: 16px;
+  --q-lh: 1.35;
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  min-height: 56px;
+  padding: 16px 18px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: calc(var(--r-tile) - 1px);
+  font-family: theme('fontFamily.display');
+  font-weight: 600;
+  font-size: var(--q-size);
+  line-height: var(--q-lh);
+  letter-spacing: -0.015em;
+  color: hsl(var(--ink-primary));
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hl-faq-q::-webkit-details-marker {
+  display: none;
+}
+
+.hl-faq-q::marker {
+  content: '';
+}
+
+.hl-faq-item[open] > .hl-faq-q {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Hover and press: the row's glass a step lighter, as a layer (frost .03 → .06 with the row's own). */
+.hl-faq-q::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: hsl(var(--hive-frost) / 0.03);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.hl-faq-q:active::before {
+  opacity: 1;
+}
+
+.hl-faq-q:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+}
+
+/* The row's number, as the eyebrow numbers its section: a tablet-and-up detail - on a phone the question
+   needs the width more. */
+.hl-faq-n {
+  display: none;
+  flex: none;
+  width: 20px;
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--ink-highlight));
+  opacity: 0.45;
+}
+
+.hl-faq-item[open]:not(.is-closing) .hl-faq-n {
+  opacity: 1;
+}
+
+.hl-faq-qt {
+  flex: 1;
+  min-width: 0;
+  /* A question that takes two lines takes two even ones - "Can I put it on a server / and leave it there?". */
+  text-wrap: balance;
+}
+
+/* The glyph sits on the question's first line, however many lines the question takes. */
+.hl-faq-glyph {
+  position: relative;
+  display: grid;
+  flex: none;
+  align-self: flex-start;
+  width: 24px;
+  height: 24px;
+  margin-top: calc((var(--q-size) * var(--q-lh) - 24px) / 2);
+}
+
+.hl-faq-g {
+  grid-area: 1 / 1;
+  width: 24px;
+  height: 24px;
+  overflow: visible;
+}
+
+.hl-faq-g polygon {
+  fill: hsl(var(--hive-ice) / 0.04);
+  stroke: hsl(var(--ink-highlight) / 0.42);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.hl-faq-g path {
+  fill: none;
+  stroke: hsl(var(--ink-highlight));
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.hl-faq-g--ice {
+  opacity: 0.8;
+}
+
+.hl-faq-g--honey {
+  opacity: 0;
+  filter: drop-shadow(0 0 6px hsl(var(--brand-primary) / 0.35));
+}
+
+.hl-faq-g--honey polygon {
+  fill: hsl(var(--brand-primary) / 0.12);
+  stroke: hsl(var(--brand-primary) / 0.9);
+}
+
+.hl-faq-g--honey path {
+  stroke: hsl(var(--brand-primary));
+}
+
+/* The + turns into ×; the hex frame stays put (a hexagon turned 45° would read as a wobble). */
+.hl-faq-plus {
+  transform-box: view-box;
+  transform-origin: 12px 12px;
+}
+
+.hl-faq-item[open]:not(.is-closing) .hl-faq-plus {
+  transform: rotate(45deg);
+}
+
+.hl-faq-item[open]:not(.is-closing) .hl-faq-g--ice {
+  opacity: 0;
+}
+
+.hl-faq-item[open]:not(.is-closing) .hl-faq-g--honey {
+  opacity: 1;
+}
+
+/* ── THE ANSWER ── */
+.hl-faq-a {
+  padding: 0 18px 18px;
+  margin-top: -2px;
+}
+
+.hl-faq-a p {
+  margin: 0;
+  max-width: 36em;
+  font-size: 15px;
+  line-height: 1.6;
+  color: hsl(var(--ink-body));
+  text-wrap: pretty;
+  overflow-wrap: break-word;
+}
+
+/* The product's words, in the chips and dots the demos used; sized to sit inside a line of body text. */
+.hl-faq-a .hl-faq-chip {
+  min-height: 0;
+  margin: 0 1px;
+  padding: 1px 7px;
+  font-size: 0.78em;
+  line-height: 1.45;
+  vertical-align: 0.06em;
+}
+
+.hl-faq-tone {
+  white-space: nowrap;
+}
+
+.hl-faq-tone .hl-hexdot {
+  margin: 0 5px 0 1px;
+  vertical-align: 0.02em;
+}
+
+.hl-faq-link {
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-decoration-color: hsl(var(--hive-ice-2) / 0.55);
+  text-underline-offset: 3px;
+  border-radius: 4px;
+}
+
+.hl-faq-link:hover {
+  text-decoration-color: hsl(var(--hive-ice-2));
+}
+
+.hl-faq-link:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+}
+
+/* ── MOTION (html.motion only; without it every state above is an instant swap) ── */
+html.motion .hl-faq-item.is-opening > .hl-faq-a {
+  animation: hl-detail-in var(--m-base) var(--m-out) backwards;
+}
+
+html.motion .hl-faq-item.is-closing > .hl-faq-a {
+  animation: hl-detail-out var(--m-exit) var(--m-in) forwards;
+}
+
+html.motion .hl-faq-item::before,
+html.motion .hl-faq-n {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+html.motion .hl-faq-item::after {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    transform var(--m-slow) var(--m-out);
+}
+
+html.motion .hl-faq-g {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+html.motion .hl-faq-plus {
+  transition: transform var(--m-base) var(--m-inout);
+}
+
+/* Letting go runs at the exit pace, so it is over by the time the row snaps shut. */
+html.motion .hl-faq-item.is-closing::before,
+html.motion .hl-faq-item.is-closing::after,
+html.motion .hl-faq-item.is-closing .hl-faq-n,
+html.motion .hl-faq-item.is-closing .hl-faq-g {
+  transition-duration: var(--m-exit);
+  transition-timing-function: var(--m-in);
+}
+
+/* The index's marker travels between two places (--m-inout); the lit label crossfades with it. */
+html.motion .hl-faq-mark {
+  transition:
+    transform var(--m-slow) var(--m-inout),
+    opacity var(--m-base) var(--m-out);
+}
+
+html.motion .hl-faq-lit-on {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+/* Hover: fine pointers only. */
+@media (hover: hover) and (pointer: fine) {
+  .hl-faq-q:hover::before,
+  .hl-faq-q:hover .hl-faq-g--ice,
+  .hl-faq-nav a:hover .hl-faq-lit-on {
+    opacity: 1;
+  }
+  .hl-faq-item[open]:not(.is-closing) > .hl-faq-q:hover .hl-faq-g--ice {
+    opacity: 0;
+  }
+  html.motion .hl-faq-q::before {
+    transition: opacity var(--m-fast) var(--m-out);
+  }
+}
+
+/* ── 768: numbered rows, roomier; the answer hangs under the question, not under the number ── */
+@media (min-width: 768px) {
+  .hl-faq {
+    --topic-gap: 40px;
+  }
+  .hl-faq-th-n {
+    display: block;
+  }
+  .hl-faq-q {
+    min-height: 64px;
+    padding: 20px 24px;
+  }
+  .hl-faq-n {
+    display: block;
+  }
+  .hl-faq-a {
+    /* 24 (row padding) + 20 (number) + 14 (gap) on the left; the glyph's column on the right. */
+    padding: 0 62px 24px 58px;
+    margin-top: -6px;
+  }
+}
+
+/* ── 1200: head and index sticky on the left (cols 1-4), the list on the right (cols 6-12) ── */
+@media (min-width: 1200px) {
+  .hl-faq-cols {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+    row-gap: 0;
+    align-items: start;
+  }
+  .hl-faq-side {
+    grid-column: 1 / 5;
+    position: sticky;
+    top: 96px;
+  }
+  .hl-faq {
+    --topic-gap: 48px;
+    grid-column: 6 / 13;
+  }
+  .landing .hl-faq-side .hl-h2 {
+    font-size: 48px;
+  }
+  .hl-faq-nav {
+    display: block;
+    margin-top: 48px;
+  }
+  /* A jump from the index lands the topic's heading level with the sticky eyebrow beside it. */
+  .landing .hl-faq-th {
+    scroll-margin-top: 96px;
+  }
+  .hl-faq-q {
+    --q-size: 17px;
+    min-height: 68px;
+    padding: 22px 28px;
+  }
+  .hl-faq-a {
+    padding: 0 66px 26px 62px;
+    margin-top: -8px;
+  }
+  .hl-faq-a p {
+    font-size: 16px;
+  }
+}

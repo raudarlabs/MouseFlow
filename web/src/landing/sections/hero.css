@@ -1,0 +1,890 @@
+/* THE HERO - header, headline, the form and the hive - and the page furniture that belongs to it: the
+ * anchor nav, the sticky bar that takes over once the hero has left the screen, and the waitlist form's glass
+ * field (the final section renders the same form, in the same field).
+ *
+ * The layout follows the concept's breakpoints - 768 and 1200 - because its composition was drawn at those.
+ * Its vertical rhythm is the page's spacing scale (8 · 16 · 24 · 32 · 48), so the hero and the sections
+ * below it are measured with one ruler. Rules that override a vendored component's type are written
+ * `.landing .x` (one class more than Tailwind's responsive utilities), never !important.
+ *
+ * THE HERO COPY NEVER ANIMATES IN: it is the largest paint and must read at the first one. Only the hive art
+ * arrives - the hive fades in and settles, then its labels light one after another - under html.motion,
+ * which the head script sets before that paint. The header, the bar and the form never move their layout.
+ */
+
+/* ---------- header ---------- */
+/* The hero sits in the sections' own frame - .hl-wrap's 1240px inside the page gutter - so the brand, the
+   headline and every section's eyebrow start on one vertical line at every width, and a 1920px screen gets
+   the composition drawn at 1440, centred, rather than a headline 250px left of everything under it. Only
+   the hive is allowed past that line, into the gutter on its right. */
+/* The header is the page's banner and sits outside <main> (Landing.tsx), so it takes the same frame itself;
+   the hero under it fills the rest of the first screen. */
+.landing {
+  --landing-top-h: 64px;
+}
+
+.landing-hero-wrap {
+  position: relative;
+  min-height: calc(100svh - var(--landing-top-h));
+  display: flex;
+  flex-direction: column;
+  max-width: calc(1240px + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.landing-top {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--landing-top-h);
+  max-width: calc(1240px + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.landing-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: hsl(var(--ink-primary));
+  text-decoration: none;
+  border-radius: 10px;
+}
+
+.landing-brand:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 4px;
+}
+
+.landing-brand-mark {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  filter: drop-shadow(0 4px 14px hsl(var(--hive-ice-2) / 0.3));
+}
+
+.landing-brand b {
+  font-weight: 600;
+  font-size: 21px;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.landing-brand-sm .landing-brand-mark {
+  width: 26px;
+  height: 26px;
+}
+
+.landing-brand-sm b {
+  font-size: 17px;
+}
+
+.landing-soon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-highlight));
+}
+
+.landing-top-cta {
+  display: none;
+}
+
+/* The honey "now" dot. It breathes only with motion allowed, on the page's loop period. */
+.landing-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: hsl(var(--brand-primary));
+  box-shadow:
+    0 0 0 3px hsl(var(--brand-primary) / 0.16),
+    0 0 14px 2px hsl(var(--brand-primary) / 0.8);
+}
+
+html.motion .landing-dot {
+  animation: hive-breathe var(--m-loop) ease-in-out infinite;
+}
+
+/* The bar sits outside the hero's [data-loop], so its own dot rests while the bar is put away. */
+.landing-bar:not([data-shown]) .landing-dot {
+  animation-play-state: paused;
+}
+
+/* The anchor nav - from 1200 it takes the centre of the header (and of the sticky bar) in place of the
+   "Early access" tag. A 2px honey indicator slides under the link whose section is in view: one full-width
+   layer moved by translateX and scaleX (the nav writes --ix and --is), never by width. */
+.landing-nav {
+  position: relative;
+  display: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.landing-nav a {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(var(--ink-secondary));
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.landing-nav a:hover,
+.landing-nav a[aria-current='location'] {
+  color: hsl(var(--ink-primary));
+}
+
+.landing-nav a:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+}
+
+.landing-nav-ind {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.landing-nav-ind > i {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: hsl(var(--brand-primary));
+  box-shadow: 0 0 10px hsl(var(--brand-primary) / 0.6);
+  transform-origin: 0 50%;
+  transform: translateX(var(--ix, 0px)) scaleX(var(--is, 0));
+}
+
+.landing-nav[data-active] .landing-nav-ind {
+  opacity: 1;
+}
+
+html.motion .landing-nav[data-measured] .landing-nav-ind {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+html.motion .landing-nav[data-measured] .landing-nav-ind > i {
+  transition: transform 420ms var(--m-inout);
+}
+
+/* ---------- the sticky bar ----------
+   Fixed, 60px, glass; it slides down once the hero has left the screen and up when it comes back. Its
+   layout is fixed from the first frame - only its transform and visibility change. Hidden and inert until
+   then, and so without a script it never appears at all. Its glass is nearly opaque on purpose: the blur
+   is the finish, not what makes the bar readable over a heading scrolling under it. */
+.landing-bar {
+  position: fixed;
+  z-index: 50;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 60px;
+  transform: translate3d(0, -100%, 0);
+  visibility: hidden;
+  background: linear-gradient(180deg, hsl(var(--surface-card) / 0.9), hsl(var(--surface-page) / 0.84));
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.1);
+  box-shadow: 0 12px 32px -24px hsl(var(--hive-shade) / 0.9);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+}
+
+.landing-bar[data-shown] {
+  transform: none;
+  visibility: visible;
+}
+
+html.motion .landing-bar {
+  transition:
+    transform 220ms var(--m-in),
+    visibility 0s linear 220ms;
+}
+
+html.motion .landing-bar[data-shown] {
+  transition:
+    transform 360ms var(--m-out),
+    visibility 0s;
+}
+
+/* The bar's row is the hero's frame too, so its brand stays exactly over the hero's when it slides in. */
+.landing-bar-in {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 100%;
+  max-width: calc(1240px + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+/* In the bar the indicator rides the bar's own bottom hairline, the way a tab's underline sits on its rule:
+   the 40px links are centred in the 59px above the border, so the nav's bottom is 9.5px above it. */
+.landing-bar .landing-nav-ind {
+  bottom: -10px;
+}
+
+.landing-bar-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.landing-bar-end .landing-soon {
+  display: none;
+}
+
+/* The secondary glass button - the header's "Join the hive" (shown from 1200) and the sticky bar's. */
+.landing-glass-btn {
+  height: auto;
+  padding: 11px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  border-color: hsl(var(--hive-ice) / 0.18);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.08), hsl(var(--hive-frost) / 0.03));
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.landing-glass-btn:hover {
+  border-color: hsl(var(--hive-ice-2) / 0.55);
+}
+
+.landing-glass-btn:active {
+  transform: scale(0.97);
+}
+
+/* On a phone: a compact glass "Join" pill - 36px of glass in a 44px target (the ::before is the target's
+   reach), so it sits quietly in the 60px bar and is still easy to hit. */
+.landing .landing-bar-join {
+  position: relative;
+  height: 36px;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  text-decoration: none;
+}
+
+.landing-bar-join::before {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+}
+
+.landing-bar-join-long {
+  display: none;
+}
+
+/* ---------- hero ---------- */
+.landing-hero {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+/* The hive strip on a phone. Its height is what the screen has left once the copy down to the form has
+   been laid out, so the address field and its button are on the first screen of a real phone - where the
+   browser's own bars take 150px - and not only in a full-height screenshot. That copy is 450px tall on a
+   430px phone and 485px on a 360px one (the sub gains lines as the screen narrows), so the sum subtracts
+   673px - 50vw: the copy's height along that line, plus 8px of air under the field. On a tall phone the
+   strip stops at 320px; on a short one it keeps 144px of hive. It fades out at the bottom into the copy,
+   and over its first 24px at the top, so a short strip's crop never cuts a row of cells with a hard edge
+   under the header. */
+.landing-art {
+  order: -1;
+  position: relative;
+  height: clamp(144px, calc(100svh - 673px + 50vw), 320px);
+  margin: -6px calc(-1 * var(--gutter)) 0;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 24px, #000 82%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 24px, #000 82%, transparent 100%);
+}
+
+/* The only part of the hero that arrives: the hive fades in and settles (opacity, scale .985 → 1), and
+   then its labels - "your hive" first, then the machines - come up one after another on the page's
+   stagger, the way the sections' heads do. Opacity only for the labels: the queen's label is placed by
+   its own SVG transform, which a CSS transform would replace. */
+@keyframes landing-art-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
+@keyframes landing-tag-in {
+  from {
+    opacity: 0;
+  }
+}
+
+html.motion .landing-art {
+  animation: landing-art-in 600ms var(--m-out) both;
+}
+
+html.motion .landing-hive .hive-tags > g {
+  animation: landing-tag-in var(--m-slow) var(--m-out) backwards;
+  animation-delay: calc(360ms + var(--tag, 1) * var(--m-stagger));
+}
+
+.landing-hive .hive-tags > g:last-child {
+  --tag: 0;
+}
+
+.landing-hive .hive-tags > g:nth-child(2) {
+  --tag: 2;
+}
+
+.landing-hive .hive-tags > g:nth-child(3) {
+  --tag: 3;
+}
+
+/* The hive is drawn for the desktop's wide frame. On a phone it is drawn by the strip's WIDTH - 128% of
+ * it, so the queen and her ring fill the screen edge to edge - and the strip's height decides how much of
+ * it shows, cropped round its middle, a little below centre. A short strip is a tighter crop of the same
+ * hive, never a smaller one. (The SVG drawn larger than its box rather than a second viewBox, which would
+ * need the window at render time.) */
+.landing-hive {
+  position: absolute;
+  display: block;
+  width: 128.2%;
+  height: auto;
+  aspect-ratio: 661 / 444.35;
+  left: -14.1%;
+  top: 49%;
+  translate: 0 -50%;
+}
+
+.landing-hive .hive-tags {
+  display: none;
+}
+
+/* The hive breathes only with motion allowed - with ?still (screenshots) and without a script it is the
+   still picture, as with reduced motion: no pulses at all, since a dash frozen mid-link reads as a glitch. */
+html:not(.motion) .landing-hive .hive-bob,
+html:not(.motion) .landing-hive .hive-pulse,
+html:not(.motion) .landing .hive-breathe {
+  animation: none;
+}
+
+html:not(.motion) .landing-hive .hive-pulse {
+  opacity: 0;
+}
+
+/* THE LOGS CARD - the hero's child, placed over the art (Hero/place-card.ts). On a phone and a tablet it
+ * opens above or below the tapped cell, 12px in from the screen's edges (the strip is full-bleed, the hero
+ * is not: hence the gutter in the sums), and says only what decided the colour - the goal, who asked, the
+ * check and the outcome. The three steps and the machine line are the desktop's: in a strip this short
+ * they would cover the hive they describe. (Lines 3-6 of HiveTerminal's body; its own file says what
+ * each line is.) */
+.landing-term {
+  position: absolute;
+  left: calc(12px - var(--gutter));
+  right: auto;
+  top: 24px;
+  z-index: 3;
+  width: min(420px, calc(100% + 2 * var(--gutter) - 24px));
+}
+
+@media (max-width: 1199px) {
+  .landing-term > div:nth-child(2) {
+    font-size: 11.5px;
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+  .landing-term > div:nth-child(2) > p:nth-child(n + 3):nth-child(-n + 6) {
+    display: none;
+  }
+}
+
+/* At every width the card's lines are never cut short: a goal, a "by itself, from a schedule" or a verdict
+   that does not fit wraps (balanced, so no "tree" sits alone) instead of ending in "…" - a verdict with its
+   last words missing is not a verdict. The card is measured after it renders, so a taller one is still
+   placed clear of its cell and inside the screen. */
+.landing-term > div:nth-child(2) > p {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+/* The card's arrival is the page's: it rises 8px and fades on --m-out, and leaves faster on --m-in. */
+/* Nearly opaque: the card is read over the brightest part of the page, and its blur is the finish, not
+   what makes it legible. */
+.landing .landing-term {
+  background: linear-gradient(180deg, hsl(var(--surface-chips) / 0.9), hsl(var(--surface-card) / 0.92));
+}
+
+html.motion .landing .landing-term {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    transform var(--m-base) var(--m-out);
+}
+
+html.motion .landing .landing-term:not(.hive-term-on) {
+  transition-duration: var(--m-exit);
+  transition-timing-function: var(--m-in);
+}
+
+html:not(.motion) .landing .landing-term {
+  transition: none;
+  transform: none;
+}
+
+/* ---------- the copy ---------- */
+.landing-copy {
+  position: relative;
+  z-index: 2;
+  padding: 0 0 32px;
+}
+
+.landing-pill {
+  height: auto;
+  gap: 9px;
+  padding: 7px 14px 7px 11px;
+  border: 1px solid hsl(var(--hive-ice) / 0.18);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.08), hsl(var(--hive-frost) / 0.03));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.08);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: hsl(var(--ink-highlight));
+  white-space: nowrap;
+}
+
+.landing-pill > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.landing-pill-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: hsl(var(--ink-highlight) / 0.5);
+}
+
+/* The headline and the sub follow the copy's alignment - left on a phone and the desktop, centred on the
+   tablet - rather than Typography's own default of left. */
+.landing .landing-h1 {
+  font-family: theme('fontFamily.display');
+  font-weight: 600;
+  font-size: clamp(38px, 10.6vw, 47px);
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  margin: 16px 0;
+  text-align: inherit;
+  text-wrap: balance;
+  color: hsl(var(--ink-primary));
+}
+
+.landing .landing-sub {
+  font-size: 16px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+  max-width: 30em;
+  text-align: inherit;
+  text-wrap: pretty;
+}
+
+.landing .landing-sub b {
+  color: hsl(var(--ink-primary));
+  font-weight: 600;
+}
+
+.landing-wait {
+  margin-top: 24px;
+}
+
+/* What it runs on and who decides, in mono: a list whose every item carries its hex, wrapping only between
+   items - so a second line starts the way the first does. */
+.landing-os {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 24px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  line-height: 20px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+.landing-os li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.landing-os i {
+  width: 6px;
+  height: 7px;
+  flex: none;
+  background: hsl(var(--hive-ice-2) / 0.5);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+/* The two doors - QA and IT - as quiet glass pills under the facts. Plain anchors; they glide only with
+   motion allowed. Hover is the page's card hover at pill size: an ice-2 ring layer fades in (the border
+   itself never animates), the arrow nudges 3px down, and a press gives .97. */
+.landing-jumps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.landing-jump {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 16px 0 14px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--hive-ice) / 0.16);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.07), hsl(var(--hive-frost) / 0.025));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.07);
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.landing-jump::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid hsl(var(--hive-ice-2) / 0.3);
+  background: hsl(var(--hive-frost) / 0.035);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.landing-jump:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+}
+
+.landing-jump-hex {
+  width: 7px;
+  height: 8px;
+  flex: none;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: hsl(var(--hive-ice-2));
+}
+
+.landing-jump-hex--it {
+  background: hsl(var(--hive-steel));
+}
+
+.landing-jump-arrow {
+  display: inline-block;
+  color: hsl(var(--ink-secondary));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .landing-jump:hover::after {
+    opacity: 1;
+  }
+  .landing-jump:hover .landing-jump-arrow {
+    color: hsl(var(--ink-primary));
+  }
+  html.motion .landing-jump::after {
+    transition: opacity var(--m-fast) var(--m-out);
+  }
+  html.motion .landing-jump-arrow {
+    transition: transform var(--m-fast) var(--m-out);
+  }
+  html.motion .landing-jump:hover .landing-jump-arrow {
+    transform: translateY(3px);
+  }
+}
+
+html.motion .landing-jump {
+  transition: transform var(--m-fast) var(--m-out);
+}
+
+.landing-jump:active {
+  transform: scale(0.97);
+}
+
+/* ---------- the waitlist form's glass field (the hero's and the final section's) ---------- */
+
+/* A "Join" press lands here: one honey ring round the field, grown out and faded (hl-call, motion.css) - a
+   pre-drawn layer moved by transform and opacity, never an animated box-shadow. Without motion the ring
+   simply stays, so the press still visibly lands. */
+.landing-field::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 2px hsl(var(--brand-primary) / 0.7),
+    0 0 18px 2px hsl(var(--brand-primary) / 0.3);
+  opacity: 0;
+  pointer-events: none;
+}
+html.motion .landing-field-call::after {
+  animation: hl-call var(--m-reveal) var(--m-out) 1;
+}
+html:not(.motion) .landing-field-call::after {
+  opacity: 1;
+}
+
+/* The glass field around the system's Input and Button. */
+.landing-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.085), hsl(var(--hive-frost) / 0.035));
+  border: 1px solid hsl(var(--hive-ice) / 0.2);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.1),
+    0 24px 60px -28px hsl(var(--hive-ice-2) / 0.45);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  position: relative;
+}
+
+/* Focus switches the field's ring on at once - a state, not a movement: nothing here transitions. */
+.landing-field:focus-within {
+  border-color: hsl(var(--hive-ice-2) / 0.65);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.1),
+    0 0 0 4px hsl(var(--hive-ice-2) / 0.16),
+    0 24px 60px -28px hsl(var(--hive-ice-2) / 0.6);
+}
+
+.landing-field-problem,
+.landing-field-problem:focus-within {
+  border-color: hsl(var(--fb-red-text) / 0.7);
+}
+
+@media (max-width: 389px) {
+  .landing-field {
+    gap: 4px;
+  }
+}
+
+/* On the narrowest phones (320-359px) the button's arrow and a little of its padding go back to the
+   field, so the placeholder reads whole instead of "you@company.c". */
+@media (max-width: 359px) {
+  .landing-field .landing-cta > svg {
+    display: none;
+  }
+  .landing .landing-field .landing-cta {
+    padding-inline: 12px;
+  }
+}
+
+/* The system's primary button, at the landing's size, with the concept's warm glow under it. */
+.landing-cta {
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.55),
+    0 10px 28px -8px hsl(var(--brand-primary) / 0.55);
+}
+
+.landing-cta:active {
+  transform: scale(0.97);
+}
+
+/* Its hover is the page's honey shine (kit's .landing-shine, on the form's button in both instances). */
+
+/* ---------- tablet ---------- */
+@media (min-width: 768px) {
+  .landing {
+    --landing-top-h: 84px;
+  }
+  .landing-brand-mark {
+    width: 38px;
+    height: 38px;
+  }
+  .landing-brand b {
+    font-size: 23px;
+  }
+  /* The tablet's strip follows the same rule as the phone's: what the screen leaves over once the copy down
+     to the form (536px of it here) is laid out - so a landscape tablet still opens on the form. */
+  .landing-art {
+    height: clamp(224px, calc(100svh - 536px), 520px);
+  }
+  .landing-hive {
+    width: 116.3%;
+    height: 100%;
+    aspect-ratio: auto;
+    left: -8.1%;
+    top: 0;
+    translate: none;
+  }
+  .landing-copy {
+    text-align: center;
+    max-width: 680px;
+    margin: 0 auto;
+    padding-bottom: 48px;
+  }
+  .landing-wait {
+    margin: 32px auto 0;
+    text-align: left;
+  }
+  .landing .landing-h1 {
+    font-size: 68px;
+    margin: 24px 0;
+  }
+  /* Balanced from the tablet up: centred there, and five lines in the desktop's 1240 frame, where "pretty"
+     still left "in any app." alone on the last one. */
+  .landing .landing-sub {
+    font-size: 18px;
+    margin: 0 auto;
+    text-wrap: balance;
+  }
+  .landing-os {
+    justify-content: center;
+    margin-top: 32px;
+  }
+  .landing-jumps {
+    justify-content: center;
+  }
+  .landing-bar {
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+  }
+  .landing-bar-end .landing-soon {
+    display: inline-flex;
+  }
+  .landing .landing-bar-join {
+    height: 40px;
+    padding: 0 18px;
+  }
+  .landing-bar-join::before {
+    inset: -2px;
+  }
+  .landing-bar-join-short {
+    display: none;
+  }
+  .landing-bar-join-long {
+    display: inline;
+  }
+}
+
+/* ---------- desktop ---------- */
+@media (min-width: 1200px) {
+  /* Three columns with equal outer ones, in the header and in the bar alike, so the anchor nav sits on the
+     page's centre line however wide the brand and the CTA are - the way the sections' heads are centred
+     on the frame, not on what happens to sit beside them. */
+  .landing-top,
+  .landing-bar-in {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+  .landing {
+    --landing-top-h: 96px;
+  }
+  .landing-top > .landing-brand,
+  .landing-bar-in > .landing-brand {
+    justify-self: start;
+  }
+  .landing-top-cta,
+  .landing-bar-end {
+    justify-self: end;
+  }
+  .landing-top-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .landing-top-tag {
+    display: none;
+  }
+  .landing-nav {
+    display: inline-flex;
+  }
+  .landing-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 45fr) minmax(0, 55fr);
+    align-items: center;
+    padding-bottom: 48px;
+  }
+  .landing-art {
+    order: 0;
+    height: min(84svh, 900px);
+    margin: 0 calc(-1 * var(--gutter)) 0 -32px;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .landing-hive {
+    width: 100%;
+    height: 100%;
+    left: 0;
+    top: 0;
+  }
+  .landing-hive .hive-tags {
+    display: inline;
+  }
+  .landing-copy {
+    text-align: left;
+    margin: 0;
+    max-width: 760px;
+    padding: 0 0 8px;
+  }
+  .landing-wait {
+    margin: 32px 0 0;
+  }
+  /* Capped where "Every machine." still fits the copy's column of the 1240 frame (about 7em wide), so the
+     headline is one size from 1500px up and never breaks inside its first line. */
+  .landing .landing-h1 {
+    font-size: clamp(68px, 5.1vw, 76px);
+    margin: 24px 0;
+    letter-spacing: -0.05em;
+  }
+  /* Four lines at 1440 and up, and always 24px short of the column's edge, so the last word of a line
+     never runs into the hive's first column, which the art's pull brings under the copy's edge. */
+  .landing .landing-sub {
+    font-size: clamp(18px, 1.3vw, 21px);
+    margin: 0;
+    max-width: min(30em, calc(100% - 24px));
+  }
+  .landing-os {
+    justify-content: flex-start;
+    margin-top: 32px;
+    font-size: 12px;
+  }
+  .landing-jumps {
+    justify-content: flex-start;
+  }
+  .landing-term {
+    top: auto;
+    left: auto;
+    right: 8%;
+    bottom: 12%;
+    width: 392px;
+  }
+}
