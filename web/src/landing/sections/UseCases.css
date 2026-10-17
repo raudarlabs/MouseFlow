@@ -1,0 +1,1012 @@
+/* 06 · Use cases - the deck of run cards. Reads the kit's tokens (var(--hl-gap), var(--r-tile), var(--m-out)
+ * …) and never redefines them; the deck's own geometry is the --uc-* set below.
+ *
+ * Only transform and opacity move. A card's place is one transform built from its slot (--o, set by the
+ * component) and the drag offset (--uc-drag, set on the track while a finger holds it); its dimming is the
+ * card's opacity plus a shade layer; the active dot is a pill that slides; the counter rolls. Nothing here
+ * hides content unless the deck's script is running: the server's markup is a scroll-snap row of eight
+ * finished cards, and every "before" state of the replay sits under html.motion [data-run]. */
+
+/* ── GEOMETRY ── phone first: the card is the screen less 64px, so 20px of each neighbour peeks in (less
+   on the narrowest phones, where the report needs the width more than the hint). */
+.uc {
+  --uc-cw: calc(100% - 64px);
+  --uc-gap: 12px;
+  /* a neighbour: scale, opacity, and how much of the shade lies over it */
+  --uc-s1: 1;
+  --uc-a1: 0.8;
+  --uc-sh1: 1;
+  --uc-s2: 1;
+  position: relative;
+}
+
+@media (max-width: 359px) {
+  .uc {
+    --uc-cw: calc(100% - 40px);
+    --uc-gap: 10px;
+  }
+}
+
+@media (min-width: 768px) {
+  .uc {
+    --uc-cw: min(560px, calc(100% - 160px));
+    --uc-gap: 16px;
+    --uc-s1: 0.92;
+    --uc-a1: 0.7;
+  }
+}
+
+/* From 1200 the report has two columns, so the active card is wider than a one-column card would be:
+   720px keeps every step on two or three lines and still leaves a neighbour's edge on each side. */
+@media (min-width: 1200px) {
+  .uc {
+    --uc-cw: 720px;
+    --uc-gap: 24px;
+    --uc-s1: 0.9;
+    --uc-a1: 0.62;
+    --uc-s2: 0.8;
+  }
+}
+
+/* ── WITHOUT A SCRIPT: a scroll-snap row, every card finished and swipeable. The row scrolls inside the
+   full-bleed stage; the page itself never scrolls sideways. ── */
+.uc-view {
+  position: relative;
+  margin-inline: calc(-1 * var(--gutter));
+}
+
+.uc:not([data-enhanced]) .uc-track {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  padding: 4px var(--gutter) 24px;
+  scroll-padding-inline: var(--gutter);
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--hive-ice) / 0.2) transparent;
+}
+
+.uc:not([data-enhanced]) .uc-card {
+  flex: 0 0 86%;
+  scroll-snap-align: center;
+}
+
+@media (min-width: 768px) {
+  .uc:not([data-enhanced]) .uc-card {
+    flex-basis: 560px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .uc:not([data-enhanced]) .uc-card {
+    flex-basis: 720px;
+  }
+}
+
+/* ── THE DECK (data-enhanced: set once the component has hydrated) ───────────────────────────────────
+   Controls are direct children of .uc so the reading and tab order is the spec's (filters, Pause, Previous,
+   the dots, Next) while the grid puts them where each width wants them. */
+.uc[data-enhanced] {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-areas:
+    'filters filters filters'
+    'view view view'
+    'prev dots next'
+    'count count pause';
+  column-gap: 8px;
+  align-items: center;
+}
+
+.uc-filters {
+  grid-area: filters;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.uc[data-enhanced] .uc-view {
+  grid-area: view;
+  /* Room above and below for the active card's lift and its long shadow, which the edge mask would clip. */
+  padding-block: 24px 32px;
+  margin-block: -24px -32px;
+  touch-action: pan-y;
+  -webkit-mask-image: linear-gradient(90deg, transparent, hsl(var(--hive-page)) 5%, hsl(var(--hive-page)) 95%, transparent);
+  mask-image: linear-gradient(90deg, transparent, hsl(var(--hive-page)) 5%, hsl(var(--hive-page)) 95%, transparent);
+}
+
+.uc-ctl {
+  display: inline-flex;
+}
+
+.uc-ctl--prev {
+  grid-area: prev;
+}
+
+.uc-ctl--next {
+  grid-area: next;
+}
+
+.uc-ctl--pause {
+  grid-area: pause;
+  justify-self: end;
+}
+
+.uc-dots {
+  grid-area: dots;
+  justify-self: center;
+}
+
+.uc-count {
+  grid-area: count;
+  justify-self: start;
+}
+
+.uc-ctl--prev,
+.uc-ctl--next,
+.uc-dots {
+  margin-top: 16px;
+}
+
+.uc-count,
+.uc-ctl--pause {
+  margin-top: 8px;
+}
+
+@media (min-width: 560px) {
+  .uc[data-enhanced] {
+    grid-template-columns: minmax(0, 1fr) 44px 44px auto 44px auto minmax(0, 1fr);
+    grid-template-areas:
+      'filters filters filters filters filters filters filters'
+      'view view view view view view view'
+      '. pause prev dots next count .';
+    column-gap: 12px;
+  }
+  .uc-count,
+  .uc-ctl--pause {
+    margin-top: 16px;
+  }
+  .uc-count {
+    justify-self: start;
+    margin-left: 4px;
+  }
+}
+
+@media (min-width: 768px) {
+  .uc-filters {
+    margin-bottom: 24px;
+  }
+  .uc-ctl--prev,
+  .uc-ctl--next,
+  .uc-dots,
+  .uc-count,
+  .uc-ctl--pause {
+    margin-top: 24px;
+  }
+}
+
+/* From 1200 the toolbar sits above the stage - filters on the left; counter, Pause, Previous, Next on the
+   right - the dots stay centred under the deck, and the stage widens to 1320 (40px into the gutters). */
+@media (min-width: 1200px) {
+  .uc[data-enhanced] {
+    grid-template-columns: auto minmax(0, 1fr) auto 44px 44px 44px;
+    grid-template-areas:
+      'filters . count pause prev next'
+      'view view view view view view'
+      'dots dots dots dots dots dots';
+    column-gap: 12px;
+  }
+  .uc-filters {
+    margin-bottom: 0;
+  }
+  .uc-ctl--prev,
+  .uc-ctl--next,
+  .uc-count,
+  .uc-ctl--pause {
+    margin-top: 0;
+  }
+  .uc-count {
+    margin: 0 8px 0 0;
+  }
+  .uc[data-enhanced] .uc-view {
+    margin-inline: -40px;
+    margin-top: calc(32px - 24px);
+  }
+  .uc-dots {
+    margin-top: 24px;
+  }
+}
+
+/* Every card in one grid cell: the stage is as tall as the tallest card, with no measuring and no jump. */
+.uc[data-enhanced] .uc-track {
+  display: grid;
+  grid-template-areas: 'card';
+  justify-items: center;
+}
+
+/* A card's place: its slot (--o) times its own width plus the gap, plus the finger's offset, then its
+   scale. The slot rules set the scale (--s), opacity (--a) and shade (--sh); a drag (--uc-pl / --uc-pr,
+   0 → 1 toward the left or right neighbour) blends them, so the neighbour being pulled in brightens as it
+   comes. */
+.uc[data-enhanced] .uc-card {
+  --s: 1;
+  --a: 1;
+  --sh: 0;
+  grid-area: card;
+  width: var(--uc-cw);
+  transform: translate3d(calc(var(--o) * (100% + var(--uc-gap)) + var(--uc-drag, 0px)), 0, 0) scale(var(--s));
+  opacity: var(--a);
+}
+
+.uc[data-enhanced] .uc-card[data-pos='0'] {
+  --pull: max(var(--uc-pl, 0), var(--uc-pr, 0));
+  --s: calc(1 - (1 - var(--uc-s1)) * var(--pull));
+  --a: calc(1 - (1 - var(--uc-a1)) * var(--pull));
+  --sh: calc(var(--uc-sh1) * var(--pull));
+}
+
+.uc[data-enhanced] .uc-card[data-pos='1'] {
+  --s: calc(var(--uc-s1) + (1 - var(--uc-s1)) * var(--uc-pr, 0));
+  --a: calc(var(--uc-a1) + (1 - var(--uc-a1)) * var(--uc-pr, 0));
+  --sh: calc(var(--uc-sh1) * (1 - var(--uc-pr, 0)));
+}
+
+.uc[data-enhanced] .uc-card[data-pos='-1'] {
+  --s: calc(var(--uc-s1) + (1 - var(--uc-s1)) * var(--uc-pl, 0));
+  --a: calc(var(--uc-a1) + (1 - var(--uc-a1)) * var(--uc-pl, 0));
+  --sh: calc(var(--uc-sh1) * (1 - var(--uc-pl, 0)));
+}
+
+.uc[data-enhanced] .uc-card:is([data-pos='2'], [data-pos='-2'], [data-pos='3'], [data-pos='-3']) {
+  --s: var(--uc-s2);
+  --a: 0;
+  --sh: 1;
+  visibility: hidden;
+}
+
+.uc[data-enhanced] .uc-card[data-out] {
+  --a: 0;
+  visibility: hidden;
+}
+
+/* Neighbours never take a text selection, and nothing does while a finger drags the deck. */
+.uc[data-enhanced] .uc-card:not([data-active]),
+.uc-track[data-drag] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Moves: 560ms on the travelling curve. A card leaving view goes hidden only after its transition; a card
+   arriving is visible at once. A filtered-out card fades on the exit curve in 200ms. With reduced motion
+   a move is a 120ms opacity crossfade and nothing travels. */
+html.motion .uc[data-enhanced] .uc-card {
+  transition:
+    transform var(--m-slow) var(--m-inout),
+    opacity var(--m-slow) var(--m-inout),
+    translate var(--m-fast) var(--m-out),
+    visibility 0s linear 0s;
+}
+
+html.motion .uc[data-enhanced] .uc-card:is([data-pos='2'], [data-pos='-2'], [data-pos='3'], [data-pos='-3']) {
+  transition:
+    transform var(--m-slow) var(--m-inout),
+    opacity var(--m-slow) var(--m-inout),
+    translate var(--m-fast) var(--m-out),
+    visibility 0s linear var(--m-slow);
+}
+
+html.motion .uc[data-enhanced] .uc-card[data-out] {
+  transition:
+    transform var(--m-slow) var(--m-inout),
+    opacity 200ms var(--m-in),
+    visibility 0s linear 200ms;
+}
+
+html:not(.motion) .uc[data-enhanced] .uc-card {
+  transition:
+    opacity 120ms linear,
+    visibility 0s linear 0s;
+}
+
+html:not(.motion) .uc[data-enhanced] .uc-card:is([data-pos='2'], [data-pos='-2'], [data-pos='3'], [data-pos='-3'], [data-out]) {
+  transition:
+    opacity 120ms linear,
+    visibility 0s linear 120ms;
+}
+
+/* Under a finger the deck follows 1:1; let go short of a swipe and it springs back on the arrival curve. */
+html .uc[data-enhanced] .uc-track[data-drag] .uc-card,
+html .uc[data-enhanced] .uc-track[data-drag] .uc-shade {
+  transition: none;
+}
+
+html.motion .uc[data-enhanced] .uc-track[data-settle] .uc-card {
+  transition:
+    transform 360ms var(--m-out),
+    opacity 360ms var(--m-out),
+    translate var(--m-fast) var(--m-out),
+    visibility 0s;
+}
+
+/* The deal: once the deck is revealed the cards come in from 40px to the right and .9, 60ms apart, the
+   active card last (--deal, see ring.ts). It rides the reveal system - the deck root is a reveal group and
+   each card an item - so it never runs for a deck that was already on screen. */
+@keyframes uc-deal {
+  from {
+    opacity: 0;
+    transform: translate3d(calc(var(--o) * (100% + var(--uc-gap)) + 40px), 0, 0) scale(0.9);
+  }
+}
+
+html.motion.reveals .uc[data-enhanced][data-reveal='group'].is-in:not(.is-instant) .uc-card[data-reveal-item] {
+  animation-name: uc-deal;
+  animation-delay: calc(210ms + var(--deal) * 60ms);
+}
+
+/* ── THE CARD ── one recipe for all eight: a run report on the page's glass. */
+.uc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: var(--hl-pad);
+  min-width: 0;
+}
+
+/* The narrowest phones give the report its text width back. */
+@media (max-width: 399px) {
+  .uc-card {
+    padding: 16px;
+  }
+}
+
+/* The verdict's colour along the top edge, with a faint glow under it: green, red, or green → red for a
+   mixed fleet result. */
+.uc-edge {
+  --edge: var(--hive-ice);
+  position: absolute;
+  top: -1px;
+  left: 28px;
+  right: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, hsl(var(--edge)) 18%, hsl(var(--edge)) 82%, transparent);
+  box-shadow: 0 0 14px hsl(var(--edge) / 0.45);
+  transform-origin: 50% 50%;
+  pointer-events: none;
+}
+
+.uc-card[data-tone='pass'] .uc-edge {
+  --edge: var(--fb-green);
+}
+
+.uc-card[data-tone='fail'] .uc-edge {
+  --edge: var(--fb-red-text);
+}
+
+.uc-card[data-tone='mixed'] .uc-edge {
+  background: linear-gradient(90deg, transparent, hsl(var(--fb-green)) 18%, hsl(var(--fb-green)) 44%, hsl(var(--fb-red-text)) 60%, hsl(var(--fb-red-text)) 82%, transparent);
+  box-shadow: 0 0 14px hsl(var(--fb-red-text) / 0.3);
+}
+
+.uc-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.uc-tag svg {
+  width: 12px;
+  height: 12px;
+  margin-left: -1px;
+}
+
+.uc-meta {
+  min-width: 0;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  color: hsl(var(--ink-inactive));
+  overflow-wrap: anywhere;
+}
+
+.uc-nb {
+  white-space: nowrap;
+}
+
+.landing .uc-title {
+  margin-top: -4px;
+}
+
+.uc-body {
+  display: grid;
+  gap: 12px;
+}
+
+.uc-col {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.uc-block {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Below 1200 the report is one column, and every card is as tall as the tallest (the deck's one grid cell,
+   or the no-script row). The spare height is shared between the report's three seams - goal → what it did
+   → checks → verdict - instead of opening one hole above the verdict: the body and its columns step aside
+   (display: contents) so the blocks are the card's own flex items, and each seam is an auto margin. */
+@media (max-width: 1199px) {
+  .uc-body,
+  .uc-col {
+    display: contents;
+  }
+  .uc-col > .uc-block + .uc-block,
+  .uc-col + .uc-col > .uc-block:first-child {
+    margin-top: auto;
+  }
+}
+
+/* The section labels - Goal · What it did · Checks · Verdict - mono, quiet, with a hairline to the edge. */
+.uc-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: theme('fontFamily.mono');
+  font-size: 10.5px;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+.uc-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, hsl(var(--hive-ice) / 0.1), transparent);
+}
+
+.uc-label--inline::after {
+  content: none;
+}
+
+.uc-goal {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  column-gap: 10px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: hsl(var(--ink-primary));
+  text-wrap: pretty;
+}
+
+.uc-prompt {
+  font-family: theme('fontFamily.mono');
+  font-weight: 500;
+  color: hsl(var(--hive-ice-2));
+}
+
+.uc-steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.uc-step {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  column-gap: 10px;
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+  overflow-wrap: anywhere;
+}
+
+.uc-step-x b {
+  font-weight: 500;
+  color: hsl(var(--ink-primary));
+}
+
+.uc-step--refused,
+.uc-step--wait {
+  color: hsl(var(--ink-secondary));
+}
+
+.uc-step--refused .uc-step-x b,
+.uc-step--wait .uc-step-x b {
+  color: hsl(var(--ink-secondary));
+  font-weight: 400;
+}
+
+.uc-checks .hl-check-kind {
+  color: hsl(var(--ink-primary));
+}
+
+/* On the narrowest phones the report tightens a notch - smaller step type, slimmer check rows - so the
+   tallest card still fits a 812px screen with its verdict. */
+@media (max-width: 399px) {
+  .uc-step {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .uc-checks .hl-check {
+    padding: 8px 10px 8px 12px;
+  }
+  .uc-checks .hl-check-head {
+    column-gap: 8px;
+  }
+  .uc-checks .hl-check-ev,
+  .uc-when {
+    padding-left: 28px;
+    font-size: 11.5px;
+  }
+}
+.uc-when {
+  margin: 0;
+  padding-left: 30px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: hsl(var(--ink-secondary));
+}
+
+.uc-when > span:first-child {
+  color: hsl(var(--hive-ice-2));
+}
+
+/* The verdict, pinned to the card's foot: every card in the deck is the tallest one's height. */
+.uc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.uc-verdict {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.uc-says {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+  text-wrap: pretty;
+}
+
+.uc-nights {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.uc-night-new {
+  display: inline-flex;
+}
+
+.uc-nights-label {
+  margin-left: 8px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* The layers that change a card's look by opacity alone: the shade over a neighbour, the hover ring. */
+.uc-shade,
+.uc-ring {
+  position: absolute;
+  inset: -1px;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.uc-shade {
+  background: linear-gradient(180deg, hsl(var(--surface-page) / 0.42), hsl(var(--surface-page) / 0.62));
+  opacity: 0;
+}
+
+.uc[data-enhanced] .uc-shade {
+  opacity: var(--sh);
+}
+
+html.motion .uc[data-enhanced] .uc-shade {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.uc-ring {
+  border: 1px solid hsl(var(--hive-ice-2) / 0.3);
+  opacity: 0;
+  transition: opacity var(--m-fast) var(--m-out);
+}
+
+@media (min-width: 768px) {
+  .uc-card,
+  .uc-body,
+  .uc-col {
+    gap: 16px;
+  }
+  .uc-goal {
+    font-size: 15.5px;
+  }
+}
+
+/* From 1200 the report reads in two columns - what was asked and done | what the machine decided - and the
+   verdict runs along the foot. */
+@media (min-width: 1200px) {
+  .uc-card {
+    gap: 20px;
+  }
+  .uc-body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.18fr);
+    gap: 24px;
+  }
+  /* A one-check report gives the room to what it did. */
+  .uc-card[data-checks='1'] .uc-body {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  }
+  .uc-col + .uc-col {
+    padding-left: 24px;
+    border-left: 1px solid hsl(var(--hive-ice) / 0.07);
+  }
+  .uc-goal {
+    font-size: 16px;
+  }
+  .uc-step {
+    font-size: 12.5px;
+  }
+  .uc-foot {
+    flex-wrap: wrap;
+    column-gap: 16px;
+  }
+  .uc-says {
+    flex: 1 1 260px;
+    flex-basis: auto;
+    min-width: 220px;
+  }
+  .uc-nights {
+    flex-basis: 100%;
+  }
+}
+
+/* ── THE REPLAY ────────────────────────────────────────────────────────────────────────────────────────
+   Every card carries its cues; only the ACTIVE card plays them. On every other card they stay finished
+   (and the in-flight marks stay hidden), so a neighbour is always a complete report. */
+html.motion .uc[data-run] .uc-card:not([data-active]) [data-cue],
+html.motion .uc[data-run][data-paused][data-played] .uc-card [data-cue] {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+html.motion .uc[data-run] .uc-card:not([data-active]) .hl-transient[data-cue],
+html.motion .uc[data-run][data-paused][data-played] .uc-card .hl-transient[data-cue] {
+  opacity: 0 !important;
+}
+
+/* The second rule above: a deck that has played and is now paused - a pointer resting on the card to read
+   it, Pause pressed, scrolled away - shows the active card finished rather than frozen mid-run; when it
+   plays again the engine restarts the act, so the run is replayed whole. */
+
+/* The top edge draws from the centre when the verdict lands, and leaves quickly when the run restarts. */
+html.motion .uc[data-run] .uc-card[data-active] .uc-edge[data-cue] {
+  transition: transform 420ms var(--m-out);
+}
+
+html.motion .uc[data-run] .uc-card[data-active] .uc-edge[data-cue]:not(.cue-on) {
+  transform: scaleX(0);
+  transition: transform var(--m-exit) var(--m-in);
+}
+
+/* ── FILTERS ── three glass pills, a radiogroup. The checked state is a layer that fades in. */
+.landing .uc-filter {
+  position: relative;
+  isolation: isolate;
+  height: 40px;
+  padding: 0 16px;
+  gap: 6px;
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.06), hsl(var(--hive-frost) / 0.02));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.06);
+  font-size: 14px;
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  transition: transform var(--m-fast) var(--m-out);
+}
+
+.landing .uc-filter:hover {
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.06), hsl(var(--hive-frost) / 0.02));
+}
+
+/* 44px to the touch, 40px to the eye. */
+.uc-filter::before {
+  content: '';
+  position: absolute;
+  inset: -2px 0;
+}
+
+.uc-filter-on {
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice-2) / 0.45);
+  background: linear-gradient(180deg, hsl(var(--hive-ice-2) / 0.18), hsl(var(--hive-ice-2) / 0.08));
+  box-shadow: 0 0 18px -6px hsl(var(--hive-ice-2) / 0.5);
+  opacity: 0;
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.uc-filter[aria-checked='true'] .uc-filter-on {
+  opacity: 1;
+}
+
+.uc-filter-dot {
+  margin: 0 6px 0 5px;
+  font-style: normal;
+  color: hsl(var(--ink-inactive));
+}
+
+.uc-filter-n {
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--ink-inactive));
+  font-variant-numeric: tabular-nums;
+}
+
+.uc-filter[aria-checked='true'] .uc-filter-n {
+  color: hsl(var(--ink-highlight));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .uc-filter[aria-checked='false']:hover .uc-filter-on {
+    opacity: 0.4;
+  }
+}
+
+/* ── CONTROLS ── 44px glass circles that float over the page (the deck controls are one of the few places
+   allowed a backdrop blur); a press is .97. */
+.landing .uc-btn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.16);
+  background: linear-gradient(180deg, hsl(var(--surface-chips) / 0.72), hsl(var(--surface-card) / 0.72));
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.08),
+    0 14px 28px -18px hsl(var(--hive-shade) / 0.9);
+  -webkit-backdrop-filter: blur(var(--hl-blur)) saturate(140%);
+  backdrop-filter: blur(var(--hl-blur)) saturate(140%);
+  color: hsl(var(--ink-primary));
+  transition: transform var(--m-fast) var(--m-out);
+}
+
+.landing .uc-btn::before {
+  content: none;
+}
+
+.landing .uc-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.landing .uc-ctl--pause .uc-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.landing .uc-btn:hover {
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.14), hsl(var(--hive-frost) / 0.05));
+  border-color: hsl(var(--hive-ice) / 0.24);
+}
+
+.landing .uc-btn:active {
+  transform: scale(0.97);
+}
+
+.landing .uc-btn:focus-visible,
+.landing .uc-filter:focus-visible,
+.landing .uc-dot:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html.motion .uc-btn svg {
+    transition: transform var(--m-fast) var(--m-out);
+  }
+  html.motion .uc-ctl--prev .uc-btn:hover svg {
+    transform: translateX(-2px);
+  }
+  html.motion .uc-ctl--next .uc-btn:hover svg {
+    transform: translateX(2px);
+  }
+}
+
+/* The dots: one 8px hex per card in its verdict's colour - the deck reads as a row of nights. The active
+   one is a 28px pill that slides between them, its honey fill the autoplay clock (the block's only honey
+   besides the CTA). Each dot is a 24×44 target: eight 44px squares would not fit a phone's row. */
+.uc-dots {
+  --dot-w: 24px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 44px;
+}
+
+.landing .uc-dot {
+  display: grid;
+  place-items: center;
+  width: var(--dot-w);
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  transition: none;
+}
+
+.landing .uc-dot:hover {
+  background: none;
+}
+
+.uc-dot-hex {
+  display: block;
+  width: 8px;
+  height: 9px;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  background: hsl(var(--hive-ice) / 0.4);
+  opacity: 0.85;
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.uc-dot-hex[data-tone='pass'] {
+  background: hsl(var(--fb-green));
+}
+
+.uc-dot-hex[data-tone='fail'] {
+  background: hsl(var(--fb-red-text));
+}
+
+.uc-dot-hex[data-tone='mixed'] {
+  background: linear-gradient(90deg, hsl(var(--fb-green)) 50%, hsl(var(--fb-red-text)) 50%);
+}
+
+.uc-dot[aria-current] .uc-dot-hex {
+  opacity: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .uc-dot:not([aria-current]):hover .uc-dot-hex {
+    opacity: 1;
+  }
+}
+
+.uc-dots-pill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 28px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: hsl(var(--hive-ice) / 0.16);
+  box-shadow: inset 0 0 0 1px hsl(var(--hive-ice) / 0.14);
+  transform: translateX(calc(var(--di) * var(--dot-w) + (var(--dot-w) - 28px) / 2));
+  pointer-events: none;
+}
+
+.uc-dots-pill > i {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: hsl(var(--brand-primary));
+  box-shadow: 0 0 10px hsl(var(--brand-primary) / 0.6);
+  transform-origin: 0 50%;
+  transform: scaleX(1);
+}
+
+html.motion .uc-dots-pill {
+  transition: transform var(--m-slow) var(--m-inout);
+}
+
+/* The counter: "03 / 08", the current number rolling to the next. */
+.uc-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--ink-inactive));
+}
+
+.uc-roll {
+  display: inline-block;
+  height: 1.5em;
+  line-height: 1.5;
+  overflow: hidden;
+  color: hsl(var(--ink-primary));
+}
+
+.uc-roll-col {
+  display: grid;
+  transform: translateY(calc(var(--ci) * -1.5em));
+}
+
+html.motion .uc-roll-col {
+  transition: transform 300ms var(--m-inout);
+}
+
+/* ── POINTER ── two strips over the peeking neighbours: a click brings that one in. A fine pointer grabs
+   the deck; hovering a strip leans its neighbour 8px toward the centre and lifts its shade. */
+.uc-hit {
+  position: absolute;
+  z-index: 2;
+  top: 24px;
+  bottom: 32px;
+  width: calc((100% - var(--uc-cw)) / 2);
+  cursor: pointer;
+}
+
+.uc-hit--prev {
+  left: 0;
+}
+
+.uc-hit--next {
+  right: 0;
+}
+
+.uc[data-enhanced] .uc-view {
+  cursor: grab;
+}
+
+.uc-track[data-drag] {
+  cursor: grabbing;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .uc-view:has(.uc-hit--next:hover) .uc-card[data-pos='1'] {
+    --sh: 0.45;
+  }
+  .uc-view:has(.uc-hit--prev:hover) .uc-card[data-pos='-1'] {
+    --sh: 0.45;
+  }
+  html.motion .uc-view:has(.uc-hit--next:hover) .uc-card[data-pos='1'] {
+    translate: -8px 0;
+  }
+  html.motion .uc-view:has(.uc-hit--prev:hover) .uc-card[data-pos='-1'] {
+    translate: 8px 0;
+  }
+  html.motion .uc-card[data-active]:hover {
+    translate: 0 -3px;
+  }
+  .uc-card[data-active]:hover .uc-ring {
+    opacity: 1;
+  }
+}

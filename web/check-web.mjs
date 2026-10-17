@@ -658,5 +658,301 @@ group('прогон в Create идёт во вкладке, когда брау�
     /\/browser\/shot\?\$\{at\}&w=/.test(lib) && /'\/browser\/do', \{ tab, body \}/.test(lib) && /windows: async \(\) => \(\{ ok: true as const, windows: \[\] \}\)/.test(lib));
 }
 
+/* ------------------------------------------------------------------ лендинг hivelink.si */
+
+/* Лендинг собран из тех же частей, что и админка (решение владельца 2026-10-16: одна дизайн-система).
+ * Проверки держат именно это: те же алиасы дизайн-системы, те же компоненты, цвета только токенами, а
+ * у формы - контракт /api/waitlist, общий с API, и никакого «успеха» без ответа сервера. */
+group('лендинг: те же части, что у админки');
+{
+  const aliases = (t) => (t.match(/const DESIGN_SYSTEM = \[[\s\S]*?\n\];/) || [''])[0];
+  const landingConfig = read('vite.landing.config.ts');
+  check('алиасы дизайн-системы те же, что в vite.config.ts',
+    aliases(landingConfig) !== '' && aliases(landingConfig) === aliases(viteConfig));
+  /* Все файлы лендинга и бренда, а не список имён: секции пишутся параллельно, и новый файл должен попасть
+   * под те же правила сам, без правки этой проверки. */
+  const walk = (dir) => readdirSync(join(here, dir), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(dir + '/' + e.name) : /\.(tsx?|mjs)$/.test(e.name) ? [dir + '/' + e.name] : []);
+  const files = [...walk('src/landing'), ...walk('src/components/brand')].filter((f) => !f.endsWith('.mjs'));
+  const src = Object.fromEntries(files.map((f) => [f, read(f)]));
+  const tsx = files.filter((f) => f.endsWith('.tsx'));
+  const code = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/^\s*\/\/.*$/gm, '');
+  const form = src['src/landing/WaitlistForm.tsx'];
+  const hero = src['src/landing/sections/Hero.tsx'] || '';
+  check('кнопка формы - Button дизайн-системы, поле - его Input',
+    /from '@insightis\/ui\/Button'/.test(form) && /<Button[\s\S]*?type="submit"/.test(form)
+      && /from '@insightis\/ui\/Input'/.test(form) && /<Input\b/.test(form));
+  check('загрузка - собственным isLoading кнопки', /isLoading=\{busy\}/.test(form));
+  check('в hero - общий HiveMark, Badge и Typography; заголовки секций - Typography',
+    /from '@\/components\/brand\/HiveMark'/.test(hero) && /<HiveMark/.test(hero) && /<Badge/.test(hero) && /<Typography/.test(hero)
+      && /<Typography variant="h2"/.test(src['src/landing/sections/kit/Section.tsx'] || ''));
+  check('HiveMark.tsx не переписан под лендинг', /export const HiveMark/.test(read('src/components/brand/HiveMark.tsx')));
+  /* Кнопка - это Button или IconButton дизайн-системы (или buttonVariants на <a>), поле - его Input.
+   * Единственный голый <input> - ловушка для ботов в форме: она не поле для человека. */
+  const rawButton = tsx.filter((f) => /<button\b/.test(code(src[f])));
+  const rawInput = tsx.filter((f) => (code(src[f]).match(/<input\b/g) || []).length > (f === 'src/landing/WaitlistForm.tsx' ? 1 : 0));
+  check('кнопки - Button/IconButton дизайн-системы, поля - Input', rawButton.length === 0 && rawInput.length === 0,
+    [...rawButton, ...rawInput].join(', '));
+  /* Шестнадцатеричный цвет, rgba() или hsl() с числами в JSX - это вторая палитра. Цвета иллюстрации
+   * названы один раз, в brand.css, и смешиваются через hive-ink.ts; в разметке - только токены.
+   * Содержимое <mask> не в счёт: белое и чёрное там - яркость маски (оставить / вырезать), а не цвет. */
+  const literal = Object.entries(src)
+    .filter(([f]) => !f.endsWith('.mjs'))
+    .map(([f, t]) => [f, code(t).replace(/<mask\b[\s\S]*?<\/mask>/g, '')])
+    .filter(([, t]) => /#[0-9a-fA-F]{3,8}\b(?![-\w])|rgba?\(|hsla?\(\s*\d/.test(t))
+    .map(([f]) => f);
+  check('в разметке лендинга и бренда нет цветов литералами', literal.length === 0, literal.join(', '));
+  /* Tailwind лендинга смотрит только в свои файлы и в перечисленные компоненты - компонент, которого нет
+   * в списке, отрисуется без своих классов. */
+  const list = (landingConfig.match(/const LANDING_UI = \[([^\]]*)\]/) || ['', ''])[1];
+  const used = new Set();
+  for (const t of Object.values(src)) for (const m of t.matchAll(/from '@insightis\/ui\/([A-Z]\w*)'/g)) used.add(m[1]);
+  const missing = [...used].filter((c) => !list.includes(`'${c}'`));
+  check('каждый компонент дизайн-системы на лендинге есть в его списке для Tailwind', used.size > 0 && missing.length === 0, missing.join(', '));
+  const brandCss = read('src/components/brand/brand.css');
+  check('цвета иллюстрации названы один раз, в brand.css',
+    ['frost', 'ice', 'ice-2', 'steel', 'honey', 'amber', 'amber-deep', 'queen-ink', 'page', 'ink', 'shade']
+      .every((n) => new RegExp(`--hive-${n}:`).test(brandCss)));
+  check('движение улья - CSS, и prefers-reduced-motion его останавливает',
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation: none/.test(brandCss)
+      && !/requestAnimationFrame|setInterval/.test(src['src/components/brand/GlassHive.tsx']));
+  /* SSR должен совпасть с гидратацией: ни случайности, ни часов при рендере - ни в одном файле. */
+  const impure = files.filter((f) => /Math\.random|Date\.now|new Date\(/.test(code(src[f])));
+  check('при рендере нет Math.random и часов (все файлы лендинга и бренда)', impure.length === 0, impure.join(', '));
+}
+
+group('лендинг: одна система движения, и без неё страница готова');
+{
+  const html = read('landing/index.html');
+  const motionCss = read('src/landing/motion/motion.css');
+  const state = read('src/landing/motion/state.ts');
+  const head = (html.match(/<script>([^<]*classList\.add\('motion'\)[^<]*)<\/script>/) || ['', ''])[1];
+  /* Скрипт в <head> только ставит классы - ничего не прячет - и решает так же, как state.ts после
+   * гидратации: тот же запрос и тот же выключатель ?still для снимков. */
+  check('скрипт в head: html.js и html.motion, только без reduced motion и без ?still',
+    /classList\.add\('js'\)/.test(head) && /prefers-reduced-motion: no-preference/.test(head) && /still/.test(head)
+      && !/style|opacity|display/.test(head)
+      && /\(prefers-reduced-motion: no-preference\)/.test(state) && /has\('still'\)/.test(state));
+  /* Всё, что прячет, - только под html.motion и вторым условием, которое ставит работающий бандл:
+   * html.reveals (init.ts) для появлений, [data-run] (useTimeline) для демо. Серверный HTML - готовая
+   * страница, и если бандл не пришёл, ничего не ждёт его вечно. */
+  const hiding = [...motionCss.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{[^{}]*opacity:\s*0;[^{}]*\}/g)]
+    .map((m) => m[1].trim())
+    .filter((sel) => !/@keyframes|^(from|to|\d+%)/.test(sel) && !/^\.hl-transient$/.test(sel));
+  const unsafe = hiding.flatMap((sel) => sel.split(',').map((x) => x.trim())).filter((x) =>
+    !(/^html\.motion\.reveals /.test(x) || /^html\.motion \[data-run\]/.test(x)));
+  check('motion.css прячет только под html.motion + reveals / [data-run]', hiding.length > 0 && unsafe.length === 0, unsafe.join(' | '));
+  check('движение - только transform и opacity: в motion.css не анимируются размеры и места',
+    !/transition[^;]*\b(width|height|top|left|margin|grid-template)/.test(motionCss)
+      && !/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*?[^{}]*\b(width|height|top|left|margin)\s*:/.test(motionCss));
+  const init = read('src/landing/motion/init.ts');
+  check('init: то, что уже на экране, показано сразу, до того как что-то можно спрятать',
+    init.indexOf("show(el, true)") > -1 && init.indexOf("show(el, true)") < init.indexOf("html.classList.add('reveals')")
+      && /new IntersectionObserver/.test(init) && /data-play|dataset\.play/.test(init));
+  const timeline = read('src/landing/motion/timeline.ts');
+  check('демо: один общий rAF, не больше двух сразу, пауза вне экрана и при наведении',
+    /const MAX_PLAYING = 2;/.test(timeline) && (timeline.match(/requestAnimationFrame\(frame\)/g) || []).length >= 1
+      && /visibilitychange/.test(timeline) && /pointerover/.test(timeline) && /focusin/.test(timeline));
+  check('Landing запускает систему движения после гидратации', /useEffect\(\(\) => initMotion\(\), \[\]\)/.test(read('src/landing/Landing.tsx')));
+}
+
+group('лендинг: улей детерминирован и рисуется на сервере');
+{
+  const hive = await import('./src/components/brand/hive-geometry.ts');
+  const again = await import('./src/components/brand/hive-geometry.ts?again');
+  check('та же геометрия при каждой загрузке', JSON.stringify(hive.HIVE) === JSON.stringify(again.HIVE));
+  /* qa-vm-1 - главный герой страницы: его тест идёт через hero, 01, 02 и 03. */
+  check('ячейки, королева, связи и три подписанные машины',
+    hive.HIVE.cells.length === 30 && hive.HIVE.queen.d === 0 && hive.HIVE.links.length === 10
+      && hive.HIVE.tags.map((t) => t.label).sort().join() === 'finance-pc,mac-studio,qa-vm-1',
+    show({ cells: hive.HIVE.cells.length, links: hive.HIVE.links.length }));
+  const term = read('src/components/brand/HiveTerminal.tsx');
+  const { HIVE_MACHINES } = await import('./src/components/brand/hive-machines.ts');
+  const deviceKeys = hive.HIVE.cells.filter((c) => c.device).map((c) => c.key).sort();
+  /* Карточка - это Logs продукта, а не выдуманная командная строка: цель словами, на какой машине, кто
+   * попросил. */
+  check('карточка - Logs: цель словами, машина, кто попросил; никакого "hivelink do"',
+    !/hivelink do|--on/.test(term) && /Logs — /.test(term) && /by you/.test(term) && /by itself, from a schedule/.test(term)
+      && hive.HIVE.tags.every((t) => HIVE_MACHINES[t.key] && HIVE_MACHINES[t.key].name === t.label),
+    show(hive.HIVE.tags.map((t) => [t.key, t.label, HIVE_MACHINES[t.key] && HIVE_MACHINES[t.key].name])));
+  /* Каждый вердикт - проверка в грамматике продукта, которую решает машина (дерево доступности или DOM),
+   * а не мнение модели и не подсчёт на рабочем столе. Остановка - "could not finish", а не "спросил". */
+  const machines = Object.values(HIVE_MACHINES);
+  const grammar = /^check “[^”]+”( row)? (is there|is not there|holds [^—]+) — PASS · (tree|dom)$/;
+  const bad = machines.filter((m) => !(grammar.test(m.verdict)
+    || (m.outcome === 'could not finish' && /^could not finish · /.test(m.verdict))
+    || (m.outcome === 'running' && m.verdict === 'checks are made at their moment'))
+    || /stopped and asked|\bEdge\b|Safari|Firefox/.test(m.steps.join(' ') + m.verdict));
+  check('каждый вердикт на улье - проверка машины в словах продукта', bad.length === 0, bad.map((m) => m.name).join(', '));
+  check('qa-vm-1 запускает тот самый тест, сам, по расписанию',
+    HIVE_MACHINES['1,2']?.name === 'qa-vm-1' && HIVE_MACHINES['1,2'].job === 'test: Invoice total is right' && HIVE_MACHINES['1,2'].by === 'schedule');
+  /* Каждая сота с машиной отвечает на наведение своей карточкой - соты без записи в hive-machines.ts
+   * открыли бы пустой терминал. И только Windows и macOS: других агентов нет. */
+  check('у каждой машины на улье есть своя последняя задача',
+    JSON.stringify(Object.keys(HIVE_MACHINES).sort()) === JSON.stringify(deviceKeys)
+      && machines.every((m) => m.os === 'Windows' || m.os === 'macOS'),
+    show({ machines: Object.keys(HIVE_MACHINES).sort(), cells: deviceKeys }));
+  check('карточка закрыта, пока на машину не навели',
+    /hive-term-on/.test(term) && /\.hive-term \{[\s\S]*?opacity: 0;/.test(read('src/components/brand/brand.css'))
+      && /useState<string \| null>\(null\)/.test(read('src/landing/sections/Hero.tsx')));
+  const server = read('src/landing/entry-server.tsx');
+  const client = read('src/landing/main.tsx');
+  check('сервер рендерит строкой, клиент гидрирует ту же разметку',
+    /renderToString\(/.test(server) && /hydrateRoot\(root, app\)/.test(client)
+      && /<StrictMode>\s*<Landing endpoint=\{WAITLIST_ENDPOINT\} \/>/.test(server)
+      && /<StrictMode>\s*<Landing endpoint=\{WAITLIST_ENDPOINT\} \/>/.test(client));
+  const build = read('scripts/build-landing.mjs');
+  check('сборка вставляет разметку и проверяет H1, текст, обе формы, секции и FAQPage',
+    /'<!--landing-ssr-->'/.test(build) && read('landing/index.html').includes('<div id="root"><!--landing-ssr--></div>')
+      && /the headline/.test(build) && /the form/.test(build) && /waitlist-final/.test(build)
+      && /Watch a live agent run it/.test(build) && /Read the verdict over coffee/.test(build) && /It lives there/.test(build)
+      && /Real jobs\\\. Real screens/.test(build) && /Does the AI decide whether my test passed/.test(build)
+      && /'@type': 'FAQPage'/.test(build) && /FAQ\.map/.test(build) && /export \{ FAQ \} from '\.\/sections\/Faq'/.test(server)
+      && /robots\.txt/.test(build) && /sitemap\.xml/.test(build));
+}
+
+group('лендинг: одна история, одна форма, много входов');
+{
+  const landing = read('src/landing/Landing.tsx');
+  const story = read('src/landing/sections/index.tsx');
+  /* Landing собирает страницу и ничего больше: фон, hero, секции по порядку, подвал. Порядок - один,
+   * в sections/index.tsx, и в нём девять секций спеки. */
+  const ORDER = ['LiveQa', 'Verdicts', 'NightShift', 'AlwaysOn', 'Channels', 'UseCases', 'Rails', 'Faq', 'FinalCall'];
+  const rendered = [...(story.match(/export function StorySections[\s\S]*$/) || [''])[0].matchAll(/<([A-Z]\w+)\b/g)].map((m) => m[1]);
+  /* Один <main> на всю историю: шапка (banner) и липкая панель - до него, подвал - после; внутри - тело
+   * hero и девять секций. Так "к основному содержимому" ведёт к продукту, а не к половине первого экрана. */
+  check('Landing: фон, шапка, панель, <main> с hero и секциями, подвал - и только',
+    /<Backdrop \/>[\s\S]*?<HeroHeader \/>\s*<StickyBar \/>\s*<main id="main"[^>]*>\s*<Hero endpoint=\{endpoint\} \/>\s*<StorySections endpoint=\{endpoint\} \/>\s*<\/main>\s*<footer/.test(landing)
+      && !/<main\b/.test(read('src/landing/sections/Hero.tsx'))
+      && !/<section\b/.test(landing) && !existsSync(join(here, 'src/landing/Sections.tsx')));
+  check('девять секций, в порядке истории, каждая со своим файлом и стилем',
+    JSON.stringify(rendered) === JSON.stringify(ORDER)
+      && ORDER.every((c) => existsSync(join(here, `src/landing/sections/${c}.tsx`)) && existsSync(join(here, `src/landing/sections/${c}.css`))),
+    rendered.join(' '));
+  /* У каждой секции - общая оболочка: <Section id … title …> из kit, поэтому один ритм, одна шапка и один
+   * aria-labelledby на всей странице. */
+  const ids = { LiveQa: 'qa', Verdicts: 'proof', NightShift: 'nightly', AlwaysOn: 'it', Channels: 'channels', UseCases: 'use-cases', Rails: 'trust', Faq: 'faq', FinalCall: 'join' };
+  const noShell = ORDER.filter((c) => {
+    const t = read(`src/landing/sections/${c}.tsx`);
+    return !(/from '\.\/kit'/.test(t) && new RegExp(`<Section\\b[\\s\\S]*?id="${ids[c]}"`).test(t));
+  });
+  check('каждая секция - в общей оболочке Section со своим id', noShell.length === 0, noShell.join(', '));
+  const section = read('src/landing/sections/kit/Section.tsx');
+  check('оболочка: section › aria-labelledby на свой H2, шов, шапка, сцена',
+    /<section id=\{id\} aria-labelledby=\{`\$\{id\}-title`\}/.test(section) && /id=\{`\$\{id\}-title`\}/.test(section)
+      && /hl-seam/.test(section) && /hl-stage/.test(section) && /data-loop=""/.test(section));
+  /* Форма одна как компонент: <form> есть только в WaitlistForm.tsx. Он отрисован дважды - в hero со своими
+   * id по умолчанию (на них ссылаются шапка и сборка) и в конце со своими, - и оба шлют на тот же адрес. */
+  const walk = (dir) => readdirSync(join(here, dir), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(dir + '/' + e.name) : /\.tsx$/.test(e.name) ? [dir + '/' + e.name] : []);
+  const tsx = walk('src/landing');
+  const withForm = tsx.filter((f) => /<form\b/.test(read(f)));
+  const usesForm = tsx.filter((f) => /<WaitlistForm\b/.test(read(f)));
+  const form = read('src/landing/WaitlistForm.tsx');
+  check('<form> - только в WaitlistForm; он в hero и в финале, у каждого свои id',
+    JSON.stringify(withForm) === JSON.stringify(['src/landing/WaitlistForm.tsx'])
+      && JSON.stringify(usesForm.sort()) === JSON.stringify(['src/landing/sections/FinalCall.tsx', 'src/landing/sections/Hero.tsx'])
+      && /<WaitlistForm endpoint=\{endpoint\} className="landing-wait" \/>/.test(read('src/landing/sections/Hero.tsx'))
+      && /<WaitlistForm endpoint=\{endpoint\} formId="waitlist-final" fieldId="email-final"/.test(read('src/landing/sections/FinalCall.tsx'))
+      && /formId = 'waitlist'/.test(form) && /fieldId = 'email'/.test(form) && /<form id=\{formId\} data-waitlist=""/.test(form)
+      && /const noteId = formId \+ '-note'/.test(form) && /const trapId = formId \+ '-website'/.test(form) && !/useId/.test(form),
+    show({ withForm, usesForm }));
+  /* Все прочие "Join" - ссылки, которые зовут callWaitlist: он ведёт к форме на экране, иначе - к той,
+   * что названа в href (#waitlist - hero, #join - финал). */
+  const links = tsx.flatMap((f) => [...read(f).matchAll(/<a\b[^>]*href="#(?:join|waitlist)"[^>]*>/g)].map((m) => [f, m[0]]));
+  const deaf = links.filter(([, a]) => !/onClick=\{callWaitlist\}/.test(a));
+  const call = read('src/landing/call-waitlist.ts');
+  check('каждая ссылка на форму зовёт callWaitlist, а он выбирает форму',
+    links.length >= 3 && deaf.length === 0 && /form\[data-waitlist\]/.test(call) && /export function callWaitlist/.test(call)
+      && /href="#join"/.test(read('src/landing/sections/kit/JoinCta.tsx')),
+    deaf.map(([f]) => f).join(', '));
+  /* Одно действие - одни слова: кнопка формы, ссылка в шапке, длинная подпись липкой панели и JoinCta по
+   * умолчанию говорят "Join the hive" (решение спеки; подпись над полем объясняет, что это лист ожидания). */
+  check('кнопка в шапке ведёт к форме hero и называется как кнопка формы',
+    /href="#waitlist" onClick=\{callWaitlist\} className=\{glassBtn\}>\s*Join the hive\s*</.test(read('src/landing/sections/Hero.tsx'))
+      && />\s*Join the hive\s*<\/Button>/.test(form)
+      && /landing-bar-join-long">Join the hive</.test(read('src/landing/sections/Hero.tsx'))
+      && /label = 'Join the hive'/.test(read('src/landing/sections/kit/JoinCta.tsx'))
+      && /placeholder="you@company\.com"/.test(form));
+  /* Вопросы - один массив: секция рисует его, сборка делает из него FAQPage. */
+  const faq = read('src/landing/sections/Faq.tsx');
+  check('FAQ - один массив с id, первый вопрос открыт, вопрос про вердикт на месте',
+    /export const FAQ: FaqItem\[\]/.test(faq) && (faq.match(/\bid: 'faq-/g) || []).length === 12
+      && /Does the AI decide whether my test passed\?/.test(faq) && /<details\b/.test(faq));
+}
+
+group('лендинг: форма держит контракт /api/waitlist');
+{
+  const wl = await import('./src/landing/waitlist.ts');
+  check('адрес по умолчанию - маршрут приложения, переопределяется VITE_WAITLIST_ENDPOINT',
+    wl.DEFAULT_WAITLIST_ENDPOINT === 'https://mouseflowapp.vercel.app/api/waitlist'
+      && /import\.meta\.env\.VITE_WAITLIST_ENDPOINT/.test(read('src/landing/endpoint.ts')));
+  const seen = [];
+  const stub = (status, body) => async (url, init) => {
+    seen.push({ url, init });
+    return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
+  };
+  const req = { email: 'a@b.co', website: '', ref: 'x'.repeat(500) };
+  const ok = await wl.joinWaitlist('https://api.test/w', req, stub(200, { ok: true }));
+  const sent = JSON.parse(seen[0].init.body);
+  check('POST JSON: email, website, source "landing", ref не длиннее 200',
+    seen[0].init.method === 'POST' && seen[0].init.headers['Content-Type'] === 'application/json'
+      && Object.keys(sent).sort().join() === 'email,ref,source,website'
+      && sent.source === 'landing' && sent.website === '' && sent.ref.length === 200 && seen[0].init.credentials === 'omit',
+    show(sent).slice(0, 120));
+  const outcomes = {
+    ok,
+    okFalse: await wl.joinWaitlist('u', req, stub(200, { ok: false })),
+    html: await wl.joinWaitlist('u', req, stub(200, '<html>proxy</html>')),
+    invalid: await wl.joinWaitlist('u', req, stub(400, { ok: false, error: 'invalid_email' })),
+    bad: await wl.joinWaitlist('u', req, stub(400, { ok: false, error: 'bad_request' })),
+    big: await wl.joinWaitlist('u', req, stub(413, '')),
+    rate: await wl.joinWaitlist('u', req, stub(429, { ok: false, error: 'rate_limited' })),
+    down: await wl.joinWaitlist('u', req, stub(503, '')),
+    net: await wl.joinWaitlist('u', req, async () => { throw new TypeError('offline'); }),
+  };
+  check('успех - только 2xx с ok:true; всё прочее - не успех',
+    outcomes.ok === 'ok' && outcomes.okFalse === 'failed' && outcomes.html === 'failed' && outcomes.invalid === 'invalid_email'
+      && outcomes.bad === 'failed' && outcomes.big === 'failed' && outcomes.rate === 'rate_limited'
+      && outcomes.down === 'failed' && outcomes.net === 'failed', show(outcomes));
+  check('ref - utm и только хост источника',
+    wl.refSummary('?utm_source=hn&utm_campaign=launch&x=1', 'https://news.example.com/item?id=9&token=s', 'hivelink.si')
+      === 'utm_source=hn;utm_campaign=launch;from=news.example.com'
+      && wl.refSummary('', 'https://www.hivelink.si/', 'hivelink.si') === ''
+      && wl.refSummary('?utm_source=' + 'y'.repeat(400), '', 'hivelink.si').length <= 200);
+  const form = read('src/landing/WaitlistForm.tsx');
+  check('ловушка "website", подпись, aria-live, метод POST без адреса в URL',
+    /name="website"/.test(form) && /tabIndex=\{-1\}/.test(form) && /<label htmlFor=\{emailId\}/.test(form)
+      && /aria-live="polite"/.test(form) && /method="post"/.test(form) && !/action=/.test(form));
+}
+
+group('лендинг: SEO и выкладка');
+{
+  const html = read('landing/index.html');
+  check('lang, title, description, theme-color, canonical, og и twitter',
+    /<html lang="en" class="dark">/.test(html) && /<title>Hivelink/.test(html) && /name="description"/.test(html)
+      && /name="theme-color" content="#070B14"/.test(html) && /rel="canonical" href="__SITE_URL__\/"/.test(html)
+      && /property="og:url" content="__SITE_URL__\/"/.test(html) && /property="og:image" content="__SITE_URL__\/og\.png"/.test(html)
+      && /name="twitter:card" content="summary_large_image"/.test(html));
+  const ld = JSON.parse((html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/) || ['', '{}'])[1]);
+  const types = (ld['@graph'] || []).map((n) => n['@type']).sort().join();
+  check('JSON-LD: SoftwareApplication и Organization, без оценок и цен',
+    types === 'Organization,SoftwareApplication' && !/aggregateRating|offers|review/i.test(JSON.stringify(ld)), types);
+  const site = await import('./src/landing/site-url.mjs');
+  check('SITE_URL по умолчанию hivelink.si, переопределяется окружением',
+    site.siteUrl({}) === 'https://hivelink.si' && site.siteUrl({ SITE_URL: 'https://preview.example/ ' }) === 'https://preview.example');
+  check('значок вкладки - тот же файл, что у приложения',
+    read('landing/public/favicon.svg') === read('public/favicon.svg'));
+  check('картинка для ссылок и иконка на месте',
+    existsSync(join(here, 'landing/public/og.png')) && existsSync(join(here, 'landing/public/apple-touch-icon.png')));
+  const pkg = JSON.parse(read('package.json'));
+  check('npm run build:landing и dev:landing',
+    /build-landing\.mjs/.test(pkg.scripts['build:landing'] || '') && /vite\.landing\.config\.ts/.test(pkg.scripts['dev:landing'] || ''));
+  check('dist-landing не попадает в git', /^web\/dist-landing\/$/m.test(readFileSync(join(here, '../.gitignore'), 'utf8')));
+  const readme = read('landing/README.md');
+  check('README говорит, как выкладывать', /Root Directory/.test(readme) && /build:landing/.test(readme)
+    && /dist-landing/.test(readme) && /SITE_URL/.test(readme) && /VITE_WAITLIST_ENDPOINT/.test(readme));
+}
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

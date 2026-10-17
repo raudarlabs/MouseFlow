@@ -3381,10 +3381,15 @@ group('в api/ нет ничего, что не должно быть маршр
    * раньше чтения тела. Своя дверь, а не тул в mcp.js, по той же причине, что у schedules.js и memory.js:
    * у него свой предъявитель (секрет вебхука), а одна проверка прав на три разных входа - это три мнения
    * о том, кто вы. Работу он ставит тем же queueOne, что и все: направление связи не переворачивается. */
+  /* waitlist.js - 2026-10-16, лист ожидания лендинга hivelink.si. ЕДИНСТВЕННЫЙ маршрут, которого зовут
+   * без входа и с чужого домена: подписывается тот, у кого аккаунта ещё нет. Поэтому и единственный, кому
+   * cors() пускает гостей (WAITLIST_GUESTS, api/_waitlist.mjs) - остальные маршруты hivelink.si не знают.
+   * Вместо входа его держат проверка формы, ловушка и потолок попыток на IP; всё это гоняется исполнением
+   * в api/_test-waitlist.mjs. */
   const expected = ['account.js', 'admin.js', 'artifacts.js', 'auth.js', 'cases.js', 'chat.js', 'chats.js',
     'claude.js', 'compose.js', 'docs.js', 'gallery.js', 'insights.js', 'mcp.js', 'memory.js', 'models.js',
     'oauth.js', 'params.js', 'queue.js', 'schedules.js', 'skill-md.js', 'sync.js', 'team.js',
-    'telegram.js', 'transcribe.js', 'transcript.js', 'watch.js', 'well-known.js'];
+    'telegram.js', 'transcribe.js', 'transcript.js', 'waitlist.js', 'watch.js', 'well-known.js'];
   const unexpected = routes.filter((n) => !expected.includes(n));
   check('и новых маршрутов не появилось незамеченными', unexpected.length === 0, unexpected.join(', '));
   /* И наоборот - что каждый ожидаемый на месте: список, из которого файл пропал, молча перестаёт его

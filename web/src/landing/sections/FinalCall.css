@@ -1,0 +1,407 @@
+/* 09 · EARLY ACCESS - the page's warmest moment and the bookend of the hero: one glass panel with a honey
+ * edge, the hive in miniature, the head, the form, a row of nights waiting for the first one.
+ *
+ * Reads the kit's tokens and the motion system's; redefines neither. Phone first (375-430), then 768, then
+ * 1200. Everything that moves is transform or opacity, keyed to a reveal the motion system has already
+ * fired (.is-in, never .is-instant), so the server's HTML, a page without JavaScript, ?still and reduced
+ * motion all show the finished panel: the flower assembled, the queen lit, the first night honey.
+ */
+
+/* ── SHELL ── The head is inside the panel, so the stage follows the seam directly and its reveals start
+   at 0 instead of after a head that is not above it. */
+.hl-final-stage {
+  --i-base: 0;
+  margin-top: 0;
+}
+
+/* The final panel: the kit's glass with the honey tone (the only honey edge on the page), 28 at every
+   width - it is the page's last and largest surface - and everything centred on one axis. */
+.hl-final-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  border-radius: 28px;
+  padding: 40px 20px;
+}
+
+/* Inside the panel the head group runs after the hive has started assembling: eyebrow 140, H2 210,
+   lead 280, the nights 350ms. The form itself never moves - it comes with the panel. */
+.hl-final-head,
+.hl-fc-after {
+  --i-base: 2;
+}
+
+/* ── THE PANEL'S LIGHT ── All static but the pool. Painted inside the panel's rounded box (it clips its
+   own layers, never its content), under the content and over the panel's own corner glow. */
+.hl-fc-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 30% at 0% 100%, hsl(var(--hive-ice-2) / 0.08), transparent 72%),
+    radial-gradient(60% 30% at 100% 100%, hsl(var(--hive-ice-2) / 0.08), transparent 72%);
+}
+
+/* The hero's lattice, back behind the last section only: the hive frames the page. It fades out from the
+   art, so the copy and the form sit on clean glass. */
+.hl-fc-lattice {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  -webkit-mask-image: radial-gradient(60% 30% at 50% 16%, #000 0%, transparent 100%);
+  mask-image: radial-gradient(60% 30% at 50% 16%, #000 0%, transparent 100%);
+}
+
+/* The queen's warm pool behind the art - the section's one slow breath (opacity 1 ↔ .75, 6s), paused with
+   the section's other loop when it is off screen. */
+.hl-fc-pool {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(56% 24% at 50% 13%, hsl(var(--brand-primary) / 0.1), transparent 72%);
+}
+
+html.motion .hl-fc-pool {
+  animation: hl-fc-pool 6s ease-in-out infinite;
+}
+
+@keyframes hl-fc-pool {
+  50% {
+    opacity: 0.75;
+  }
+}
+
+/* ── THE HEX FLOWER ── HexFlower.tsx stacks its layers in this box; the box is sized by its height (152,
+   176 from 768, 200 from 1200) and the flower's own aspect ratio (set inline). */
+.hl-fc-art {
+  position: relative;
+  flex: none;
+  height: 152px;
+  max-width: 100%;
+}
+
+.hl-fc-layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* The beam the queen stands in: honey light rising from her lid and fading, narrower at the top. Behind
+   her faces, in front of the cells behind her. */
+.hl-fc-beam {
+  position: absolute;
+  left: var(--qx);
+  top: calc(var(--qy) - 40%);
+  width: 34%;
+  height: 40%;
+  translate: -50% 0;
+  background: linear-gradient(0deg, hsl(var(--hive-honey) / 0.3), hsl(var(--hive-honey) / 0.07) 55%, transparent);
+  clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%);
+}
+
+/* Her halo: a soft honey light over the lid that spills a little onto the ring. */
+.hl-fc-halo {
+  position: absolute;
+  left: var(--qx);
+  top: var(--qy);
+  width: 64%;
+  height: 46%;
+  translate: -50% -50%;
+  background: radial-gradient(closest-side, hsl(var(--hive-honey) / 0.32), hsl(var(--hive-amber) / 0.12) 48%, transparent);
+}
+
+/* ENTRANCE, keyed to the panel's reveal. The six outer cells come in along their own axes from 82% of
+   their distance back out (--tx, --ty, set per cell), from .8 and transparent, clockwise from the top 60ms
+   apart; the queen settles last from .9, and then her light comes on. Animations with a backwards fill,
+   so the "from" frame holds through each delay and nothing is hidden by a static rule. */
+@keyframes hl-fc-settle {
+  from {
+    opacity: 0;
+    transform: translate3d(var(--tx), var(--ty), 0) scale(0.8);
+  }
+}
+
+@keyframes hl-fc-queen {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6%, 0) scale(0.9);
+  }
+}
+
+@keyframes hl-fc-light {
+  from {
+    opacity: 0;
+  }
+}
+
+html.motion.reveals .hl-final-panel.is-in:not(.is-instant) .hl-fc-cell {
+  animation: hl-fc-settle var(--m-reveal) var(--m-out) backwards;
+  animation-delay: calc(120ms + var(--k, 0) * 60ms);
+}
+
+html.motion.reveals .hl-final-panel.is-in:not(.is-instant) .hl-fc-cell--queen {
+  animation-name: hl-fc-queen;
+  animation-delay: 480ms;
+}
+
+html.motion.reveals .hl-final-panel.is-in:not(.is-instant) .hl-fc-beam,
+html.motion.reveals .hl-final-panel.is-in:not(.is-instant) .hl-fc-halo {
+  animation: hl-fc-light 600ms var(--m-out) 620ms backwards;
+}
+
+/* ── HEAD ── The kit's centred head, unchanged, under the art. */
+.hl-final-head {
+  margin-top: 24px;
+}
+
+/* ── THE FORM ── The hero's WaitlistForm, centred: its label and its status line sit on the panel's axis
+   with the field. The field, the button and every outcome are the hero's own, and like the hero's it has
+   no entrance of its own (a press of "Join" must never land on a field that is still fading in). */
+.hl-final-formwrap {
+  width: 100%;
+  max-width: 520px;
+  /* The page's CTA gap: 32 / 40 / 48. */
+  margin-top: var(--hl-foot-gap);
+}
+
+.hl-final-form {
+  margin: 0 auto;
+}
+
+.hl-final-form label,
+.hl-final-form [role='status'] {
+  margin-left: 0;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* When the field is too narrow for the address and the button side by side - inside the panel on most
+   phones (a 375 screen leaves the form 295px) - the button drops under the address at full width, in the
+   same glass: a thumb-wide honey button, and an address field wide enough to read what was typed. Keyed to
+   the form's own width, not the screen's, because the panel's padding is what decides it. */
+.hl-final-formwrap {
+  container-type: inline-size;
+}
+
+@container (max-width: 339px) {
+  .hl-final-form .landing-field {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    border-radius: 28px;
+  }
+  .landing .hl-final-form .landing-cta {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ── THE FIRST NIGHT ── Ten nights, the length of the product's own row, oldest on the left. Nothing has
+   run yet; the first one is honey - yours, and next. A tile, then a pill from 768. */
+.hl-fc-after {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.hl-fc-nights {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: var(--r-tile);
+  background: hsl(var(--hive-page) / 0.55);
+  border: 1px solid hsl(var(--hive-ice) / 0.08);
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.04);
+}
+
+.hl-fc-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hl-fc-dot {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+}
+
+.hl-fc-dot > *,
+.hl-fc-dot > i > * {
+  grid-area: 1 / 1;
+}
+
+.hl-fc-dot > i {
+  display: inline-grid;
+  grid-area: 1 / 1;
+}
+
+.hl-fc-dot .hl-hexdot {
+  display: block;
+}
+
+/* The honey fill over the first hollow dot, with the live dot's glow. It breathes on the page's loop. */
+.hl-fc-dot-fill .hl-hexdot {
+  filter: drop-shadow(0 0 4px hsl(var(--brand-primary) / 0.75));
+}
+
+html.motion .hl-fc-dot-fill {
+  animation: hl-breathe var(--m-loop) ease-in-out infinite;
+}
+
+/* The one ring pulse when the first night lights: a honey hex outline growing out of it and gone. A
+   decoration that exists only for that moment, so at rest it is not there. */
+.hl-fc-dot-ring {
+  opacity: 0;
+}
+
+.hl-fc-dot-ring .hl-hexdot {
+  color: hsl(var(--brand-primary));
+}
+
+.hl-fc-caption {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--ink-secondary));
+  white-space: nowrap;
+}
+
+.hl-fc-caption b {
+  font-weight: 500;
+  color: hsl(var(--ink-primary));
+}
+
+/* ENTRANCE, keyed to the row's own reveal (which starts at 350ms, the head group's last step): as the row
+   settles, the ten hollow dots arrive left to right (scale .4 → 1, 40ms apart, a mark under 24px so it may
+   pop), then the first one fills honey with one ring pulse, and from there breathes. Timed from the row's
+   reveal, not the panel's, so it reads the same whether the row arrives with the panel (a tall screen) or
+   a scroll later (a phone, where it sits a screen below the art). Without the reveal (on screen at load,
+   reduced motion, no script) it is simply lit. */
+@keyframes hl-fc-dot-in {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+@keyframes hl-fc-fill {
+  from {
+    opacity: 0;
+  }
+}
+
+html.motion.reveals .hl-fc-after.is-in:not(.is-instant) .hl-fc-dot {
+  animation: hl-fc-dot-in var(--m-base) var(--m-pop) backwards;
+  animation-delay: calc(560ms + var(--d, 0) * 40ms);
+}
+
+html.motion.reveals .hl-fc-after.is-in:not(.is-instant) .hl-fc-dot-fill {
+  animation:
+    hl-fc-fill var(--m-base) var(--m-out) 1040ms backwards,
+    hl-breathe var(--m-loop) ease-in-out 1320ms infinite;
+}
+
+html.motion.reveals .hl-fc-after.is-in:not(.is-instant) .hl-fc-dot-ring {
+  animation: hl-pulse var(--m-pulse) var(--m-out) 1040ms;
+}
+
+/* ── TRUST LINE ── What it runs on and how work reaches it, in the hero's OS-line voice. Each part keeps
+   its words together behind its own hex, so a line breaks only between parts; the hex sits closer to its
+   words (8) than the parts sit to each other (16), so the eye groups them right. */
+.hl-fc-trust {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 16px;
+  max-width: 34em;
+  margin: 0;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.9;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+.hl-fc-trust span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.hl-fc-trust i {
+  width: 6px;
+  height: 7px;
+  flex: none;
+  background: hsl(var(--hive-ice-2) / 0.5);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+/* ── 768 ── */
+@media (min-width: 768px) {
+  .hl-final-panel {
+    padding: 56px 40px;
+  }
+  .hl-final-head {
+    margin-top: 32px;
+  }
+  .hl-fc-art {
+    height: 176px;
+  }
+  .hl-fc-after {
+    gap: 24px;
+    margin-top: 32px;
+  }
+  .hl-fc-trust {
+    max-width: none;
+  }
+  /* The row and its caption on one line, in a pill, with a hairline between them. */
+  .hl-fc-nights {
+    flex-direction: row;
+    gap: 16px;
+    padding: 10px 20px;
+    border-radius: var(--r-pill);
+  }
+  .hl-fc-caption {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .hl-fc-caption::before {
+    content: '';
+    width: 1px;
+    height: 14px;
+    background: hsl(var(--hive-ice) / 0.14);
+  }
+}
+
+/* ── 1200 ── */
+@media (min-width: 1200px) {
+  .hl-final-panel {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 64px;
+  }
+  .hl-fc-art {
+    height: 200px;
+  }
+  .hl-fc-caption,
+  .hl-fc-trust {
+    font-size: 12px;
+  }
+}

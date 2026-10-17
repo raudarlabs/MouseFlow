@@ -1,0 +1,1726 @@
+/* 04 · For IT - this section's stage. Reads the kit's tokens (var(--hl-gap), var(--r-tile), var(--m-out) …)
+ * and never redefines them; the few local values below are named --it-* and say why they exist.
+ *
+ * Phone first (375-430), then 768 (Devices across the width, the two cards side by side, points 2×2) and
+ * 1200 (12 columns: Devices 1-7, the cards 8-12 stretched to its height, four points in a row).
+ *
+ * Everything that hides something mid-demo is written under `html.motion [data-run]`, so the server's HTML,
+ * reduced motion and ?still show the final frame. Only transform and opacity move; colour changes are
+ * crossfades between stacked layers.
+ */
+
+/* ── THE GRID ─────────────────────────────────────────────────────────────────────────────────────── */
+.it-grid {
+  display: grid;
+  gap: var(--hl-gap);
+}
+
+.it-grid > *,
+.it-side > * {
+  min-width: 0;
+}
+
+.it-side {
+  display: grid;
+  gap: var(--hl-gap);
+}
+
+/* The parts fill whatever height their grid cell gives them, so the cards beside Devices end where it
+   ends. A figure's caption stays under its card. */
+.it-main,
+.it-side-a,
+.it-side-b,
+.it-devices,
+.it-enrol-fig,
+.it-switch-fig {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.it-devices,
+.it-enrol-fig,
+.it-switch-fig,
+.it-dev,
+.it-enrol,
+.it-switch {
+  flex: 1 1 auto;
+}
+
+@media (min-width: 768px) {
+  .it-side {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  }
+}
+
+/* From 1200 the stage is a bento in two rows that mirror each other: Devices (1-7) beside the install card
+   (8-12), then the switch (1-5) beside the four points (6-12). Two stacked cards beside Devices would
+   stand far taller than it and leave it an empty field; this way each row's two halves end together. */
+@media (min-width: 1200px) {
+  .it-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+  .it-side {
+    display: contents;
+  }
+  .it-main {
+    grid-column: 1 / 8;
+    grid-row: 1;
+  }
+  .it-side-a {
+    grid-column: 8 / 13;
+    grid-row: 1;
+  }
+  .it-side-b {
+    grid-column: 1 / 6;
+    grid-row: 2;
+  }
+}
+
+/* Small shared type: the cards' H3 and the line under it. */
+.landing .it-h3 {
+  font-size: 19px;
+}
+
+.it-sub {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  text-wrap: pretty;
+  color: hsl(var(--ink-secondary));
+}
+
+@media (min-width: 1200px) {
+  .landing .it-h3 {
+    font-size: 21px;
+  }
+}
+
+/* ── DEVICES ──────────────────────────────────────────────────────────────────────────────────────── */
+.it-dev {
+  display: flex;
+  flex-direction: column;
+  /* Paint containment for the demo: nothing inside it can make the page re-lay out. */
+  contain: layout paint;
+}
+
+.it-dev-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+@media (min-width: 768px) {
+  .it-dev-body {
+    padding: 20px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .it-dev-body {
+    padding: 24px;
+    gap: 20px;
+  }
+}
+
+/* The composer: "Give a command", the goal in words, and the button that sends it. */
+.it-cmp {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.it-cmp-top {
+  display: grid;
+  gap: 10px;
+}
+
+.it-cmp-label {
+  font-family: theme('fontFamily.display');
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: hsl(var(--ink-primary));
+}
+
+/* The segmented pill - decorative here, as every control inside a mock. */
+.it-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 36px;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.12);
+  background: hsl(var(--hive-page) / 0.55);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.it-seg > span {
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+  color: hsl(var(--ink-inactive));
+}
+
+.it-seg > .it-seg-on {
+  color: hsl(var(--ink-primary));
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.13), hsl(var(--hive-frost) / 0.05));
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.1),
+    0 0 0 1px hsl(var(--hive-ice) / 0.14);
+}
+
+.it-cmp-row {
+  display: grid;
+  gap: 10px;
+}
+
+/* The goal field: the placeholder and the typed goal share one cell, so typing never moves anything. */
+.it-field {
+  display: grid;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: var(--r-chip);
+  border: 1px solid hsl(var(--hive-ice-2) / 0.28);
+  background: hsl(var(--hive-page) / 0.7);
+  box-shadow: 0 0 0 3px hsl(var(--hive-ice-2) / 0.06);
+  font-size: 14px;
+  line-height: 1.5;
+  color: hsl(var(--ink-primary));
+}
+
+.it-field > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.it-field-ph {
+  color: hsl(var(--ink-inactive));
+}
+
+/* "Send to 4 machines": an ice glass pill - honey is only for a button the reader can press. */
+.it-send {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice-2) / 0.34);
+  background: linear-gradient(180deg, hsl(var(--hive-ice-2) / 0.2), hsl(var(--hive-ice-2) / 0.1));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.16);
+  font-family: theme('fontFamily.display');
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  color: hsl(var(--ink-primary));
+}
+
+.it-send svg {
+  width: 15px;
+  height: 15px;
+  color: hsl(var(--hive-ice-2));
+}
+
+/* The press is the kit's .hl-press - the same .97 and ice flash as 05's buttons. */
+
+/* "To": the machines ticked in the list, as the button counts them. */
+.it-to {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.it-to-label {
+  margin-right: 4px;
+  font-family: theme('fontFamily.mono');
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+.it-to-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 9px 2px 8px;
+  border-radius: var(--r-chip);
+  border: 1px solid hsl(var(--hive-ice) / 0.12);
+  background: hsl(var(--hive-frost) / 0.04);
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+}
+
+@media (min-width: 768px) {
+  .it-cmp {
+    padding: 14px;
+    gap: 12px;
+  }
+  .it-cmp-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+  .it-seg {
+    height: 32px;
+    font-size: 12.5px;
+  }
+  .it-cmp-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+  }
+}
+
+/* The table. Phones: each machine is a row of its own - status hex, name with its platform and status, and
+   under them what it is doing now. From 768: a 4-column table, Machine · Platform · Status · Now. */
+/* The table takes whatever height the panel has to give (beside the two cards from 1200) and shares it
+   between the rows, so the panel never ends in an empty field. */
+.it-table {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.it-rows {
+  flex: 1 1 auto;
+  display: grid;
+  /* Auto rows: spare height is shared out evenly on top of each row's own, never equalised to the
+     tallest row. */
+  align-content: stretch;
+}
+
+.it-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'hex id id'
+    '. now act';
+  column-gap: 12px;
+  row-gap: 8px;
+  align-items: center;
+  padding: 12px 2px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.07);
+}
+
+.it-rows > .it-row:first-child {
+  border-top: 0;
+}
+
+/* The row's hover light: a layer that fades in, never a colour that animates. */
+.it-row::before {
+  content: '';
+  position: absolute;
+  inset: 2px -8px;
+  border-radius: 12px;
+  background: hsl(var(--hive-frost) / 0.04);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--m-fast) var(--m-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .it-rows > .it-row:hover::before {
+    opacity: 1;
+  }
+}
+
+.it-row--head {
+  display: none;
+}
+
+.it-row-hex {
+  grid-area: hex;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 14px;
+}
+
+/* The online hex's slow ring: a soft green halo breathing (opacity only), paused off screen. */
+.it-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, hsl(var(--fb-green) / 0.45), transparent);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.it-row-id {
+  grid-area: id;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  min-width: 0;
+}
+
+.it-row-name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.005em;
+  color: hsl(var(--ink-primary));
+}
+
+/* The agent's version, as Devices reports it - from 768, under the name; an old one wears "update". */
+.it-row-ver {
+  display: none;
+}
+
+.it-row-upd {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 5px;
+  border: 1px solid hsl(var(--hive-steel) / 0.5);
+  background: hsl(var(--hive-steel) / 0.2);
+  font-size: 10px;
+  line-height: 15px;
+  color: hsl(var(--ink-primary));
+}
+
+.it-row-meta {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: hsl(var(--ink-inactive));
+}
+
+.it-row--paused .it-row-stat,
+.it-row--offline .it-row-stat {
+  color: hsl(var(--ink-secondary));
+}
+
+.it-row--offline .it-row-name {
+  color: hsl(var(--ink-secondary));
+}
+
+.it-row-now {
+  grid-area: now;
+  min-width: 0;
+}
+
+.it-row-act {
+  grid-area: act;
+  display: inline-flex;
+}
+
+.it-stop {
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+
+.it-quiet {
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  line-height: 24px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* The "Now" cell: every state the row goes through, stacked in one grid cell. At rest only the last - the
+   final frame - shows; while the demo runs, the layer whose time it is. */
+.it-now {
+  display: grid;
+  justify-items: start;
+  align-items: center;
+  min-width: 0;
+}
+
+.it-now > .it-l {
+  grid-area: 1 / 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.it-now > .it-l:not(:last-child) {
+  opacity: 0;
+}
+
+html.motion [data-run] .it-now > .it-l {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    transform var(--m-base) var(--m-out);
+}
+
+html.motion [data-run] .it-now > .it-l:not(.cue-on),
+html.motion [data-run] .it-now > .it-l.cue-out {
+  opacity: 0;
+  transition-duration: var(--m-exit);
+  transition-timing-function: var(--m-in);
+}
+
+/* The state arriving waits for the one leaving (--m-exit), so two labels never sit on top of each other. */
+html.motion [data-run] .it-now > .it-l.cue-on:not(.cue-out) {
+  opacity: 1;
+  transition-delay: var(--m-exit);
+}
+
+/* The job arrives from the composer's side: 12px from the left. */
+html.motion [data-run] .it-now > .it-l-job:not(.cue-on) {
+  transform: translate3d(-12px, 0, 0);
+}
+
+.it-job {
+  gap: 5px;
+}
+
+.it-jobglyph {
+  width: 11px;
+  height: 12px;
+  color: hsl(var(--hive-ice-2));
+}
+
+/* Running: the honey chip, and under it a thin indeterminate bar - a 30% strip crossing a clipped track. */
+.it-run {
+  display: grid;
+  gap: 7px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.it-run-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.it-run-test {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-body));
+}
+
+/* The three command runs light a static honey dot; only the busy QA VM's dot breathes. */
+.it-run-chip--still .hl-live {
+  animation: none;
+}
+
+.it-bar {
+  position: relative;
+  display: block;
+  width: 128px;
+  max-width: 100%;
+  height: 2px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: hsl(var(--hive-ice) / 0.1);
+}
+
+.it-bar > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 30%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, hsl(var(--brand-primary) / 0), hsl(var(--brand-primary)) 50%, hsl(var(--brand-primary) / 0));
+  transform: translate3d(120%, 0, 0);
+}
+
+/* A command's run: the bar hangs under the chip without taking height, so the row is only as tall as its
+   result will be. */
+.it-l-run .it-run {
+  position: relative;
+}
+
+.it-l-run .it-bar {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+}
+
+html.motion [data-run] .it-row--busy .it-bar > i,
+html.motion [data-run] .it-l-run.cue-on:not(.cue-out) .it-bar > i {
+  animation: it-indet 1.2s linear infinite;
+}
+
+@keyframes it-indet {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(334%, 0, 0);
+  }
+}
+
+/* A result: the chip pops (it is a mark), the reason under it rises into the space kept for it. */
+.it-res {
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+  min-width: 0;
+}
+
+.it-res-chip {
+  display: inline-flex;
+  max-width: 100%;
+  transform-origin: 0 50%;
+}
+
+.it-reason {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-secondary));
+  overflow-wrap: anywhere;
+}
+
+.it-reason--fail {
+  color: hsl(var(--fb-red-text) / 0.92);
+}
+
+/* The summary closes the panel, at its foot. */
+.it-sum {
+  margin-top: auto;
+  display: grid;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.it-sum-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.it-sum-counts > span {
+  display: inline-flex;
+  transform-origin: 0 50%;
+}
+
+.it-sum-note {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: hsl(var(--ink-secondary));
+}
+
+@media (min-width: 768px) {
+  .it-row {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 2.1fr) 52px;
+    grid-template-areas: none;
+    column-gap: 16px;
+    min-height: 52px;
+    padding: 10px 8px;
+  }
+  .it-row::before {
+    inset: 2px 0;
+  }
+  .it-row--head {
+    display: grid;
+    min-height: 0;
+    padding-top: 0;
+    padding-bottom: 10px;
+    border-top: 0;
+    border-bottom: 1px solid hsl(var(--hive-ice) / 0.08);
+  }
+  .it-row--head::before {
+    content: none;
+  }
+  .it-th {
+    font-family: theme('fontFamily.mono');
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: hsl(var(--ink-inactive));
+  }
+  /* The id and meta wrappers step aside: name, platform and status become the table's own cells, and the
+     status hex moves into the Status cell beside its word. */
+  .it-row-id,
+  .it-row-meta {
+    display: contents;
+  }
+  .it-row-sep {
+    display: none;
+  }
+  .it-row-name {
+    grid-column: 1;
+    grid-row: 1;
+    font-size: 14.5px;
+  }
+  .it-row-ver {
+    display: flex;
+    align-items: center;
+    margin-top: 2px;
+    font-family: theme('fontFamily.mono');
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: hsl(var(--ink-inactive));
+  }
+  .it-row-plat {
+    grid-column: 2;
+    grid-row: 1;
+    font-family: theme('fontFamily.sans');
+    font-size: 13.5px;
+    white-space: normal;
+    color: hsl(var(--ink-secondary));
+  }
+  .it-row-hex {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: start;
+  }
+  .it-row-stat {
+    grid-column: 3;
+    grid-row: 1;
+    padding-left: 20px;
+    font-size: 12px;
+    color: hsl(var(--ink-body));
+  }
+  .it-row-now {
+    grid-column: 4;
+    grid-row: 1;
+  }
+  .it-row-act {
+    grid-column: 5;
+    grid-row: 1;
+    justify-self: end;
+  }
+  .it-sum {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+  }
+}
+
+/* ── ADD MACHINES ─────────────────────────────────────────────────────────────────────────────────── */
+.it-enrol {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: var(--hl-pad);
+  contain: layout paint;
+}
+
+.it-enrol-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.it-enrol-titles {
+  min-width: 0;
+}
+
+/* The code, set like a licence key: each group in its own inner tile. */
+.it-code {
+  margin: 2px 0 0;
+}
+
+.it-code-groups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 8px;
+}
+
+.it-code-part {
+  display: inline-flex;
+  align-items: center;
+}
+
+.it-code-dash {
+  width: 18px;
+  text-align: center;
+  font-style: normal;
+  font-family: theme('fontFamily.mono');
+  font-size: 16px;
+  color: hsl(var(--ink-inactive));
+}
+
+.it-code-g {
+  display: inline-grid;
+  place-items: center;
+  min-height: 44px;
+  padding: 0 10px 0 12px;
+  border-radius: var(--r-chip);
+  font-family: theme('fontFamily.mono');
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: hsl(var(--ink-primary));
+}
+
+.it-meta {
+  margin: -4px 0 0;
+  text-wrap: pretty;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: hsl(var(--ink-inactive));
+}
+
+/* PowerShell | Terminal: a real tablist. The thumb slides between the two (transform, --m-inout). Without a
+   script it is not shown - both platforms are on the page. */
+.it-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.12);
+  background: hsl(var(--hive-page) / 0.55);
+}
+
+.it-tabs:not([data-enhanced]) {
+  display: none;
+}
+
+.it-tabs-thumb {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 3px;
+  width: calc(50% - 3px);
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.13), hsl(var(--hive-frost) / 0.05));
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.1),
+    0 0 0 1px hsl(var(--hive-ice) / 0.16);
+  pointer-events: none;
+}
+
+.it-tabs[data-at='mac'] .it-tabs-thumb {
+  transform: translate3d(100%, 0, 0);
+}
+
+html.motion .it-tabs-thumb {
+  transition: transform var(--m-base) var(--m-inout);
+}
+
+.landing .it-tab {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 36px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: hsl(var(--ink-secondary));
+  transition: none;
+}
+
+/* 44px to the finger around a 36px segment. */
+.landing .it-tab::before {
+  content: '';
+  position: absolute;
+  inset: -4px 0;
+}
+
+.landing .it-tab:hover,
+.landing .it-tab[aria-selected='true'] {
+  background: transparent;
+  color: hsl(var(--ink-primary));
+}
+
+.landing .it-tab:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+/* The panes, enhanced: the chosen platform's crossfades in (the kit hides the other). */
+html.motion .it-panes[data-enhanced] > [data-current],
+html.motion .it-sw-panes[data-enhanced] > [data-current] {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    visibility 0s;
+}
+
+.it-pane {
+  gap: 12px;
+  min-width: 0;
+  border-radius: var(--r-tile);
+}
+
+.it-panes:not([data-enhanced]) {
+  display: grid;
+  gap: 24px;
+}
+
+.it-cmd {
+  margin: 0;
+  padding: 12px 14px;
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: hsl(var(--ink-primary));
+  overflow-wrap: anywhere;
+}
+
+.it-cmd-prompt {
+  color: hsl(var(--hive-ice-2));
+  user-select: none;
+}
+
+/* The typing's screen-reader copy is not selectable, so a selection copies the command once. */
+.it-cmd .sr-only {
+  user-select: none;
+}
+
+/* The console grows into whatever height the card is given (beside Devices from 1200), so the spare room
+   is a terminal's own empty space rather than a gap floating between two tiles. */
+.it-console {
+  flex: 1 1 auto;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px 14px 14px;
+}
+
+/* The poll line: machine → hive. Dots only ever cross outward; at rest a static arrow says so. */
+.it-poll {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  column-gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.it-poll-end {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+}
+
+.it-poll-machine {
+  border-radius: 8px;
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  background: hsl(var(--hive-frost) / 0.04);
+  color: hsl(var(--ink-secondary));
+}
+
+.it-poll-machine svg {
+  width: 15px;
+  height: 15px;
+}
+
+.it-poll-mark {
+  width: 28px;
+  height: 28px;
+}
+
+.it-poll-mid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  min-width: 0;
+}
+
+.it-poll-track {
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+}
+
+.it-poll-line {
+  position: absolute;
+  left: 0;
+  right: 4px;
+  top: 50%;
+  height: 1px;
+  background: linear-gradient(90deg, hsl(var(--hive-ice) / 0.14), hsl(var(--hive-ice-2) / 0.55));
+}
+
+/* A dot rides a full-width wrapper translated -100% → 0, so it crosses the whole track at any width. */
+.it-poll-run {
+  position: absolute;
+  inset: 0 6px 0 0;
+}
+
+.it-poll-run > i {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin-top: -2px;
+  border-radius: 50%;
+  background: hsl(var(--hive-ice-2));
+  box-shadow: 0 0 6px hsl(var(--hive-ice-2) / 0.8);
+}
+
+html.motion [data-run] .it-poll-run.cue-on {
+  animation: it-poll 1400ms var(--m-inout) both;
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+@keyframes it-poll {
+  0% {
+    opacity: 0;
+    transform: translate3d(-100%, 0, 0);
+  }
+  14%,
+  86% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.it-poll-arrow {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 7px;
+  height: 9px;
+  margin-top: -4.5px;
+  color: hsl(var(--hive-ice-2));
+}
+
+.it-poll-say {
+  display: grid;
+  justify-items: center;
+  font-family: theme('fontFamily.mono');
+  font-size: 10.5px;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-wrap: balance;
+  color: hsl(var(--ink-inactive));
+}
+
+.it-poll-say > * {
+  grid-area: 1 / 1;
+}
+
+/* Switched off on the machine: the dots stop at once, the line dims, the words say why. */
+.it-poll-off,
+.it-enrol[data-taking='off'] .it-poll-on {
+  opacity: 0;
+}
+
+.it-enrol[data-taking='off'] .it-poll-off {
+  opacity: 1;
+}
+
+.it-enrol[data-taking='off'] .it-poll-run {
+  visibility: hidden;
+}
+
+.it-poll-line,
+.it-poll-arrow,
+.it-poll-mark {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.it-enrol[data-taking='off'] .it-poll-line,
+.it-enrol[data-taking='off'] .it-poll-arrow {
+  opacity: 0.25;
+}
+
+.it-enrol[data-taking='off'] .it-poll-mark {
+  opacity: 0.45;
+}
+
+/* The log: no clock column - an install's lines are moments, not times. */
+.it-log .hl-log {
+  grid-template-columns: 12px minmax(0, 1fr);
+}
+
+.it-log .hl-log-t {
+  display: none;
+}
+
+.it-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+.it-panes {
+  flex: 1 1 auto;
+}
+
+/* The new machine's row in Devices closes the card, at its foot. */
+.it-joined {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.it-joined-label {
+  font-family: theme('fontFamily.mono');
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+.it-joined-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  min-height: 56px;
+  padding: 8px 12px 8px 14px;
+}
+
+.it-joined-id {
+  display: grid;
+  min-width: 0;
+}
+
+.it-joined-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: hsl(var(--ink-primary));
+  overflow-wrap: anywhere;
+}
+
+.it-joined-os {
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: hsl(var(--ink-inactive));
+}
+
+.it-joined-state {
+  display: inline-flex;
+  transform-origin: 100% 50%;
+}
+
+.it-joined-hex,
+.it-joined-x {
+  position: relative;
+  display: inline-grid;
+  justify-items: center;
+  align-items: center;
+}
+
+/* The new machine's ring is the Devices rows' own; switched off, it goes out with the green. */
+.it-enrol[data-taking='off'] .it-joined-hex > .it-ring {
+  visibility: hidden;
+}
+
+.it-joined-x {
+  justify-items: end;
+}
+
+.it-joined-hex > *,
+.it-joined-x > * {
+  grid-area: 1 / 1;
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.it-joined-hex > :nth-child(2),
+.it-joined-off,
+.it-enrol[data-taking='off'] .it-joined-hex > :first-child,
+.it-enrol[data-taking='off'] .it-joined-on {
+  opacity: 0;
+}
+
+.it-enrol[data-taking='off'] .it-joined-hex > :nth-child(2),
+.it-enrol[data-taking='off'] .it-joined-off {
+  opacity: 1;
+}
+
+@media (min-width: 768px) {
+  .it-code-g {
+    font-size: 20px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .it-enrol {
+    gap: 18px;
+  }
+  .it-pane {
+    gap: 14px;
+  }
+  .it-console {
+    gap: 14px;
+    padding: 14px 16px 16px;
+  }
+  .it-log {
+    gap: 8px;
+  }
+  .landing .it-tab {
+    height: 38px;
+  }
+  .it-code-g {
+    min-height: 52px;
+    font-size: 23px;
+    padding: 0 12px 0 15px;
+  }
+  .it-code-dash {
+    width: 22px;
+  }
+}
+
+/* ── THE SWITCH ───────────────────────────────────────────────────────────────────────────────────── */
+.it-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: var(--hl-pad);
+}
+
+.it-sw-panes {
+  flex: 1 1 auto;
+}
+
+.it-sw-panes:not([data-enhanced]) {
+  display: grid;
+  gap: 16px;
+}
+
+.it-sw-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* A corner of the machine's screen: a quiet desktop, the agent's menu open over it. */
+.it-scr {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: 176px;
+  border-radius: var(--r-tile);
+  border: 1px solid hsl(var(--hive-ice) / 0.08);
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 85% 100%, hsl(var(--hive-ice-2) / 0.1), transparent 60%),
+    radial-gradient(80% 70% at 0% 0%, hsl(var(--hive-steel) / 0.22), transparent 70%),
+    hsl(var(--hive-page) / 0.7);
+}
+
+.it-scr--mac {
+  justify-content: flex-start;
+}
+
+/* The bars answer to the screen's own width (a size container), not the page's: in the narrow column at
+   768 the taskbar keeps two app tiles instead of four, so the clock is never cut. */
+.it-scr {
+  container-type: inline-size;
+}
+
+@container (max-width: 320px) {
+  .it-sys-apps > i:nth-child(n + 3) {
+    display: none;
+  }
+  .it-sys {
+    gap: 8px;
+  }
+}
+
+.it-scr-lattice {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  stroke: hsl(var(--hive-ice) / 0.05);
+  pointer-events: none;
+}
+
+.it-scr > :not(.it-scr-lattice) {
+  position: relative;
+}
+
+.it-menu {
+  align-self: flex-end;
+  display: grid;
+  gap: 2px;
+  width: calc(100% - 24px);
+  max-width: 360px;
+  margin: 12px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  background: linear-gradient(180deg, hsl(var(--surface-chips) / 0.96), hsl(var(--surface-card) / 0.96));
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.08),
+    0 18px 40px -18px hsl(var(--hive-shade) / 0.95);
+}
+
+.it-menu--mac {
+  margin-top: 6px;
+}
+
+.it-menu-h {
+  padding: 6px 10px 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--ink-inactive));
+}
+
+.it-menu-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: hsl(var(--hive-ice) / 0.1);
+}
+
+.it-menu-q {
+  padding: 6px 10px 6px 34px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: hsl(var(--ink-secondary));
+}
+
+/* The one real control in the mock: the design system's Button, in the menu's own shape. Highlighted as
+   the item under the pointer, by a layer; pressed scales to .97. */
+.landing .it-menu-item {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  white-space: normal;
+  text-align: left;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: hsl(var(--ink-primary));
+  transition: none;
+}
+
+.landing .it-menu-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: hsl(var(--hive-ice-2) / 0.13);
+  box-shadow: inset 0 0 0 1px hsl(var(--hive-ice-2) / 0.22);
+}
+
+.landing .it-menu-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: hsl(var(--hive-ice-2) / 0.1);
+  opacity: 0;
+  transition: opacity var(--m-fast) var(--m-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .landing .it-menu-item:hover {
+    background: transparent;
+  }
+  .landing .it-menu-item:hover::after {
+    opacity: 1;
+  }
+}
+
+html.motion .landing .it-menu-item {
+  transition: transform var(--m-fast) var(--m-out);
+}
+
+.landing .it-menu-item:active {
+  transform: scale(0.97);
+}
+
+.landing .it-menu-item:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.landing .it-menu-item > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+}
+
+.it-menu-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+}
+
+.it-menu-check {
+  font-size: 13px;
+  line-height: 1;
+  color: hsl(var(--ink-primary));
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.it-switch[data-taking='off'] .it-menu-check {
+  opacity: 0;
+}
+
+.it-menu-x {
+  min-width: 0;
+}
+
+/* Windows says the state in the item's own words: the two lines swap vertically. */
+.it-menu-x--swap {
+  display: grid;
+  overflow: hidden;
+}
+
+.it-menu-x--swap > * {
+  grid-area: 1 / 1;
+}
+
+.it-switch[data-taking='on'] .it-menu-off,
+.it-switch[data-taking='off'] .it-menu-on {
+  opacity: 0;
+}
+
+html.motion .it-menu-on,
+html.motion .it-menu-off {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    transform var(--m-base) var(--m-inout);
+}
+
+html.motion .it-switch[data-taking='on'] .it-menu-off {
+  transform: translate3d(0, 100%, 0);
+}
+
+html.motion .it-switch[data-taking='off'] .it-menu-on {
+  transform: translate3d(0, -100%, 0);
+}
+
+/* With reduced motion: an instant swap, at most a short crossfade. */
+html:not(.motion) .it-menu-on,
+html:not(.motion) .it-menu-off,
+html:not(.motion) .it-agent > * {
+  transition: opacity 120ms linear;
+}
+
+/* The agent's icon, green while it takes work, dim when it does not: two hexes, crossfaded. */
+.it-agent {
+  display: inline-grid;
+  place-items: center;
+}
+
+.it-agent > * {
+  grid-area: 1 / 1;
+}
+
+html.motion .it-agent > * {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.it-switch[data-taking='on'] .it-agent > :last-child,
+.it-switch[data-taking='off'] .it-agent > :first-child {
+  opacity: 0;
+}
+
+/* The taskbar (Windows) and the menu bar (macOS). */
+.it-sysbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: hsl(var(--hive-page) / 0.82);
+}
+
+.it-sysbar--ps {
+  height: 40px;
+  padding: 0 10px 0 12px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.it-sysbar--mac {
+  height: 28px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.it-sys-apps {
+  display: flex;
+  gap: 6px;
+}
+
+.it-sys-apps > i {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: hsl(var(--hive-frost) / 0.08);
+  border: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.it-sysbar--mac .it-sys-apps > i {
+  width: 26px;
+  height: 6px;
+  border-radius: 3px;
+  border: 0;
+}
+
+.it-sysbar--mac .it-sys-apps > i:first-child {
+  width: 12px;
+  background: hsl(var(--hive-frost) / 0.2);
+}
+
+.it-sys {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: hsl(var(--ink-secondary));
+}
+
+.it-sys svg {
+  width: 13px;
+  height: 13px;
+}
+
+.it-sys-agent {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 22px;
+  border-radius: 6px;
+  background: hsl(var(--hive-frost) / 0.1);
+  box-shadow: inset 0 0 0 1px hsl(var(--hive-ice) / 0.12);
+}
+
+.it-sysbar--mac .it-sys-agent {
+  height: 20px;
+}
+
+.it-sys-clock {
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  color: hsl(var(--ink-body));
+}
+
+/* What the switch did, said after the reader's choice (a polite status region). The longest line holds
+   the height underneath, invisible. */
+.it-sw-line {
+  display: grid;
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: hsl(var(--ink-body));
+}
+
+.it-sw-line > * {
+  grid-area: 1 / 1;
+}
+
+.it-sw-ghost {
+  visibility: hidden;
+}
+
+.it-sw-msg,
+.it-sw-ghost {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+}
+
+.it-sw-msg > svg,
+.it-sw-ghost > svg {
+  margin-top: 5px;
+}
+
+html.motion .it-sw-msg[data-fresh] {
+  animation: it-rise var(--m-base) var(--m-out) both;
+}
+
+@keyframes it-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, var(--m-rise-sm), 0);
+  }
+}
+
+@media (min-width: 768px) {
+  .it-scr {
+    min-height: 0;
+  }
+}
+
+/* ── THE POINTS ───────────────────────────────────────────────────────────────────────────────────── */
+.it-points {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  display: grid;
+}
+
+.it-point {
+  display: grid;
+  align-content: start;
+  grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: 16px;
+  align-items: start;
+  padding: 20px 0;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.it-cell {
+  width: 44px;
+  height: 44px;
+  margin-top: -6px;
+  overflow: visible;
+}
+
+.landing .it-point-h {
+  font-size: 17px;
+}
+
+.landing .it-point-p {
+  margin-top: 6px;
+  font-size: 15px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html.motion .it-point {
+    transition: translate var(--m-fast) var(--m-out);
+  }
+  html.motion .it-glyph {
+    transition: transform var(--m-fast) var(--m-out);
+  }
+  html.motion .it-point:hover {
+    translate: 0 -3px;
+  }
+  html.motion .it-point:hover .it-glyph {
+    transform: translate3d(0, -2.6px, 0);
+  }
+}
+
+@media (min-width: 768px) {
+  .it-points {
+    margin-top: 32px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .it-points {
+    grid-column: 6 / 13;
+    grid-row: 2;
+    align-self: start;
+    margin: 0;
+    padding-left: 24px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+  .it-point {
+    grid-template-columns: 56px minmax(0, 1fr);
+    column-gap: 18px;
+    padding: 28px 0 32px;
+  }
+  .it-points > .it-point:nth-child(-n + 2) {
+    padding-top: 4px;
+    border-top: 0;
+  }
+  .it-cell {
+    width: 56px;
+    height: 56px;
+    margin: -8px 0 0;
+  }
+  .landing .it-point-h {
+    font-size: 19px;
+  }
+}
+
+/* ── THE FINE PRINT ───────────────────────────────────────────────────────────────────────────────── */
+.it-fine {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 20px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+  font-family: theme('fontFamily.mono');
+  font-size: 12px;
+  line-height: 1.6;
+  color: hsl(var(--ink-inactive));
+}
+
+.it-fine-label {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-secondary));
+}
+
+.it-fine-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.it-fine-list li {
+  display: grid;
+  grid-template-columns: 7px minmax(0, 1fr);
+  column-gap: 12px;
+}
+
+.it-fine-list i {
+  width: 7px;
+  height: 8px;
+  margin-top: 0.5em;
+  background: hsl(var(--hive-steel) / 0.8);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+
+@media (min-width: 768px) {
+  .it-fine-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 32px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .it-fine {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    grid-template-columns: 160px minmax(0, 1fr);
+    column-gap: 24px;
+    margin-top: 32px;
+  }
+  .it-fine-label {
+    padding-top: 1px;
+  }
+}

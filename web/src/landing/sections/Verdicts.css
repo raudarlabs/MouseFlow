@@ -1,0 +1,1132 @@
+/* 02 · Proof, not opinion - this section's stage: the verdict console (the row of nights, the three nights as
+ * tabs, one sheet per night), the two-questions card under it and the four rules beside it. Reads the kit's
+ * tokens (var(--hl-gap), var(--r-tile), var(--m-out) …) and never redefines them; the lines, chips, frames
+ * and the glass are the kit's, and this file only lays out what is 02's own.
+ *
+ * Phone first: everything is the 375-430px layout, then 768 and 1200 enhance it. Nothing here hides content
+ * unless the console's timeline owns it (html.motion [data-run]), a reveal is pending (html.motion.reveals)
+ * or the console's script switched its stacked sheets on (data-enhanced): the server HTML is all three
+ * nights, finished.
+ */
+
+/* ── THE STAGE ─────────────────────────────────────────────────────────────────────────────────────────
+   Phone and tablet: the console, the two-questions card 12px under it, then the rules. From 1200: the
+   console in cols 1-7; the card and the rules stacked in 8-12. */
+.vd-grid {
+  display: grid;
+  row-gap: 12px;
+}
+
+.vd-grid > *,
+.vd-side > * {
+  min-width: 0;
+}
+
+.vd-side {
+  display: grid;
+  align-content: start;
+  row-gap: 48px;
+}
+
+@media (min-width: 768px) {
+  .vd-grid {
+    row-gap: var(--hl-gap);
+  }
+  .vd-side {
+    row-gap: 64px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .vd-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+    /* Side by side, the two columns start AND end on the same line (owner, 2026-10-18): the console
+       stretches to the side column's height instead of stopping short of it. */
+    align-items: stretch;
+  }
+  .vd-main {
+    grid-column: 1 / 8;
+    display: flex;
+    flex-direction: column;
+  }
+  .vd-main > :first-child {
+    flex: 1 1 auto;
+  }
+  .vd-side {
+    grid-column: 8 / 13;
+    row-gap: 24px;
+  }
+}
+
+/* ── THE CONSOLE ───────────────────────────────────────────────────────────────────────────────────── */
+.vd-console {
+  contain: layout paint;
+}
+
+.vd-bar .hl-pbar-title {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.vd-bar-k {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+.vd-bar-name {
+  color: hsl(var(--ink-primary));
+}
+
+.vd-bar-chip {
+  color: hsl(var(--ink-secondary));
+}
+
+.vd-body {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.vd-controls {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .vd-body {
+    gap: 24px;
+    padding: 24px;
+  }
+}
+
+/* ── THE ROW OF NIGHTS ──
+   Every hex sits in an 18px cell (12px hex, 6px between), so the three newest can be buttons without the
+   row's rhythm changing. The row cascades in when the console is revealed - 30ms a hex, scale .4 → 1 on
+   --m-pop - by TRANSITIONS, which a paused demo's animation freeze cannot hold at their hidden frame. */
+.vd-nights {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+
+.vd-nights-row {
+  display: inline-flex;
+  align-items: center;
+  margin-left: -3px;
+}
+
+.vd-dot {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 28px;
+}
+
+.vd-dot > *,
+.vd-dot-l {
+  grid-area: 1 / 1;
+}
+
+.vd-dot-l {
+  display: grid;
+  place-items: center;
+}
+
+.vd-dot .hl-hexdot {
+  display: block;
+}
+
+/* The design system's Button, stripped to a hex: its fill, ring and transition-all would fight the motion
+   rules. A pointer shortcut (the tabs are the keyboard's way), with the page's one focus ring. */
+.landing .vd-dot--btn {
+  display: inline-grid;
+  width: 18px;
+  height: 28px;
+  min-width: 0;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+  cursor: pointer;
+}
+
+.vd-dot--btn > span {
+  display: grid;
+  place-items: center;
+  grid-area: 1 / 1;
+}
+
+.vd-dot--btn > span > * {
+  grid-area: 1 / 1;
+}
+
+/* The Button sizes every svg inside it to 16px; the hexes and the ring keep their own sizes. */
+.landing .vd-dot--btn .hl-hexdot {
+  width: 12px;
+  height: 13.86px;
+}
+
+.landing .vd-dot--btn .vd-dot-ring {
+  width: 20px;
+  height: 23px;
+}
+
+.landing .vd-dot--btn:hover,
+.landing .vd-dot--btn:active {
+  background: transparent;
+}
+
+.landing .vd-dot--btn:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+/* The selection ring: the selected night's twin of its tab. A layer, crossfaded. */
+.vd-dot-ring {
+  width: 20px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vd-dot--pass .vd-dot-ring {
+  color: hsl(var(--fb-green) / 0.75);
+}
+
+.vd-dot--grey .vd-dot-ring {
+  color: hsl(var(--hive-ice) / 0.6);
+}
+
+.vd-dot--fail .vd-dot-ring {
+  color: hsl(var(--fb-red-text) / 0.8);
+}
+
+.vd-dot[data-current] .vd-dot-ring {
+  opacity: 1;
+}
+
+html.motion .vd-dot-ring {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+/* One pulse when a night's verdict lands (hl-pulse: scale 1 → 2.2, .6 → 0). At rest it is not there. */
+.vd-dot-pulse {
+  width: 12px;
+  height: 13.86px;
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vd-dot-pulse--pass {
+  background: hsl(var(--fb-green));
+}
+
+.vd-dot-pulse--grey {
+  background: hsl(var(--hive-ice) / 0.7);
+}
+
+.vd-dot-pulse--fail {
+  background: hsl(var(--fb-red-text));
+}
+
+html.motion [data-run] .vd-dot-pulse.cue-on {
+  animation: hl-pulse var(--m-pulse) var(--m-out) backwards;
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+html.motion.reveals .vd-console-wrap:not(.is-in) .vd-dot {
+  opacity: 0;
+  transform: scale(0.4);
+}
+
+html.motion.reveals .vd-console-wrap.is-in:not(.is-instant) .vd-dot {
+  transition:
+    opacity 360ms var(--m-out),
+    transform 420ms var(--m-pop);
+  /* After the panel's own rise has begun: its 210ms stage delay, then 30ms a hex. */
+  transition-delay: calc(420ms + var(--n, 0) * 30ms);
+}
+
+.vd-nights-label {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* ── THE TABS ──
+   A glass segmented control like 01's steps: three segments, a pill that travels to the night on show
+   (--m-slow on --m-inout, as 01's), its verdict tint crossfading as it goes, and a 1px hairline under the
+   selected night while the console waits to move on. */
+.vd-tabs {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 52px;
+  padding: 4px;
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.06), hsl(var(--hive-frost) / 0.02));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.06);
+}
+
+.vd-tabs-pill {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: calc((100% - 8px) / 3);
+  border-radius: var(--r-pill);
+  border: 1px solid hsl(var(--hive-ice) / 0.2);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.12), hsl(var(--hive-frost) / 0.04));
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.12),
+    0 8px 18px -10px hsl(var(--hive-shade) / 0.9);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.vd-tabs[data-sel='1'] .vd-tabs-pill {
+  transform: translateX(100%);
+}
+
+.vd-tabs[data-sel='2'] .vd-tabs-pill {
+  transform: translateX(200%);
+}
+
+html.motion .vd-tabs-pill {
+  transition: transform var(--m-slow) var(--m-inout);
+}
+
+.vd-tint {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.vd-tint--pass {
+  background: radial-gradient(120% 140% at 50% 120%, hsl(var(--fb-green) / 0.2), transparent 70%);
+}
+
+.vd-tint--grey {
+  background: radial-gradient(120% 140% at 50% 120%, hsl(var(--hive-ice) / 0.14), transparent 70%);
+}
+
+.vd-tint--fail {
+  background: radial-gradient(120% 140% at 50% 120%, hsl(var(--fb-red-text) / 0.2), transparent 70%);
+}
+
+.vd-tabs[data-sel='0'] .vd-tint--pass,
+.vd-tabs[data-sel='1'] .vd-tint--grey,
+.vd-tabs[data-sel='2'] .vd-tint--fail {
+  opacity: 1;
+}
+
+html.motion .vd-tint {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+/* The tab: the design system's Button, stripped to the page's own look. */
+.landing .vd-tab {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  min-width: 0;
+  padding: 6px 6px 8px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  box-shadow: none;
+  color: hsl(var(--ink-primary));
+  white-space: normal;
+  opacity: 0.6;
+  transition: none;
+}
+
+html.motion .landing .vd-tab {
+  transition: opacity var(--m-base) var(--m-out);
+}
+
+.landing .vd-tab:hover,
+.landing .vd-tab:active {
+  background: transparent;
+}
+
+.landing .vd-tab[aria-selected='true'] {
+  opacity: 1;
+}
+
+.landing .vd-tab:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .landing .vd-tab[aria-selected='false']:hover {
+    opacity: 0.85;
+  }
+}
+
+.vd-tab > span {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
+
+.vd-tab-in {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 0;
+  text-align: center;
+}
+
+.vd-tab-day {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+.vd-tab[aria-selected='true'] .vd-tab-day {
+  color: hsl(var(--ink-highlight));
+}
+
+.vd-tab-v {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+.landing .vd-tab-day .hl-hexdot {
+  flex: none;
+  width: 8px;
+  height: 9.24px;
+}
+
+.vd-tab-track {
+  position: absolute;
+  left: 28%;
+  right: 28%;
+  bottom: 5px;
+  height: 1px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: hsl(var(--hive-ice) / 0.14);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.vd-tab-track > i {
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--hive-ice-2));
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+}
+
+.vd-tabs[data-advancing] .vd-tab[aria-selected='true'] .vd-tab-track {
+  opacity: 1;
+}
+
+@media (min-width: 768px) {
+  .vd-tabs {
+    max-width: 440px;
+  }
+}
+
+/* ── THE SHEETS ──
+   Without a script: one under another, each under its heading, split by a hairline. Enhanced: one grid
+   cell (as tall as the tallest night - the console never jumps), the night on show visible. A night leaves
+   towards the side it now lies on (16px, 180ms --m-in) and the next arrives from the other (320ms
+   --m-out); with reduced motion the swap is instant. */
+.vd-sheets {
+  display: grid;
+  gap: 24px;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.vd-sheet {
+  min-width: 0;
+}
+
+.vd-sheet + .vd-sheet {
+  padding-top: 24px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.vd-sheet:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 6px;
+  border-radius: var(--r-tile);
+}
+
+.vd-sheets[data-enhanced] {
+  gap: 0;
+}
+
+.vd-sheets[data-enhanced] > .vd-sheet {
+  grid-area: 1 / 1;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.vd-sheets[data-enhanced] > .vd-sheet:not(.is-current) {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+html.motion .vd-sheets[data-enhanced] > .vd-sheet {
+  transition:
+    opacity 180ms var(--m-in),
+    transform 180ms var(--m-in),
+    visibility 0s linear 180ms;
+}
+
+html.motion .vd-sheets[data-enhanced] > .vd-sheet.is-before {
+  transform: translate3d(-16px, 0, 0);
+}
+
+html.motion .vd-sheets[data-enhanced] > .vd-sheet.is-after {
+  transform: translate3d(16px, 0, 0);
+}
+
+html.motion .vd-sheets[data-enhanced] > .vd-sheet.is-current {
+  transition:
+    opacity 320ms var(--m-out),
+    transform 320ms var(--m-out),
+    visibility 0s;
+}
+
+@media (min-width: 768px) {
+  .vd-sheets {
+    padding-top: 24px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .vd-sheets[data-enhanced] {
+    min-height: 420px;
+  }
+}
+
+/* The sheet's head: the night (its H3) and what Logs says about the run - "running" (the one honey light)
+   while it plays, then the outcome chips. */
+.vd-sheet-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 16px;
+}
+
+.landing .vd-sheet-h {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 8px;
+  margin: 0;
+  font-family: theme('fontFamily.display');
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: hsl(var(--ink-primary));
+}
+
+.vd-sheet-time {
+  font-family: theme('fontFamily.mono');
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: hsl(var(--ink-inactive));
+  font-variant-numeric: tabular-nums;
+}
+
+.vd-sheet-v {
+  font-size: 15px;
+}
+
+.vd-sheet--pass .vd-sheet-v {
+  color: hsl(var(--fb-green));
+}
+
+.vd-sheet--grey .vd-sheet-v {
+  color: hsl(var(--ink-secondary));
+}
+
+.vd-sheet--fail .vd-sheet-v {
+  color: hsl(var(--fb-red-text));
+}
+
+/* Enhanced, the tab says the verdict: the heading keeps it for assistive tech only. */
+.vd-sheets[data-enhanced] .vd-sheet-v {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.vd-logs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vd-logs-k {
+  font-family: theme('fontFamily.mono');
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-inactive));
+}
+
+.vd-logs-swap {
+  justify-items: end;
+}
+
+.vd-logs-chips {
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* The body: steps, then checks; from 768 side by side (40 | 60, then 5/12 | 7/12). */
+.vd-sheet-body {
+  display: grid;
+  gap: 24px;
+}
+
+@media (min-width: 768px) {
+  .vd-sheet-body {
+    grid-template-columns: minmax(0, 4fr) minmax(0, 6fr);
+    gap: 24px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .vd-sheet-body {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  }
+}
+
+.vd-col {
+  min-width: 0;
+}
+
+.landing .vd-k {
+  margin: 0 0 12px;
+  font-size: 11px;
+  color: hsl(var(--ink-inactive));
+}
+
+/* Steps on a rail: each one's time on its own mono line, its words under it, a node on the rail beside
+   them. The rail is drawn between nodes (never through them), so the hexes stay crisp. */
+.vd-steps {
+  gap: 12px;
+}
+
+.vd-steps .hl-step {
+  position: relative;
+  grid-template-columns: 14px minmax(0, 1fr);
+  grid-template-areas:
+    'm t'
+    'm x';
+  align-items: start;
+  column-gap: 10px;
+  row-gap: 2px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.vd-steps .hl-step-mark {
+  grid-area: m;
+  display: grid;
+  justify-items: center;
+  padding-top: 4px;
+}
+
+.vd-steps .hl-step > span:nth-child(2) {
+  grid-area: x;
+}
+
+.vd-steps .hl-step-t {
+  grid-area: t;
+  font-size: 11.5px;
+  line-height: 16px;
+}
+
+.vd-steps .hl-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 6.5px;
+  top: 17px;
+  bottom: -10px;
+  width: 1px;
+  background: hsl(var(--hive-ice) / 0.14);
+}
+
+.vd-steps .hl-step--muted .hl-step-t {
+  color: hsl(var(--ink-inactive));
+}
+
+/* Checks: the kit's lines; under a red, "What it proves" and the run carrying on. */
+.vd-checks {
+  gap: 8px;
+}
+
+.vd-proves-k {
+  color: hsl(var(--ink-inactive));
+}
+
+.vd-goes-on {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 12px 0 14px;
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.5;
+  color: hsl(var(--ink-secondary));
+}
+
+.vd-goes-on-mark {
+  font-family: theme('fontFamily.mono');
+  font-style: normal;
+  color: hsl(var(--hive-ice-2));
+}
+
+/* The verdict and the kept frame. Phone and tablet: the frame and its words under the verdict bar; from
+   1200 the frame overlaps the bar's right end, like a print pinned to the result. */
+.vd-outcome {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.vd-kept {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vd-kept .hl-frame {
+  --frame-w: 128px;
+  flex: none;
+}
+
+.vd-kept-x {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vd-kept-t {
+  text-wrap: balance;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  color: hsl(var(--ink-secondary));
+}
+
+.vd-kept-s {
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-inactive));
+}
+
+/* The frame arrives last of all: scale .96 → 1 with opacity (it is a picture, larger than a mark, so no
+   pop). Hidden only while the console's timeline owns it. */
+html.motion [data-run] .vd-kept[data-cue] {
+  transform-origin: 30% 50%;
+  transition:
+    opacity 420ms var(--m-out),
+    transform 420ms var(--m-out);
+}
+
+html.motion [data-run] .vd-kept[data-cue]:not(.cue-on) {
+  opacity: 0;
+  transform: scale(0.96);
+  transition-duration: var(--m-exit);
+  transition-timing-function: var(--m-in);
+}
+
+.vd-meaning {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 16px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: hsl(var(--ink-body));
+  text-wrap: pretty;
+}
+
+.vd-meaning .hl-hexdot {
+  position: relative;
+  top: 1px;
+}
+
+.vd-meaning b {
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+}
+
+@media (min-width: 1200px) {
+  .vd-outcome {
+    display: block;
+    margin-top: 24px;
+  }
+  .vd-verdict {
+    min-height: 64px;
+    padding-right: calc(160px + 28px);
+  }
+  .vd-kept {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    z-index: 2;
+    translate: 0 -50%;
+  }
+  .vd-kept .hl-frame {
+    --frame-w: 160px;
+  }
+  /* The frame's own label says what it is; its words stay for assistive tech. */
+  .vd-kept-x {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .vd-meaning {
+    margin-top: 32px;
+  }
+}
+
+/* ── TWO QUESTIONS ─────────────────────────────────────────────────────────────────────────────────── */
+.vd-q {
+  display: grid;
+  gap: 16px;
+}
+
+.vd-q-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.vd-q-ref {
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  color: hsl(var(--ink-inactive));
+}
+
+.vd-q-list {
+  display: grid;
+  margin: 0;
+}
+
+.vd-q-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 12px 0;
+}
+
+.vd-q-row + .vd-q-row {
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.vd-q-row dt {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: hsl(var(--ink-primary));
+}
+
+.vd-q-row dd {
+  margin: 0;
+}
+
+.landing .vd-q-cap {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: hsl(var(--ink-secondary));
+  text-wrap: pretty;
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .vd-q-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .vd-q-row,
+  .vd-q-row + .vd-q-row {
+    padding: 14px 16px;
+    border-radius: var(--r-tile);
+    border: 1px solid hsl(var(--hive-ice) / 0.08);
+    background: hsl(var(--hive-page) / 0.55);
+    box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.04);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html.motion .vd-q-row dd .hl-chip {
+    transition: translate var(--m-fast) var(--m-out);
+  }
+  html.motion .vd-q-row:hover dd .hl-chip {
+    translate: 0 -2px;
+  }
+}
+
+/* ── THE RULES ─────────────────────────────────────────────────────────────────────────────────────── */
+.landing .vd-rules-k {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: hsl(var(--ink-inactive));
+}
+
+.vd-rules {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vd-rule {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 16px;
+  padding: 24px 0;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.vd-rule:last-child {
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.landing .vd-rule-t {
+  margin: 0;
+  font-family: theme('fontFamily.display');
+  font-size: 16.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+  color: hsl(var(--ink-primary));
+  text-wrap: balance;
+}
+
+.landing .vd-rule-b {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: hsl(var(--ink-body));
+  text-wrap: pretty;
+}
+
+/* The glyph: a 32px hex outline with the rule's icon. Rule 2 wears CANNOT CHECK's own dashed attention. */
+.vd-glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 36px;
+  color: hsl(var(--hive-ice-2));
+}
+
+.vd-glyph > svg:first-child {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: hsl(var(--hive-ice-2) / 0.07);
+  stroke: hsl(var(--hive-ice-2) / 0.35);
+  stroke-width: 1;
+}
+
+.vd-glyph > svg + svg {
+  position: relative;
+  width: 15px;
+  height: 15px;
+}
+
+.vd-glyph--cannot {
+  color: hsl(var(--fb-attention-text));
+}
+
+.vd-glyph--cannot > svg:first-child {
+  fill: none;
+  stroke: hsl(var(--fb-attention) / 0.55);
+  stroke-dasharray: 3 2.4;
+}
+
+/* Rule 3's ladder: dom > tree > picture as three meter rows - the tag, what it is, and behind them a fill
+   in the tier tag's own colour: full, 80%, and a dashed 28% that never turns anything green. Static widths;
+   the fills draw themselves in (transform only) when the rules reveal. */
+.vd-ladder {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vd-rung {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  min-height: 34px;
+  padding: 5px 10px 6px 8px;
+  border-radius: var(--r-chip);
+  border: 1px solid hsl(var(--hive-ice) / 0.07);
+  overflow: hidden;
+}
+
+.vd-rung .hl-tier {
+  justify-self: start;
+}
+
+.vd-rung-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: hsl(var(--hive-ice) / 0.06);
+}
+
+.vd-rung-bar > i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  transform-origin: 0 50%;
+}
+
+.vd-rung--dom {
+  background: linear-gradient(90deg, hsl(var(--hive-ice-2) / 0.02), hsl(var(--hive-ice-2) / 0.08));
+}
+
+.vd-rung--dom .vd-rung-bar > i {
+  right: 0;
+  background: linear-gradient(90deg, hsl(var(--hive-ice-2) / 0.35), hsl(var(--hive-ice-2) / 0.9));
+}
+
+.vd-rung--tree .vd-rung-bar > i {
+  right: 20%;
+  background: linear-gradient(90deg, hsl(var(--hive-ice) / 0.25), hsl(var(--hive-ice) / 0.6));
+}
+
+.vd-rung--picture .vd-rung-bar > i {
+  right: 72%;
+  height: 0;
+  border-top: 2px dashed hsl(var(--ink-inactive) / 0.6);
+}
+
+.vd-rung-x {
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: hsl(var(--ink-secondary));
+}
+
+.vd-rung--dom .vd-rung-x {
+  color: hsl(var(--ink-primary));
+}
+
+html.motion.reveals .vd-rules:not(.is-in) .vd-rung-bar > i {
+  transform: scaleX(0);
+}
+
+html.motion.reveals .vd-rules.is-in:not(.is-instant) .vd-rung-bar > i {
+  transition: transform var(--m-reveal) var(--m-out);
+  transition-delay: 560ms;
+}
+
+html.motion.reveals .vd-rules.is-in:not(.is-instant) .vd-rung--tree .vd-rung-bar > i {
+  transition-delay: 630ms;
+}
+
+html.motion.reveals .vd-rules.is-in:not(.is-instant) .vd-rung--picture .vd-rung-bar > i {
+  transition-delay: 700ms;
+}
+
+/* A rule brightens under a fine pointer, through a layer behind it. */
+@media (hover: hover) and (pointer: fine) {
+  .vd-rule::before {
+    content: '';
+    position: absolute;
+    inset: 8px -12px;
+    z-index: -1;
+    border-radius: var(--r-tile);
+    background: hsl(var(--hive-frost) / 0.035);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .vd-rule:hover::before {
+    opacity: 1;
+  }
+  html.motion .vd-rule::before {
+    transition: opacity var(--m-fast) var(--m-out);
+  }
+}
+
+@media (min-width: 1200px) {
+  .vd-rule {
+    padding: 20px 0;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .vd-rules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+  .vd-rule:nth-last-child(2) {
+    border-bottom: 1px solid hsl(var(--hive-ice) / 0.08);
+  }
+}

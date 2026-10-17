@@ -18,6 +18,8 @@ Everything that can be set, in one place.
 | `VITE_SENTRY_TRACES` | optional | Trace sample rate, default `0.2`. Traces are the expensive half of Sentry. |
 | `SENTRY_AUTH_TOKEN` | Source-map upload, at build time | A real secret; deployment environment only, never a checked-in file. Without it the upload step is skipped, the build still succeeds, and the only thing lost is readable stack traces. |
 | `SENTRY_ORG`, `SENTRY_PROJECT` | Source-map upload | Which project to upload to. Needed alongside the token; any one of the three missing skips the step. |
+| `WAITLIST_IP_KEY` | optional, `/api/waitlist` | Key for the HMAC of the client IP that the waitlist's per-IP ceiling counts by; any long random string (`openssl rand -hex 32`). **Unset, the route falls back to `DATABASE_URL` as the key**, so it is never an unkeyed hash; setting it separates the two secrets. Changing it only resets the one-hour windows. |
+| `WAITLIST_NOTIFY_TO` | optional, `/api/waitlist` | Where the email about each NEW waitlist sign-up goes; default `vicgorlenko@gmail.com` (owner, 2026-10-16). Duplicates and honeypot hits send nothing. Needs `RESEND_API_KEY` and `MAIL_FROM` like every other mail; without them the sign-up is still stored and no mail is sent. |
 | `MOCK_API` | local development only | `MOCK_API=1` serves the account endpoints from an in-memory fixture. Dev-server middleware; it has **no path into a build**. |
 
 ### The MCP server and worker (`mcp/`, local — not Vercel)

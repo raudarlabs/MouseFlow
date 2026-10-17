@@ -36,8 +36,11 @@ leaked token destroy the data it was granted to read.
 
 ## CORS, and what it is not
 
-Every route sets `Access-Control-Allow-Origin` to the requesting origin when it is `chrome-extension://…`,
-and to the deployment origin otherwise. **No route sets `Allow-Credentials`.**
+Every route sets `Access-Control-Allow-Origin` to the requesting origin when it is `chrome-extension://…`
+or one of the deployment's own origins, and to the deployment origin otherwise. **No route sets
+`Allow-Credentials`.** One route has guests: [`/api/waitlist`](#apiwaitlist) also lets `https://hivelink.si`
+and `https://www.hivelink.si` read its answer — and only that route; every other one answers those origins
+exactly as it answers `evil.example`. One definition, `api/_cors.mjs` (`allowOrigin(origin, guests)`).
 
 That is the load-bearing part: the page is same-origin, so CORS does not apply to it at all, and the
 extension sends an explicit `Authorization` header rather than an ambient cookie. Not setting
@@ -608,6 +611,60 @@ a second copy of it would be a second place for it to be right.
 Adding somebody emails them (`api/_mail.js`), and the response says whether that happened and why not. The
 link in the message is **a deep link, not a token**: membership is decided by the address on the account that
 opens the page, so a forwarded message hands nobody a seat. Capped at 25 invitations per account per hour.
+
+---
+
+## `/api/waitlist`
+
+```
+POST /api/waitlist     (no session, no token; the hivelink.si landing calls it cross-origin)
+Content-Type: application/json
+{ "email": "...", "website": "", "source": "landing", "ref": "utm/referrer summary, optional" }
+```
+
+The landing's sign-up form. The only route here that **anybody** may call: whoever signs up has no account
+yet. What bounds it instead of a sign-in is the shape check, a honeypot and a per-IP ceiling. Rules and the
+response live in `api/_waitlist.mjs` (pure, run by `api/_test-waitlist.mjs`); the route file only binds the
+real database and environment. Tables: [`waitlist`, `waitlist_try`](15-data-model.md#waitlist--waitlist_try--the-landings-sign-up-list).
+
+| Answer | When |
+|---|---|
+| `200 {"ok":true}` | a new address, **an address already on the list, and a filled honeypot — all three identically**. A NEW address also sends one plain-text email to `WAITLIST_NOTIFY_TO` (default `vicgorlenko@gmail.com`) through `sendMail`; a failed send does not change the answer |
+| `400 {"ok":false,"error":"invalid_email"}` | the address, trimmed and lower-cased, is not ≤254 chars of plain `local@domain.tld` (ASCII; an IDN domain arrives as `xn--`; no quoted local parts, no IP literals) |
+| `400 {"ok":false,"error":"bad_request"}` | not `application/json`; broken JSON; not an object; `email`/`ref` of the wrong type; a `source` other than `landing`; **an `Origin` header that is neither ours nor hivelink.si** |
+| `413 {"ok":false,"error":"too_large"}` | body over 2048 bytes, by `Content-Length` or by measuring |
+| `429 {"ok":false,"error":"rate_limited"}` + `Retry-After` (seconds) | more than 5 attempts from one IP (an IPv6 /64) in an hour |
+| `405 {"ok":false,"error":"method_not_allowed"}` + `Allow: POST, OPTIONS` | any other method |
+| `204` | `OPTIONS` — the preflight; `Allow-Methods: POST, OPTIONS`, `Allow-Headers: content-type`, `Vary: Origin` |
+| `503 {"ok":false,"error":"unavailable"}` / `500 {"ok":false,"error":"server_error"}` | no database configured / the insert failed (reported, without the address). Outside the landing contract: treat as "try again later" |
+
+Every answer carries `Cache-Control: no-store`. `ref` longer than 200 characters is **cut, not refused**
+(a campaign tag can be any length, and losing a sign-up to it would be silly); control characters become
+spaces. Unknown fields are ignored. The address is never echoed back, in an error or anywhere else.
+
+**The answer does not say whether the address was already there.** A duplicate is `on conflict do nothing`
+and the same 200 body. The ceiling counts **attempts**, not rows of the list — if it counted rows, a
+duplicate would not use a slot, and "on which request did 429 arrive" would leak the same fact; the test
+drives a known and an unknown address to 429 and checks they take the same number of requests. Timing is the
+residue: a duplicate and a new row are one insert each, and a honeypot skips the insert (one round trip less).
+
+**Order matters.** Everything decidable without the database (method, `Origin`, size, type, body, address) is
+decided first and costs no attempt — those rules are deterministic and public, so there is no oracle in them.
+The honeypot is checked **after** the ceiling: a bot that fills it must see exactly what a person sees,
+down to a 429 on the sixth try.
+
+**Which IP.** `x-vercel-forwarded-for`, then `x-real-ip`, then `x-forwarded-for`, last entry of a list. Vercel
+documents that it overwrites `X-Forwarded-For` and does not forward external IPs, "to prevent IP spoofing";
+the last entry is the one the nearest hop wrote, so a client prepending addresses does not pick its own
+bucket. Off Vercel these headers are whatever the client sent. IPv6 is bucketed by its /64 (one connection
+point), and `::ffff:a.b.c.d` is the IPv4 address. Stored only as an HMAC — see `WAITLIST_IP_KEY` in
+[18 — Configuration](18-configuration.md).
+
+**Why reject a foreign `Origin` rather than only hide the answer.** A cross-origin `fetch` with
+`application/json` is preflighted and the preflight already fails. A simple request (a form post, `no-cors`)
+is not preflighted and arrives here with its page's `Origin`; the content-type rule stops it, and the origin
+rule is the second lock on the same door — asked of `allowOrigin()`, not a copy. A preview deployment of the
+landing is a foreign origin on purpose: "any `*.vercel.app`" means anyone with a Vercel account.
 
 ---
 

@@ -21,12 +21,8 @@ import { Button } from '@insightis/ui/Button';
 import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
 import { CONNECT_WAYS, MCP_TOOLS, TOOL_GROUPS, type ToolGroup, mcpUrl } from '@/lib/mcp-facts';
-
-const Mark = () => (
-  <svg viewBox="0 0 24 24" aria-hidden className="size-5 text-logo-mark">
-    <path d="M5 4l14 8-6 1.6L10.5 20z" fill="currentColor" />
-  </svg>
-);
+/* The second product's mark, from the one file that draws both - this page belongs to that product. */
+import { CursorMark } from '@/components/brand/HiveMark';
 
 const Section = ({ id, title, lead, children }: {
   id: string;
@@ -93,7 +89,7 @@ export const McpView = () => {
       <header className="sticky top-0 z-20 border-stroke border-b bg-surface-page/85 backdrop-blur">
         <div className="mx-auto flex max-w-[62rem] items-center gap-3 px-5 py-3">
           <Link to="/record" className="flex items-center gap-2.5" title="MouseFlow">
-            <Mark />
+            <CursorMark className="size-5" />
             <Typography variant="span" weight="semibold">MouseFlow</Typography>
           </Link>
           <span className="text-ink-inactive text-[0.8rem]">/ MCP</span>

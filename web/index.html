@@ -5,14 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MouseFlow</title>
 <meta name="description" content="Record what you do and repeat it, or describe what you need and have it done - in the browser or across the whole desktop.">
-<meta name="theme-color" content="#0a1126">
+<meta name="theme-color" content="#070B14">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="/icons/icon-192.png">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<!-- DM Sans, as the Insightis design system specifies. -->
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..700;1,9..40,400&display=swap" rel="stylesheet">
+<!-- Hivelink's three faces, the same ones the landing loads (owner, 2026-10-16: one design system for both):
+     Sora for headings and the wordmark, Manrope for the interface and body text, JetBrains Mono for labels and
+     code. They replace the design system's DM Sans through tailwind.config.ts, not by editing the vendored
+     preset. swap, so text is readable in a fallback face while these arrive rather than invisible. -->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400..800&family=Sora:wght@600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 <div id="root"></div>

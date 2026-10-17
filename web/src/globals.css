@@ -3,10 +3,11 @@
  * Their globals.css is imported whole - primitives, semantic tokens, component-scoped overrides, light and
  * dark - so every vendored component behaves exactly as it does there.
  *
- * Then mouseflow-palette.css redefines three PRIMITIVE ramps, and nothing else: the app has to look like
- * mouseflow.ai, and the semantic layer above those ramps is what keeps every component deciding which step
- * it reads, per theme, exactly as upstream wrote it. See that file for what is deliberately left alone.
- * Everything after the imports is page furniture their app has no equivalent of.
+ * Then mouseflow-palette.css redefines three PRIMITIVE ramps and adds a fourth, and touches only a few
+ * semantics, each with its reason: the app has to look like the Hivelink landing - one design system for
+ * both, by the owner's decision - and the semantic layer above those ramps is what keeps every component
+ * deciding which step it reads, per theme, exactly as upstream wrote it. See that file for what is
+ * deliberately left alone. Everything after the imports is page furniture their app has no equivalent of.
  */
 @import '../vendor/insightis-ui/src/globals.css';
 @import './mouseflow-palette.css';
@@ -18,31 +19,56 @@
     height: 100%;
   }
 
+  /* The faces come from tailwind.config.ts - Manrope, Sora, JetBrains Mono - and are read from there rather
+   * than named again, so the config is the one place a typeface is decided. */
   body {
     background: hsl(var(--surface-page));
     color: hsl(var(--ink-primary));
-    font-family: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-family: theme('fontFamily.sans');
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* PAGE TITLES IN SORA, as the landing sets its headings: the header's screen name and every page's h1 and
+   * h2 are Typography h1/h2 or a bare h1, so a rule on the elements reaches all of them without a class in
+   * forty places - and h3 and below stay in the interface face, because those are labels inside a card, not
+   * titles. Sora is a wide face; the tightening is the concept's own (it runs -0.025em to -0.05em on every
+   * Sora line) and pulls a title back towards the width the DM Sans one had. Sizes and weights stay with
+   * the components. */
+  h1,
+  h2 {
+    font-family: theme('fontFamily.display');
+    letter-spacing: -0.02em;
   }
 
   /* A long command in a code row scrolls sideways rather than wrapping: a PowerShell line broken across
    * two lines is a line somebody pastes half of. */
   code {
-    font-family: ui-monospace, SFMono-Regular, 'Cascadia Mono', Consolas, monospace;
+    font-family: theme('fontFamily.mono');
   }
 }
 
 @layer components {
-  /* The lime glow the landing site opens with, carried into the app.
+  /* The landing's light, carried into the app.
    *
-   * Somebody who presses "Start for free" on mouse-flow.vercel.app has just looked at a navy page with a
-   * lime bloom in its top right corner; the app's page was a flat fill. Same gradient, same numbers, taken
-   * off the site's own `.page` rule.
+   * The concept lights its midnight page from two sides: the honey of the queen cell, warm and small, and
+   * cold blue light around it - an ice wash over the cells and a steel one from the top left corner. An app
+   * is not a hero, so this is that light turned down to furniture: a honey bloom in the top right corner,
+   * where the old glow sat, a faint ice tint wider than it, and the steel in the corner the sidebar mostly
+   * covers. All three read the palette's tokens, so a change of accent carries the glow with it.
    *
-   * FIXED rather than scrolling: the site's sits on a page one screen tall, and an app whose lists run for
+   * THE COOL LIGHT IS NOT OPTIONAL. Tried alone, a low honey over midnight does not read as light at all: a
+   * warm tint that weak, mixed into a blue-black, lands on olive - the bloom looked like a smudge. It reads
+   * as honey only with a stronger core (20%, mostly behind the translucent header, 6% by 9rem) and blue
+   * around it to be warmer than, which is how the concept does it.
+   *
+   * QUIET ON PURPOSE all the same: the ice peaks at 10% and the steel at 16%, and every card, row and chart
+   * is an opaque surface on top of this, so the glow lights the gaps between them and never tints a status
+   * badge.
+   *
+   * FIXED rather than scrolling: the landing's sits on a page one screen tall, and an app whose lists run for
    * pages would otherwise drag the glow down through the middle of them.
    *
-   * Dark only. The site has no light theme to copy, and a lime bloom on white paper is not the same idea
+   * Dark only. The landing has no light theme to copy, and a honey bloom on white paper is not the same idea
    * translated - it is a stain. Applied by AppLayout to the one element that is the page, so nothing has to
    * guess which div that is. */
   .page-glow {
@@ -51,12 +77,34 @@
   }
 
   :root.dark .page-glow {
-    background-image: radial-gradient(circle at 80% 4%, #a3ff4640, transparent 27rem);
+    background-image:
+      radial-gradient(
+        circle at 84% -2%,
+        hsl(var(--brand-primary) / 0.2),
+        hsl(var(--brand-primary) / 0.06) 9rem,
+        transparent 20rem
+      ),
+      radial-gradient(ellipse 70rem 40rem at 60% -10%, hsl(var(--ice-300) / 0.1), transparent 70%),
+      radial-gradient(ellipse 50rem 32rem at 0% 0%, hsl(var(--ice-500) / 0.16), transparent 70%);
   }
 
   /* Content over a solid accent. See mouseflow-palette.css for why this cannot be an existing token: the
-   * accent is light in both themes, so the colour on top of it must not flip with the theme. */
+   * design system's --content-on-solid is white in both themes, and white on the dark theme's honey is
+   * 1.75:1, so what sits on the accent is its own token and flips with the accent instead. */
   .on-accent {
+    color: hsl(var(--on-accent));
+  }
+
+  /* THE TICK IN A TICKED BOX is content over the accent too, and the design system draws it in
+   * --content-on-solid: white on honey, 1.75:1 - a box that is visibly filled and has no visible tick. The
+   * vendored Checkbox and RadioButton cannot be edited (they are synced from upstream), so this restates
+   * one colour for their checked state from here, found by the role Radix gives them. `:root` first because
+   * Tailwind emits utilities after this layer, and the component's own
+   * `data-[state=checked]:text-content-on-solid` would otherwise win on equal specificity. Disabled keeps
+   * upstream's faded tick, and an invalid box keeps its white one: that fill is red, not the accent. */
+  :root [role='checkbox'][data-state='checked']:not(:disabled, [aria-invalid='true']),
+  :root [role='checkbox'][data-state='indeterminate']:not(:disabled, [aria-invalid='true']),
+  :root [role='radio'][data-state='checked']:not(:disabled, [aria-invalid='true']) {
     color: hsl(var(--on-accent));
   }
 

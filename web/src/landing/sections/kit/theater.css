@@ -1,0 +1,634 @@
+/* THE RUN THEATER - the page's picture of a live agent: a machine's screen, the bee's cursor on it, the
+ * honey border the product lights while it drives, the lens that closes on the control a check reads, and
+ * the log beside it in the product's own words. Used in full in 01, as frozen frames in 02 and as the mail
+ * screen in 07, so it is drawn once, here.
+ *
+ * Everything on the screen is positioned in PERCENT of the screen and sized in cqw (the screen is a size
+ * container), so one set of coordinates - the cursor's waypoints, a lens's rectangle - is right at every
+ * width and in both aspect ratios. The screen is a picture: aria-hidden, its meaning in the figcaption.
+ *
+ * The poster (server, reduced motion, ?still) is the screen at rest: no cursor, no border, no lens, no
+ * ripple - those are transient and appear only while a timeline drives the demo.
+ */
+
+/* ── the frame: bar, then screen | side ── */
+.hl-theater {
+  overflow: hidden;
+  contain: layout paint;
+}
+
+.hl-theater-body {
+  display: grid;
+}
+
+.hl-theater-side {
+  position: relative;
+  min-width: 0;
+  padding: 16px;
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+@media (min-width: 768px) {
+  .hl-theater-side {
+    padding: 20px 24px 24px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .hl-theater--split .hl-theater-body {
+    grid-template-columns: minmax(0, 57fr) minmax(0, 43fr);
+    min-height: 440px;
+  }
+  .hl-theater--split .hl-theater-side {
+    border-top: 0;
+    border-left: 1px solid hsl(var(--hive-ice) / 0.08);
+  }
+  .hl-theater--split .hl-screen {
+    align-self: stretch;
+    aspect-ratio: auto;
+    min-height: 100%;
+  }
+}
+
+@media (min-width: 1200px) {
+  .hl-theater-side {
+    padding: 24px;
+  }
+}
+
+/* ── the bar: status hex · machine · platform · chips … clock · pause ── */
+.hl-tbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 44px;
+  padding: 6px 12px 6px 16px;
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.hl-tbar-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hl-tbar-name {
+  font-family: theme('fontFamily.mono');
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+}
+
+.hl-tbar-os {
+  font-size: 12.5px;
+  color: hsl(var(--ink-inactive));
+  white-space: nowrap;
+}
+
+.hl-tbar-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.hl-tbar-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.hl-tbar-clock {
+  font-size: 12.5px;
+  color: hsl(var(--ink-secondary));
+}
+
+/* Under 400px: row one is hex, name, clock and pause; the chips take the second row. */
+@media (max-width: 399px) {
+  .hl-tbar-os {
+    display: none;
+  }
+  .hl-tbar-chips {
+    order: 9;
+    flex-basis: 100%;
+  }
+}
+
+@media (min-width: 1200px) {
+  .hl-tbar {
+    min-height: 48px;
+    padding: 6px 16px 6px 24px;
+  }
+}
+
+/* ── the screen: a wireframe desktop on the page colour, over a 5% hex lattice ── */
+.hl-screen {
+  position: relative;
+  container-type: inline-size;
+  aspect-ratio: 16 / 11;
+  overflow: hidden;
+  background: hsl(var(--hive-page));
+  isolation: isolate;
+}
+
+.hl-screen-lattice {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  stroke: hsl(var(--hive-ice) / 0.05);
+}
+
+@media (min-width: 768px) {
+  .hl-screen {
+    aspect-ratio: 16 / 10;
+  }
+}
+
+/* A shade over the whole desktop - night falling at 02:00. A section cues it. */
+.hl-screen-tint {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: hsl(var(--hive-shade) / 0.18);
+}
+
+html.motion [data-run] .hl-screen-tint[data-cue] {
+  transition: opacity 400ms var(--m-out);
+}
+
+/* ── a window on it ──
+   Sizes are cqw with a floor so text stays legible on a phone-width screen; --ui-k scales the floors, and
+   a frozen frame sets it to 0 so its window is a true miniature of the big one. */
+.hl-win {
+  position: absolute;
+  left: var(--wx, 7%);
+  top: var(--wy, 8%);
+  width: var(--ww, 86%);
+  height: var(--wh, 84%);
+  border-radius: max(calc(6px * var(--ui-k, 1)), 1.4cqw);
+  overflow: hidden;
+  background: hsl(var(--surface-card));
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.06),
+    0 2.4cqw 5cqw -1.6cqw hsl(var(--hive-shade) / 0.9);
+  font-family: theme('fontFamily.sans');
+  color: hsl(var(--ink-primary));
+}
+
+.hl-win-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: max(calc(3px * var(--ui-k, 1)), 0.7cqw);
+  height: clamp(calc(16px * var(--ui-k, 1)), 4.4cqw, 28px);
+  padding: 0 max(calc(6px * var(--ui-k, 1)), 1.6cqw);
+  border-bottom: 1px solid hsl(var(--hive-ice) / 0.1);
+  background: hsl(var(--hive-frost) / 0.03);
+}
+
+.hl-win-bar > i {
+  width: clamp(calc(4px * var(--ui-k, 1)), 1.15cqw, 8px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: hsl(var(--hive-frost) / 0.16);
+}
+
+.hl-win-title {
+  margin-left: max(calc(4px * var(--ui-k, 1)), 1cqw);
+  font-family: theme('fontFamily.mono');
+  font-size: max(calc(6px * var(--ui-k, 1)), 1.55cqw);
+  letter-spacing: 0.02em;
+  color: hsl(var(--ink-secondary));
+  white-space: nowrap;
+}
+
+/* Parts of a window are placed in percent of the SCREEN (left/top/width/height from --x/--y/--w/--h), so the
+   overlays above can name the same rectangle. */
+.hl-at {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--w, auto);
+  height: var(--h, auto);
+}
+
+.hl-screen-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Controls drawn in ice hairlines; labels Manrope 600, sized to the screen. */
+.hl-ui-label {
+  font-size: max(calc(6px * var(--ui-k, 1)), 1.5cqw);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: hsl(var(--ink-secondary));
+  white-space: nowrap;
+}
+
+.hl-ui-field {
+  display: flex;
+  align-items: center;
+  padding: 0 max(calc(4px * var(--ui-k, 1)), 1.1cqw);
+  border-radius: max(calc(3px * var(--ui-k, 1)), 0.8cqw);
+  border: 1px solid hsl(var(--hive-ice) / 0.2);
+  background: hsl(var(--hive-page) / 0.6);
+  font-size: max(calc(6.5px * var(--ui-k, 1)), 1.75cqw);
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.hl-ui-field--strong {
+  border-color: hsl(var(--hive-ice-2) / 0.35);
+  background: hsl(var(--hive-ice-2) / 0.06);
+}
+
+.hl-ui-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: max(calc(3px * var(--ui-k, 1)), 0.6cqw);
+  border-radius: max(calc(3px * var(--ui-k, 1)), 0.8cqw);
+  border: 1px solid hsl(var(--hive-ice) / 0.24);
+  background: hsl(var(--hive-frost) / 0.06);
+  font-size: max(calc(6.5px * var(--ui-k, 1)), 1.6cqw);
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+}
+
+.hl-ui-btn--primary {
+  border-color: hsl(var(--hive-ice-2) / 0.45);
+  background: hsl(var(--hive-ice-2) / 0.16);
+}
+
+.hl-ui-toast {
+  display: flex;
+  align-items: center;
+  gap: max(calc(3px * var(--ui-k, 1)), 0.8cqw);
+  padding: 0 max(calc(5px * var(--ui-k, 1)), 1.2cqw);
+  border-radius: max(calc(3px * var(--ui-k, 1)), 0.8cqw);
+  border: 1px solid hsl(var(--fb-green) / 0.35);
+  background: hsl(var(--fb-green) / 0.1);
+  font-size: max(calc(6.5px * var(--ui-k, 1)), 1.6cqw);
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+}
+
+.hl-ui-toast > i {
+  width: max(calc(5px * var(--ui-k, 1)), 1.2cqw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: hsl(var(--fb-green));
+}
+
+.hl-ui-sketch {
+  display: grid;
+  align-content: start;
+  gap: max(calc(3px * var(--ui-k, 1)), 1cqw);
+}
+
+.hl-ui-sketch > i {
+  height: max(calc(2px * var(--ui-k, 1)), 0.55cqw);
+  border-radius: 2px;
+  background: hsl(var(--hive-ice) / 0.1);
+}
+
+/* A modal over the window (Billing asking to sign in). */
+.hl-ui-modal {
+  display: grid;
+  align-content: start;
+  gap: max(calc(3px * var(--ui-k, 1)), 0.9cqw);
+  padding: max(calc(5px * var(--ui-k, 1)), 1.4cqw);
+  border-radius: max(calc(4px * var(--ui-k, 1)), 1cqw);
+  border: 1px solid hsl(var(--hive-ice) / 0.24);
+  background: hsl(var(--surface-chips));
+  box-shadow: 0 2cqw 4cqw -1cqw hsl(var(--hive-shade) / 0.9);
+}
+
+.hl-ui-modal b {
+  font-size: max(calc(7px * var(--ui-k, 1)), 1.8cqw);
+  font-weight: 600;
+}
+
+/* ── overlays ── */
+
+/* The drive border: a 2px honey ring and a glow layer, lit while the agent drives the screen. It fades in
+   over 400ms, breathes (opacity .7 ↔ 1, 2.4s) while it drives, and fades out over 420ms. Transient. */
+.hl-drive {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px hsl(var(--brand-primary));
+}
+
+.hl-drive > i {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 3.4cqw hsl(var(--brand-primary) / 0.28);
+}
+
+html.motion [data-run] .hl-drive.hl-transient {
+  transition: opacity 420ms var(--m-out);
+}
+
+html.motion [data-run] .hl-drive.hl-transient.cue-on:not(.cue-out) {
+  transition-duration: 400ms;
+}
+
+html.motion [data-run] .hl-drive.cue-on:not(.cue-out) > i {
+  animation: hl-drive-breathe 2.4s ease-in-out infinite;
+}
+
+/* Holding (a gate waiting for a person - the demo root carries data-holding): steady at .35, no
+   breathing, so the screen visibly stands still. */
+html.motion [data-run][data-holding] .hl-drive.hl-transient.cue-on:not(.cue-out) {
+  opacity: 0.35;
+}
+
+html.motion [data-run][data-holding] .hl-drive.cue-on > i {
+  animation: none;
+}
+
+@keyframes hl-drive-breathe {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The bee cursor: a full-size layer translated by percent, so it scales with the screen with no measuring;
+   its arrow's tip is the layer's top-left corner. Glides between waypoints on --m-inout. Transient. */
+.hl-bee-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  transform: translate3d(var(--x, 50%), var(--y, 50%), 0);
+}
+
+html.motion [data-run] .hl-bee-layer {
+  transition:
+    opacity var(--m-base) var(--m-out),
+    transform var(--m-slow) var(--m-inout);
+}
+
+/* Between waypoints the layer's own transition moves it; a jump (data-seek) lands it without travel. */
+html.motion [data-run][data-seek] .hl-bee-layer {
+  transition: none;
+}
+
+.hl-bee {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: clamp(12px, 2.6cqw, 18px);
+  height: auto;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px hsl(var(--hive-shade) / 0.8));
+}
+
+.hl-bee-arrow {
+  fill: hsl(var(--hive-frost));
+  stroke: hsl(var(--hive-shade));
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.hl-bee-hex {
+  fill: hsl(var(--brand-primary));
+}
+
+/* The click ripple: scale .4 → 1.6, opacity .5 → 0, 360ms. Nothing at rest. */
+.hl-ripple {
+  position: absolute;
+  z-index: 7;
+  left: var(--x);
+  top: var(--y);
+  width: clamp(18px, 5cqw, 34px);
+  aspect-ratio: 1;
+  margin: calc(clamp(18px, 5cqw, 34px) / -2) 0 0 calc(clamp(18px, 5cqw, 34px) / -2);
+  border-radius: 50%;
+  border: 1.5px solid hsl(var(--hive-frost) / 0.9);
+  pointer-events: none;
+  opacity: 0;
+}
+
+html.motion [data-run] .hl-ripple.cue-on {
+  animation: hl-ripple 360ms var(--m-out) both;
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+@keyframes hl-ripple {
+  from {
+    opacity: 0.5;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+
+/* The check lens: four ice-2 corner ticks closing from 8px onto the control a check reads, a mono tag
+   under it, and the tag's colour layer crossfading to PASS or FAIL when the check resolves. */
+.hl-lens {
+  position: absolute;
+  z-index: 7;
+  left: var(--x);
+  top: var(--y);
+  width: var(--w);
+  height: var(--h);
+  pointer-events: none;
+  --lens-c: var(--hive-ice-2);
+}
+
+.hl-lens > i {
+  position: absolute;
+  width: clamp(5px, 1.3cqw, 9px);
+  height: clamp(5px, 1.3cqw, 9px);
+  border: 0 solid hsl(var(--lens-c));
+  border-width: 0;
+}
+
+.hl-lens > i:nth-child(1) {
+  left: -3px;
+  top: -3px;
+  border-top-width: 1.5px;
+  border-left-width: 1.5px;
+  --tx: -8px;
+  --ty: -8px;
+}
+
+.hl-lens > i:nth-child(2) {
+  right: -3px;
+  top: -3px;
+  border-top-width: 1.5px;
+  border-right-width: 1.5px;
+  --tx: 8px;
+  --ty: -8px;
+}
+
+.hl-lens > i:nth-child(3) {
+  left: -3px;
+  bottom: -3px;
+  border-bottom-width: 1.5px;
+  border-left-width: 1.5px;
+  --tx: -8px;
+  --ty: 8px;
+}
+
+.hl-lens > i:nth-child(4) {
+  right: -3px;
+  bottom: -3px;
+  border-bottom-width: 1.5px;
+  border-right-width: 1.5px;
+  --tx: 8px;
+  --ty: 8px;
+}
+
+html.motion [data-run] .hl-lens > i {
+  transition: transform var(--m-base) var(--m-out);
+}
+
+html.motion [data-run] .hl-lens:not(.cue-on) > i {
+  transform: translate3d(var(--tx), var(--ty), 0);
+}
+
+.hl-lens-tag {
+  position: absolute;
+  left: -3px;
+  top: calc(100% + max(4px, 0.9cqw));
+  display: inline-grid;
+  font-family: theme('fontFamily.mono');
+  font-size: max(7px, 1.5cqw);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.hl-lens-tag > span {
+  grid-area: 1 / 1;
+  justify-self: start;
+  padding: max(2px, 0.5cqw) max(4px, 0.9cqw);
+  border-radius: max(3px, 0.6cqw);
+}
+
+.hl-lens-tag-q {
+  color: hsl(var(--hive-ice-2));
+  background: hsl(var(--hive-page) / 0.85);
+  border: 1px solid hsl(var(--hive-ice-2) / 0.5);
+}
+
+.hl-lens-tag-r {
+  border: 1px solid transparent;
+}
+
+.hl-lens--pass .hl-lens-tag-r {
+  color: hsl(var(--fb-green));
+  background: hsl(var(--hive-page) / 0.9);
+  border-color: hsl(var(--fb-green) / 0.55);
+}
+
+.hl-lens--fail .hl-lens-tag-r {
+  color: hsl(var(--fb-red-text));
+  background: hsl(var(--hive-page) / 0.9);
+  border-color: hsl(var(--fb-red-text) / 0.55);
+}
+
+.hl-lens-tag--above {
+  top: auto;
+  bottom: calc(100% + max(4px, 0.9cqw));
+}
+
+/* A still lens (a frozen frame): the status-coloured ring itself, no ticks in flight. */
+.hl-lens--still {
+  border-radius: max(3px, 0.8cqw);
+  box-shadow:
+    0 0 0 1.5px hsl(var(--lens-c)),
+    0 0 0 5px hsl(var(--lens-c) / 0.16);
+}
+
+.hl-lens--still.hl-lens--pass {
+  --lens-c: var(--fb-green);
+}
+
+.hl-lens--still.hl-lens--fail {
+  --lens-c: var(--fb-red-text);
+}
+
+.hl-lens--still.hl-lens--grey {
+  --lens-c: var(--hive-ice);
+  box-shadow: none;
+  outline: 1.5px dashed hsl(var(--hive-ice) / 0.6);
+  outline-offset: 2px;
+}
+
+/* ── the frozen frame: a kept screen, small, with its label ── */
+.hl-frame {
+  position: relative;
+  display: block;
+  width: var(--frame-w, 128px);
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid hsl(var(--hive-ice) / 0.14);
+  box-shadow: 0 16px 32px -20px hsl(var(--hive-shade) / 0.9);
+}
+
+.hl-frame .hl-screen {
+  --ui-k: 0;
+  aspect-ratio: 16 / 10;
+}
+
+.hl-frame-label {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  z-index: 9;
+}
+
+/* The flash of a frame being kept: frost, opacity 0 → .12 → 0 in 180ms. A section cues it. */
+.hl-shutter {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+  background: hsl(var(--hive-frost));
+  opacity: 0;
+}
+
+html.motion [data-run] .hl-shutter.cue-on {
+  animation: hl-shutter 180ms linear both;
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+@keyframes hl-shutter {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.12;
+  }
+}

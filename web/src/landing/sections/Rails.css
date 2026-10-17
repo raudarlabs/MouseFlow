@@ -1,0 +1,797 @@
+/* 07 · Safe hands - this section's stage. Reads the kit's tokens (var(--hl-gap), var(--r-tile), var(--m-out)
+ * …) and never redefines them.
+ *
+ * Honey here means one thing - "yours to press": the gate, its pause, the waiting pill and the switch's
+ * core; the drive border is the theater's own. Everything else is ice and steel.
+ */
+
+/* ── THE STAGE ─────────────────────────────────────────────────────────────────────────────────────────
+   Phone: demo · 24 · rails · 48 · what it doesn't do. 768: the demo centred at 760, the rails a 2-column
+   grid. 1200: demo in columns 1-5 beside the rails in 6-12, the list under both across all twelve. */
+.rl-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 24px;
+}
+
+.rl-notyet {
+  margin-top: 24px; /* 24 of row gap + 24 = 48 */
+}
+
+@media (min-width: 768px) {
+  .rl-demo-col {
+    width: 100%;
+    max-width: 760px;
+    justify-self: center;
+  }
+}
+
+@media (min-width: 1200px) {
+  .rl-stage {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+    align-items: start;
+  }
+  .rl-demo-col {
+    grid-column: 1 / 6;
+    max-width: none;
+  }
+  .rl-rails-panel {
+    grid-column: 6 / 13;
+  }
+  .rl-notyet {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── THE DEMO ── */
+.rl-demo .hl-tbar-end {
+  flex: none;
+}
+
+/* Until the bar has room for all of it, the mode chip takes the second row - never the state pill, which
+   belongs at the end of the first. */
+@media (max-width: 559px) {
+  .rl-demo .hl-tbar-chips {
+    order: 9;
+    flex-basis: 100%;
+  }
+}
+
+/* The state pill: its layers share one cell, right-aligned, so the bar never jumps as it changes. */
+.rl-pill {
+  display: inline-grid;
+  justify-items: end;
+}
+
+.rl-pill > * {
+  grid-area: 1 / 1;
+}
+
+.rl-pill .hl-swap {
+  justify-items: end;
+}
+
+/* Waiting is a held breath: the honey dot stays lit and still. */
+.landing .rl-chip-wait .hl-live {
+  animation: none;
+}
+
+.rl-side {
+  display: grid;
+  gap: 8px;
+}
+
+/* Steps: the mark sits centred on the first line, however many lines the step takes. */
+.rl-feed {
+  gap: 8px;
+}
+
+.rl-feed .hl-step {
+  align-items: start;
+  font-size: 13.5px;
+}
+
+.rl-feed .hl-step-mark {
+  display: flex;
+  align-items: center;
+  height: 1.5em;
+}
+
+/* (1px under centre: the eye centres a tick on the x-height, not on the line box.) */
+.rl-feed .rl-mark {
+  margin-top: 1px;
+}
+
+.rl-mark--hold svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: hsl(var(--brand-primary));
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+/* What comes after the first two steps - the gate, or what Stop or Continue made of it - in one cell. A
+   layer's result sits at its foot, so whichever layer is shorter, the panel's last line stays where it is. */
+.rl-slot {
+  display: grid;
+}
+
+.rl-slot > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.rl-slot:focus {
+  outline: none;
+}
+
+.rl-layer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The flex gap keeps 8px above the result; the auto margin takes whatever the gate's extra height leaves. */
+.rl-layer > .rl-res {
+  margin-top: auto;
+}
+
+.rl-res {
+  flex-wrap: nowrap;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 8px 8px 17px;
+}
+
+.rl-res-x {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: hsl(var(--ink-secondary));
+  text-wrap: pretty;
+}
+
+.rl-res-x b {
+  font-weight: 600;
+  color: hsl(var(--ink-primary));
+}
+
+/* The count travels as one piece: a narrow line breaks before "1 check passed.", never inside it. */
+.rl-res-n {
+  display: inline-block;
+}
+
+.landing .rl-replay {
+  flex: none;
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+/* ── PHASES ────────────────────────────────────────────────────────────────────────────────────────────
+   .rl-v[data-v="…"] is a layer that belongs to one phase (or several, space-separated). Without a phase -
+   the server's page, before or without the script - only the finished run (go) is there. With one, the
+   root's data-phase picks the layer. Hidden layers are visibility: hidden too, so a screen reader never
+   reads a state that is not on show. */
+.rl-v:not([data-v~='go']) {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.rl-demo[data-phase] .rl-v {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.rl-demo[data-phase='drive'] .rl-v[data-v~='drive'],
+.rl-demo[data-phase='wait'] .rl-v[data-v~='wait'],
+.rl-demo[data-phase='stop'] .rl-v[data-v~='stop'],
+.rl-demo[data-phase='go'] .rl-v[data-v~='go'] {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* With motion, a layer hands over in sequence rather than through a muddle of two texts: the leaving one
+   goes at the exit pace (170ms, in) and keeps its box until it has; the arriving one fades in after it
+   (280ms, out). Without motion every swap is instant. */
+html.motion .rl-demo[data-phase] .rl-v {
+  transition:
+    opacity var(--m-exit) var(--m-in),
+    visibility 0s linear var(--m-exit);
+}
+
+html.motion .rl-demo[data-phase='drive'] .rl-v[data-v~='drive'],
+html.motion .rl-demo[data-phase='wait'] .rl-v[data-v~='wait'],
+html.motion .rl-demo[data-phase='stop'] .rl-v[data-v~='stop'],
+html.motion .rl-demo[data-phase='go'] .rl-v[data-v~='go'] {
+  transition:
+    opacity var(--m-base) var(--m-out) 120ms,
+    visibility 0s;
+}
+
+/* Reduced motion, at the gate: the border stays lit at a steady .35 - the screen visibly standing still. */
+html:not(.motion) .rl-demo[data-phase='wait'] .rl-drive-wait {
+  opacity: 0.35;
+}
+
+/* The armed gate, while it drives: the gate's shape, dashed, in ice - quiet until the run reaches Send. */
+.rl-armed-card {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px 14px 19px;
+  border-radius: var(--r-tile);
+  border: 1px dashed hsl(var(--hive-ice) / 0.18);
+}
+
+.rl-armed-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: theme('fontFamily.display');
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: hsl(var(--ink-secondary));
+}
+
+.rl-armed-title .hl-mark {
+  align-self: center;
+  margin: 0;
+}
+
+.rl-armed-title .rl-mark--hold svg {
+  stroke: hsl(var(--hive-ice-2));
+}
+
+.rl-armed-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: hsl(var(--ink-inactive));
+  text-wrap: pretty;
+}
+
+/* ── THE GATE ──────────────────────────────────────────────────────────────────────────────────────────
+   The section's honey moment: glass with a 3px honey edge and a faint honey light from it. Opaque enough to
+   need no blur (it moves, and a backdrop filter never sits on a moving element). It rises 14px in over 420ms
+   when the run halts and sinks 8px out over 260ms when the reader answers - transitions on the phase, not
+   cues, so a jump between acts cannot cut them. */
+.rl-gate {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: grid;
+  gap: 8px;
+  padding: 16px 16px 16px 19px;
+  border-radius: var(--r-tile);
+  background: linear-gradient(180deg, hsl(var(--surface-chips) / 0.92), hsl(var(--surface-card) / 0.92));
+  border: 1px solid hsl(var(--brand-primary) / 0.24);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--hive-frost) / 0.08),
+    0 24px 48px -24px hsl(var(--hive-shade) / 0.9);
+}
+
+.rl-gate::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: hsl(var(--brand-primary));
+}
+
+.rl-gate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(280px 140px at 0 0, hsl(var(--brand-primary) / 0.1), transparent 72%);
+}
+
+/* The nudge's one pulse of the honey edge: a glow layer, opacity only, 700ms, once. */
+.rl-gate-glow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: -1;
+  width: 64px;
+  pointer-events: none;
+  background: linear-gradient(90deg, hsl(var(--brand-primary) / 0.32), transparent);
+  opacity: 0;
+}
+
+html.motion [data-run] .rl-gate-glow.cue-on {
+  animation: rl-edge-pulse var(--m-pulse) var(--m-out) both;
+  animation-delay: calc(0ms - var(--cue-age, 0ms));
+}
+
+@keyframes rl-edge-pulse {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.rl-gate-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: theme('fontFamily.display');
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: hsl(var(--ink-primary));
+}
+
+.rl-gate-body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: hsl(var(--ink-body));
+  text-wrap: pretty;
+}
+
+/* Two equal halves on a phone (thumb-sized), content-sized and side by side from 768. */
+.rl-gate-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.landing .rl-gate-actions .rl-gate-btn {
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .rl-gate-actions {
+    display: flex;
+  }
+  .landing .rl-gate-actions .rl-gate-btn {
+    width: auto;
+  }
+}
+
+/* Only the press moves (the page's button language). The design system's buttons transition "all", and
+   that would carry the gate's visibility too - Continue would stay hidden a frame too long to take focus. */
+.landing .rl-gate-btn {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: transform var(--m-fast) var(--m-out);
+}
+
+.landing .rl-gate-go {
+  color: hsl(var(--ink-primary));
+  border-color: hsl(var(--hive-ice) / 0.2);
+  background: linear-gradient(180deg, hsl(var(--hive-frost) / 0.1), hsl(var(--hive-frost) / 0.04));
+  box-shadow: inset 0 1px 0 hsl(var(--hive-frost) / 0.1);
+}
+
+.landing .rl-gate-stop {
+  color: hsl(var(--ink-secondary));
+}
+
+.landing .rl-gate-btn:focus-visible,
+.landing .rl-replay:focus-visible {
+  outline: 2px solid hsl(var(--focus-ring-brand));
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.landing .rl-gate-btn:active {
+  transform: scale(0.97);
+}
+
+/* On touch there is no hover to find it by: Stop keeps a hairline so it reads as a button. */
+@media (hover: none) {
+  .landing .rl-gate-stop {
+    border-color: hsl(var(--hive-ice) / 0.1);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .landing .rl-gate-go:hover {
+    border-color: hsl(var(--hive-ice-2) / 0.5);
+  }
+  .landing .rl-gate-stop:hover {
+    color: hsl(var(--ink-primary));
+  }
+}
+
+.rl-gate-nudge {
+  margin: 0;
+  font-family: theme('fontFamily.mono');
+  font-size: 11.5px;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: hsl(var(--brand-primary) / 0.9);
+}
+
+/* (.rl-v.rl-gate[data-v]: one step more specific than the phase layers' own transitions above.) */
+html.motion .rl-demo[data-phase] .rl-v.rl-gate[data-v] {
+  transform: translate3d(0, 8px, 0);
+  transition:
+    opacity 260ms var(--m-in),
+    transform 260ms var(--m-in),
+    visibility 0s linear 260ms;
+}
+
+html.motion .rl-demo[data-phase='drive'] .rl-v.rl-gate[data-v] {
+  transform: translate3d(0, 14px, 0);
+  transition: none;
+}
+
+html.motion .rl-demo[data-phase='wait'] .rl-v.rl-gate[data-v] {
+  transform: none;
+  transition:
+    opacity 420ms var(--m-out),
+    transform 420ms var(--m-out),
+    visibility 0s;
+}
+
+/* ── THE SCREEN: a compose window in Mail ── */
+.rl-ui-lbl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.rl-ui-send {
+  flex-direction: column;
+  gap: max(2px, 0.6cqw);
+}
+
+.rl-ui-send svg {
+  width: max(8px, 2.4cqw);
+  height: max(8px, 2.4cqw);
+  fill: none;
+  stroke: hsl(var(--hive-ice-2));
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.rl-ui-rule {
+  border-top: 1px solid hsl(var(--hive-ice) / 0.12);
+}
+
+/* The draft is the story - who it goes to and the number in it - so the compose window's type runs a step
+   larger than the kit's controls, and the body a step larger again. */
+.rl-mail .hl-ui-field {
+  font-size: max(7.5px, 2.3cqw);
+}
+
+.rl-mail .hl-ui-label {
+  font-size: max(6.5px, 1.8cqw);
+}
+
+.rl-mail .rl-ui-send {
+  font-size: max(7px, 2cqw);
+}
+
+.rl-ui-body {
+  display: grid;
+  align-content: start;
+  font-size: max(8px, 2.75cqw);
+  font-weight: 500;
+  line-height: 1.55;
+  color: hsl(var(--ink-primary));
+  white-space: nowrap;
+}
+
+.rl-ui-line {
+  display: block;
+}
+
+/* ── THE SIX RAILS ─────────────────────────────────────────────────────────────────────────────────────
+   Phone: rows of one panel, a 40px cell beside each, hairlines between. 768: each rail its own card. */
+.rl-rails {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rl-rail-li {
+  min-width: 0;
+}
+
+.rl-rail-li + .rl-rail-li {
+  border-top: 1px solid hsl(var(--hive-ice) / 0.08);
+}
+
+.rl-rail {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-areas:
+    'cell title'
+    'cell body';
+  align-content: start;
+  column-gap: 16px;
+  row-gap: 4px;
+  height: 100%;
+  padding: 16px;
+}
+
+/* The prism sits in the lower part of its 72-unit box; the negative top margin puts the prism itself, not
+   the box, level with the title. */
+.rl-cell {
+  grid-area: cell;
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 44px;
+  margin-top: -6px;
+}
+
+.rl-cell svg {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* A rule is the point of each card, so its glyph stands a size larger on the lid than the cell's default
+   (scaled 1.3 about the middle of its 24-unit box, still inside the lid), with the line thinned to match. */
+.rl-cell svg > g {
+  stroke-width: 1.45;
+}
+
+.rl-glyph {
+  transform: translate(12px, 12px) scale(1.3) translate(-12px, -12px);
+}
+
+/* The cell's own glow, lit on hover. */
+.rl-cell::before {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, hsl(var(--hive-ice-2) / 0.22), transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rl-rail-n {
+  display: none;
+}
+
+.landing .rl-rail-title {
+  grid-area: title;
+  align-self: center;
+  font-size: 16.5px;
+  line-height: 1.3;
+}
+
+.landing .rl-rail-body {
+  grid-area: body;
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+/* On a phone the rows are one panel's: the cards lose their own glass. */
+@media (max-width: 767px) {
+  .rl-rail.hl-panel {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .rl-rail.hl-panel::before,
+  .rl-rail.hl-panel--hover::after {
+    content: none;
+  }
+  /* (A row of a panel does not lift out of it; only its glyph answers the pointer.) */
+  html.motion .rl-rail.hl-panel--hover:hover {
+    translate: none;
+  }
+}
+
+@media (min-width: 768px) {
+  /* …and from 768 the panel around them steps back, and every rail is a card. */
+  .rl-rails-panel.hl-panel {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .rl-rails-panel.hl-panel::before {
+    content: none;
+  }
+  .rl-rails {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--hl-gap);
+  }
+  .rl-rail-li + .rl-rail-li {
+    border-top: 0;
+  }
+  .rl-rail {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'cell num'
+      'title title'
+      'body body';
+    row-gap: 8px;
+    padding: 24px;
+  }
+  .rl-cell {
+    width: 56px;
+    height: 56px;
+    margin: -8px 0 4px -4px;
+  }
+  .rl-rail-n {
+    grid-area: num;
+    display: block;
+    font-family: theme('fontFamily.mono');
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
+    color: hsl(var(--ink-inactive));
+  }
+  .landing .rl-rail-title {
+    align-self: start;
+    font-size: 19px;
+  }
+  .landing .rl-rail-body {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+}
+
+/* Rail 02 is the one the demo plays: its number points at it - up while the demo sits above the cards,
+   left once it sits beside them. */
+.rl-rail-try {
+  color: hsl(var(--hive-ice-2));
+}
+
+.rl-rail-try i {
+  font-style: normal;
+}
+
+.rl-try-left {
+  display: none;
+}
+
+.rl-rail-dot {
+  margin: 0 6px;
+  color: hsl(var(--ink-inactive));
+}
+
+@media (min-width: 1200px) {
+  .rl-cell {
+    width: 60px;
+    height: 60px;
+  }
+  .rl-try-up {
+    display: none;
+  }
+  .rl-try-left {
+    display: inline;
+  }
+}
+
+/* Hover (fine pointers): the card lifts and rings (the Panel's own), its cell rises 2px into its glow. */
+@media (hover: hover) and (pointer: fine) {
+  .rl-rail:hover .rl-cell::before {
+    opacity: 1;
+  }
+  html.motion .rl-cell::before {
+    transition: opacity var(--m-fast) var(--m-out);
+  }
+  html.motion .rl-cell svg {
+    transition: transform var(--m-fast) var(--m-out);
+  }
+  html.motion .rl-rail:hover .rl-cell svg {
+    transform: translate3d(0, -2px, 0);
+  }
+}
+
+/* ── WHAT IT DOESN'T DO - YET ──────────────────────────────────────────────────────────────────────────
+   A calm inset tile in muted ink: honest, not alarming. Hollow hexes for bullets - nothing here is red. */
+.rl-notyet.hl-tile {
+  border-radius: var(--r-card);
+  padding: 20px;
+}
+
+.landing .rl-notyet-title {
+  font-size: 19px;
+  color: hsl(var(--ink-primary));
+}
+
+.rl-notyet-sub {
+  margin: 8px 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: hsl(var(--ink-inactive));
+  text-wrap: pretty;
+}
+
+.rl-notyet-list {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rl-notyet-item {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+}
+
+.rl-notyet-hex {
+  margin-top: calc((15px * 1.55 - 10.4px) / 2);
+}
+
+.rl-notyet-item p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: hsl(var(--ink-secondary));
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+.rl-notyet-item b {
+  font-weight: 600;
+  color: hsl(var(--ink-body));
+}
+
+.rl-cannot {
+  vertical-align: 1px;
+}
+
+@media (min-width: 768px) {
+  .rl-notyet.hl-tile {
+    padding: 24px;
+  }
+  .rl-notyet-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px 32px;
+    margin-top: 24px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .rl-notyet.hl-tile {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+    padding: 32px;
+  }
+  .rl-notyet-head {
+    grid-column: 1 / 5;
+  }
+  .landing .rl-notyet-title {
+    font-size: 24px;
+  }
+  .rl-notyet-sub {
+    max-width: 16em;
+    margin-top: 12px;
+    font-size: 16px;
+  }
+  .rl-notyet-list {
+    grid-column: 5 / 13;
+    margin-top: 0;
+    gap: 20px 32px;
+  }
+}

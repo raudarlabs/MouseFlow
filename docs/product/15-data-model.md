@@ -375,6 +375,23 @@ agent sends as `worker`), `platform`, `agent_version` and `seen_at`. A machine p
 see `busyFor` in `api/_queue.mjs`. Agents are the tokens labelled `This computer`; online means the token
 was used in the last 90 seconds.
 
+## `waitlist` / `waitlist_try` — the landing's sign-up list
+
+`db/026_waitlist.sql`, written 2026-10-16 and **not yet applied** (until it is, `/api/waitlist` answers 500 and
+reports it; nothing else reads these tables). Written by [`/api/waitlist`](14-http-api.md#apiwaitlist).
+
+- **`waitlist`**: `email` (primary key, **already normalised** — trimmed and lower-cased, 3–254 chars, so
+  `Ann@x.si` and `ann@x.si ` are one person), `source` (`'landing'` today; a column so a second entry point
+  need not be guessed from `ref`), `ref` (the landing's utm/referrer summary, ≤200, bounded **in the table
+  too** because the browser sends it), `created_at`. A repeat is `on conflict do nothing`.
+- **`waitlist_try`**: `ip_hash`, `at` — one row per attempt that reached the ceiling, swept on the write path
+  after two hours, like `model_call`. It exists so that the ceiling counts attempts rather than list rows
+  (counting rows would leak which addresses are already listed — see the route).
+- **No IP next to an address.** The hash is needed for an hour, for the ceiling, and lives only in
+  `waitlist_try`. Keeping it on the list row forever would be a second identifier with no purpose.
+- **No `user_id`**, so the account erase does not touch it: somebody on the waitlist is nobody here yet.
+  Removing an address is a manual `delete from waitlist where email = …`, on request.
+
 ## `chat_thread` / `chat_message` — conversations
 
 `db/004_chat.sql`
