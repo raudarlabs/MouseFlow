@@ -473,6 +473,12 @@ export const artifactsOf = (runId: string) =>
 export const artifactBytes = (id: string) =>
   call<{ ok: true; artifact: { id: string; mime: string; w: number | null; h: number | null; said: string | null; bytes: string } }>(
     `/api/artifacts?id=${encodeURIComponent(id)}`);
+/* Живой экран идущего прогона на другой машине - последний снимок, по которому решён ход `stepNo`.
+ * `since` - stepNo, который уже показан: тот же снимок второй раз не едет (`same`). */
+export interface LiveFrame { stepNo: number; mime: string; w: number | null; h: number | null; at: string; bytes?: string }
+export const liveFrameOf = (runId: string, since?: number | null) =>
+  call<{ ok: true; frame: LiveFrame | null; same?: boolean }>(
+    `/api/artifacts?live=${encodeURIComponent(runId)}${since != null ? `&since=${since}` : ''}`);
 export const keepArtifact = (body: {
   runId: string; stepNo: number; kind: string; mime: string; w?: number; h?: number; bytes: string; said?: string;
 }) => call<{ ok: true; kept: boolean; id?: string; why?: string }>('/api/artifacts', {

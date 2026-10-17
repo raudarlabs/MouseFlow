@@ -17,7 +17,7 @@ import { fillGoal, missingParams } from '../extension/skills.js';
 import { report, reportSaid } from './_report.js';
 import { FAILS_BEFORE_PAUSE, decide, ruleOf, whenSaid } from './_schedule.mjs';
 import { checksOf } from './_expect.mjs';
-import { ARTIFACT_KEEP_DAYS, artifactId, dropWhich, tooBig } from './_artifact.mjs';
+import { ARTIFACT_KEEP_DAYS, LIVE_KIND, artifactId, dropWhich, liveId, tooBig } from './_artifact.mjs';
 import { overSpend, spentWhy } from './_spend.mjs';
 import { BROWSER_GOAL, CAPS_PREFIX, DESKTOP_GOAL, jobId, roomForOne, scheduleId } from './_queue.mjs';
 import { RUN_KEY, caseGoal, caseIdOf, expectsOf, stripCase } from './_case.mjs';
@@ -278,6 +278,44 @@ async function saveRecording(sql, who, macro, health) {
  * знает и спрашивает каждые три, как раньше. */
 export const POLL_BUSY_S = 3;
 export const POLL_QUIET_S = 15;
+
+/* ЖИВОЙ ЭКРАН УДАЛЁННОЙ МАШИНЫ (владелец, 2026-10-17: «click at 812,54 - ничего непонятно, что было нажато,
+ * чтобы мониторить удалённо»). Снимок и так приезжает с каждым ходом - его видит модель, и только она.
+ * Теперь последний из них лежит одной строкой `live_<работа>` и заменяется следующим, а страница
+ * показывает его в карточке прогона с точкой там, куда этот ход нажимает.
+ *
+ * ТОЛЬКО ПОКА СМОТРЯТ. Отметка web.seen ставится живым опросом Create (api/mcp.js ?live); без неё строка не
+ * пишется - двести килобайт на каждый ход прогона, который никто не открыл, это место без читателя.
+ * Кончился прогон - строка удаляется: картинки, ради которых его будут разбирать потом, - кадры
+ * failure/final, а не последний случайный ход. Best effort целиком: картинка не повод ронять прогон. */
+/* Агент называет формат словом (`jpeg`), страница рисует по типу (`image/jpeg`). */
+const mimeOf = (format) => {
+  const f = String(format || 'jpeg').toLowerCase();
+  return f.includes('/') ? f : `image/${f === 'jpg' ? 'jpeg' : f}`;
+};
+async function liveFrame(sql, userId, runId, shot, stepNo) {
+  try {
+    if (!shot) {
+      await sql`delete from run_artifact where user_id = ${userId} and id = ${liveId(runId)}`;
+      return;
+    }
+    if (!shot.png || tooBig(shot.png)) return;
+    const [seen] = await sql`
+      select 1 as yes from user_pref
+      where user_id = ${userId} and key = 'web.seen' and updated_at > now() - interval '2 minutes'
+    `;
+    if (!seen) return;
+    await sql`
+      insert into run_artifact (id, user_id, run_id, step_no, kind, mime, w, h, bytes, said)
+      values (${liveId(runId)}, ${userId}, ${runId}, ${Math.max(0, Math.round(Number(stepNo) || 0))}, ${LIVE_KIND},
+              ${mimeOf(shot.format)}, ${Number(shot.w) || null}, ${Number(shot.h) || null},
+              ${String(shot.png)}, null)
+      on conflict (id) do update set step_no = excluded.step_no, mime = excluded.mime, w = excluded.w,
+        h = excluded.h, bytes = excluded.bytes, created_at = now()
+    `;
+  } catch (_) { /* no table on this deployment, or a write that lost - the run goes on */ }
+}
+
 async function pollHint(sql, userId) {
   try {
     const [row] = await sql`
@@ -973,7 +1011,7 @@ export async function workerRoute(action, req, res, sql, who) {
       try {
         if (tooBig(body.shot.png)) return;
         const have = await sql`
-          select id, kind, step_no from run_artifact where user_id = ${who.id} and run_id = ${id}
+          select id, kind, step_no from run_artifact where user_id = ${who.id} and run_id = ${id} and kind <> ${LIVE_KIND}
         `;
         const drop = dropWhich(have, 1);
         if (drop.length) {
@@ -1004,11 +1042,15 @@ export async function workerRoute(action, req, res, sql, who) {
     /* Ждал ли прогон ДО этого хода - чтобы вопрос ушёл в чат один раз, а не на каждом опросе: ожидание
      * отдаётся агенту каждые три секунды, и сообщение на каждый из них - это не уведомление, а звонок. */
     const wasHolding = !!(loop && loop.hold && loop.hold.id);
+    /* С какого шага начинается этот ход - им подписан живой кадр: снимок сделан ДО его действий, и
+     * страница рисует на нём, куда они сейчас нажмут. */
+    const turnFrom = loop && Array.isArray(loop.steps) ? loop.steps.length : 0;
     const out = await advance({
       loop, shot: body.shot, windows: body.windows, results: body.results,
       caps: body.caps && typeof body.caps === 'object' ? body.caps : null,
     });
     await keepFrame(out.keep || (out.done && out.done.keep));
+    if (!out.shrink) await liveFrame(sql, who.id, id, out.done ? null : body.shot, turnFrom);
 
     /* ОТЛОЖЕНО, А НЕ СДЕЛАНО. Цель назвала время впереди, и модель вместо таймера из PowerShell позвала
      * defer_until. Прогон становится разовым расписанием на этот момент - с тем же flow_id, tool_name и

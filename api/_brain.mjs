@@ -127,6 +127,16 @@ const MODIFIERS = {
     + 'the Control key.',
 };
 
+/* ЧТО ЭТО, СЛОВАМИ ДЛЯ ТОГО, КТО СМОТРИТ (владелец, 2026-10-17: «click at 812,54 - ничего непонятно, что было
+ * нажато»). Точка понятна модели и агенту; человеку, следящему за чужим компьютером из Create или из
+ * телеграма, она не говорит ничего. На провод не едет - агенту это поле не нужно, а `label` у click уже
+ * значит другое (по нему агент ПОПРАВЛЯЕТ прицел), и «белая пешка на e2» там сбила бы его с толку. */
+const ABOUT = {
+  type: 'string',
+  description: 'What this is, in a few words the person watching would understand - "the Start game '
+    + 'button", "the white pawn on e2", "the message list". Shown in the run log instead of the coordinates.',
+};
+
 /* The list to the wire value, in the order PROTOCOL.md fixes: Cmd, Ctrl, Alt, Shift. Fixed rather than
  * as-given, because the recorders write it in that order and a round trip has to come back unchanged.
  * Anything unrecognised is dropped rather than passed through: the wire says an unknown token is data, so
@@ -159,6 +169,7 @@ export const TOOLS = [
           description: 'The visible text of the thing you are clicking, if it has any - a tab title, a '
             + 'button label. Used to correct the aim if the layout has shifted.',
         },
+        about: ABOUT,
         modifiers: MODIFIERS,
       },
       required: ['x', 'y'],
@@ -222,6 +233,7 @@ export const TOOLS = [
       properties: {
         x: { type: 'integer', description: 'Pixels from the left of the screenshot' },
         y: { type: 'integer', description: 'Pixels from the top of the screenshot' },
+        about: ABOUT,
       },
       required: ['x', 'y'],
       additionalProperties: false,
@@ -413,6 +425,7 @@ export const TOOLS = [
         y: { type: 'integer' },
         toX: { type: 'integer', description: 'Where to let go' },
         toY: { type: 'integer' },
+        about: ABOUT,
         /* Held from the press through every movement to the release, which is the difference between an
          * alt-drag (copy) and an alt-press followed by an ordinary drag (move). */
         modifiers: MODIFIERS,
@@ -489,6 +502,7 @@ export const TOOLS = [
         y: { type: 'integer' },
         amount: { type: 'integer' },
         direction: { type: 'string', enum: ['up', 'down', 'left', 'right'] },
+        about: ABOUT,
         /* Held once around the whole run rather than per notch - see the agent. A zoom that restarts a
          * hundred times is not the zoom that was asked for. */
         modifiers: MODIFIERS,

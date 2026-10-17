@@ -29,6 +29,12 @@ export const ARTIFACT_KEEP_DAYS = 30;
 /** Виды, от самого нужного к самому необязательному. Порядок ЗНАЧИМ - по нему решается, что выбросить. */
 export const KINDS = ['failure', 'final', 'check'];
 
+/* Живой экран идущего прогона - ОДНА строка на работу, заменяемая каждым ходом (см. liveFrame в
+ * api/_mcp-worker.mjs). Не вид отчёта: в KINDS его нет, в потолок кадров и в список кадров он не входит, и
+ * с концом прогона его нет. */
+export const LIVE_KIND = 'live';
+export const liveId = (runId) => `live_${String(runId).slice(0, 70)}`;
+
 export const artifactId = () =>
   `art_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 

@@ -49,6 +49,7 @@ import {
   machineName, push, scheduleAdd, scheduleRemove,
 } from '@/lib/api';
 import { HERE, MachinePick } from './MachinePick';
+import { LiveScreen } from './LiveScreen';
 import {
   type GateAnswer,
   MAX_WAVES,
@@ -524,14 +525,15 @@ export const CreateView = () => {
               feed,
               state: turnState,
               note,
-              ...(sentFromHere ? { on: job.machine?.name ?? null } : { byItself: { scheduleId: job.scheduleId } }),
+              on: job.machine?.name ?? null,
+              ...(sentFromHere ? {} : { byItself: { scheduleId: job.scheduleId } }),
             }];
           }
           /* Цель обновляется, когда пришла лучшая: работа, увиденная ещё в очереди, могла прийти без неё. */
           return prev.map((t) => (t.id === turnId
             /* Отправленное отсюда, ещё не взятое, - шагов нет, и строка «Sent to …» остаётся, пока их нет. */
             ? { ...t, feed: feed.length || !sentFromHere ? feed : t.feed, state: turnState, note,
-              goal: job.goal ?? t.goal, ...(sentFromHere && job.machine?.name ? { on: job.machine.name } : {}) } : t));
+              goal: job.goal ?? t.goal, ...(job.machine?.name ? { on: job.machine.name } : {}) } : t));
         });
 
         /* Кончилось на глазах - сказать вслух и перечитать историю. Один раз: состояние сравнивается с тем,
@@ -1036,7 +1038,8 @@ export const CreateView = () => {
               <div key={turn.id} className="flex flex-col gap-3">
                 <UserTurn
                   meta={`${turn.byItself
-                    ? (turn.byItself.scheduleId ? 'by itself, from a schedule' : 'by itself, asked from a chat')
+                    ? `${turn.byItself.scheduleId ? 'by itself, from a schedule' : 'by itself, asked from a chat'}${
+                      turn.on ? ` · on ${turn.on}` : ''}`
                     : turn.on ? `on ${turn.on}` : turn.target === 'desktop' ? 'on this computer' : 'in this browser'} · ${
                     new Date(turn.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                   }`}
@@ -1093,11 +1096,21 @@ export const CreateView = () => {
                               : ` of ${lastTurnEvent.of}`}`,
                             waiting ? `waiting ${Math.round((waiting.ms ?? 0) / 1000)}s for the screen to settle` : null,
                           ].filter(Boolean).join(' · ')
-                          : 'starting…'}
+                          /* У работы из очереди событий хода нет - есть её шаги; «starting…» над пятым
+                           * шагом читалось как «ещё не началось». */
+                          : turn.id.startsWith('q_') && shown.some((e) => e.type === 'tool')
+                            ? `step ${shown.filter((e) => e.type === 'tool').length}${turn.on ? ` on ${turn.on}` : ''}`
+                            : 'starting…'}
                       </div>
                     ) : undefined
                   }
                 >
+                  {/* ЭКРАН ТОЙ МАШИНЫ - у работы из очереди: её ведёт облачный цикл, и снимок, по которому он
+                    * решает, теперь виден и здесь. У прогона из этой вкладки экран и так перед глазами. */}
+                  {turn.id.startsWith('q_') && turn.target === 'desktop' && (
+                    <LiveScreen runId={turn.id.slice(2)} feed={turn.feed} running={turn.state === 'running'} machine={turn.on ?? null} />
+                  )}
+
                   {shown.length === 0 && turn.state === 'running' && (
                     <StepLine kind="waiting">Working out the first step…</StepLine>
                   )}

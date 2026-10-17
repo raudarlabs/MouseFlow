@@ -19,7 +19,7 @@ import { whoIsCalling } from './_session.js';
 import { report, wrap } from './_report.js';
 import { cors } from './_cors.mjs';
 import {
-  ARTIFACT_KEEP_DAYS, ARTIFACTS_PER_RUN, KINDS, artifactId, dropWhich, tooBig,
+  ARTIFACT_KEEP_DAYS, ARTIFACTS_PER_RUN, KINDS, LIVE_KIND, artifactId, dropWhich, liveId, tooBig,
 } from './_artifact.mjs';
 
 const fail = (res, status, message) =>
@@ -35,7 +35,7 @@ async function list(res, sql, userId, runId) {
   const rows = await sql`
     select id, run_id, step_no, kind, mime, w, h, said, created_at
     from run_artifact
-    where user_id = ${userId} and run_id = ${runId}
+    where user_id = ${userId} and run_id = ${runId} and kind <> ${LIVE_KIND}
     order by step_no, created_at
   `;
   return res.status(200).json({
@@ -70,6 +70,25 @@ async function one(res, sql, userId, id) {
   });
 }
 
+/* ЖИВОЙ ЭКРАН идущего прогона на другой машине (см. liveFrame в api/_mcp-worker.mjs). Без кэша - он
+ * меняется каждым ходом; `stepNo` - первый шаг хода, который по этому снимку решён. Нет строки - 200 с
+ * `frame: null`: «ещё не прислал» это не ошибка. `since` - stepNo, который у страницы уже есть: тот же
+ * снимок второй раз не едет. */
+async function live(res, sql, userId, runId, since) {
+  res.setHeader('Cache-Control', 'no-store');
+  const rows = await sql`
+    select step_no, mime, w, h, created_at from run_artifact
+    where user_id = ${userId} and id = ${liveId(runId)}
+  `;
+  if (!rows.length) return res.status(200).json({ ok: true, frame: null });
+  const it = rows[0];
+  const head = { stepNo: it.step_no, mime: it.mime, w: it.w, h: it.h, at: it.created_at };
+  if (since != null && Number(since) === Number(it.step_no)) return res.status(200).json({ ok: true, frame: head, same: true });
+  const [got] = await sql`select bytes from run_artifact where user_id = ${userId} and id = ${liveId(runId)}`;
+  if (!got) return res.status(200).json({ ok: true, frame: null });
+  return res.status(200).json({ ok: true, frame: { ...head, bytes: got.bytes } });
+}
+
 async function put(req, res, sql, userId) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const runId = String(body.runId || '').trim();
@@ -89,7 +108,7 @@ async function put(req, res, sql, userId) {
    * зелёное. Провал и финал остаются - ради них таблица и существует. Расчёт в _artifact.mjs, общий с
    * облачным путём. */
   const have = await sql`
-    select id, kind, step_no from run_artifact where user_id = ${userId} and run_id = ${runId}
+    select id, kind, step_no from run_artifact where user_id = ${userId} and run_id = ${runId} and kind <> ${LIVE_KIND}
   `;
   const drop = dropWhich(have, 1);
   if (drop.length) {
@@ -136,6 +155,12 @@ async function handler(req, res) {
       if (asked) {
         if (!ID.test(asked)) return fail(res, 400, 'that is not a frame id');
         return one(res, sql, who.id, asked);
+      }
+      const watching = String((req.query && req.query.live) || '').trim();
+      if (watching) {
+        if (!ID.test(watching)) return fail(res, 400, 'that is not a run id');
+        const since = req.query.since != null && req.query.since !== '' ? req.query.since : null;
+        return live(res, sql, who.id, watching, since);
       }
       const runId = String((req.query && req.query.run) || '').trim();
       if (!ID.test(runId)) return fail(res, 400, 'which run? pass ?run=<id>, or ?id=<frame>');

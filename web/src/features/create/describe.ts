@@ -44,9 +44,17 @@ export function describe(did: Did, on: On = undefined): string {
     : [];
   const with_ = held.length ? `${held.join('+')}-` : '';
 
+  /* ЧТО, А НЕ ГДЕ, когда модель это назвала: `label` - видимая надпись цели, `about` - её же слова для
+   * того, кто смотрит (см. ABOUT в api/_brain.mjs). Точка остаётся только там, где не назвали ничего:
+   * «click at 812,54» человеку, следящему за чужим компьютером, не говорит ничего. */
+  const label = typeof input.label === 'string' && input.label.trim() ? `"${input.label.trim()}"` : '';
+  const about = typeof input.about === 'string' && input.about.trim() ? input.about.trim() : '';
+  const what = label || about;
+  const aimed = what ? ` ${what}` : at;
+
   switch (did.name) {
     case 'click':
-      return `${with_}${input.double ? 'double-click' : input.button === 'right' ? 'right-click' : 'click'}${at}`;
+      return `${with_}${input.double ? 'double-click' : input.button === 'right' ? 'right-click' : 'click'}${aimed}`;
     /* ИМЯ, А НЕ КООРДИНАТА, - и в журнале это тем и ценно.
      *
      * Тот же префикс модификаторов, что у click, потому что жест тот же: пропустить его здесь значит
@@ -58,12 +66,12 @@ export function describe(did: Did, on: On = undefined): string {
     case 'click_named':
       return `${with_}${input.double ? 'double-click' : input.button === 'right' ? 'right-click' : 'click'} "${input.name ?? '?'}"`;
     case 'hover':
-      return `hover${at}`;
+      return `hover${what ? ` over ${what}` : at}`;
     case 'scroll': {
       const way = ['up', 'down', 'left', 'right'].includes(String(input.direction))
         ? String(input.direction)
         : (Number(input.amount) < 0 ? 'down' : 'up');
-      return `${with_}scroll ${way}${at}`;
+      return `${with_}scroll ${way}${what ? ` in ${what}` : at}`;
     }
     case 'refresh_page':
       return `reload ${input.title ?? input.process ?? 'the window in front'}`;
@@ -108,7 +116,7 @@ export function describe(did: Did, on: On = undefined): string {
     case 'scroll_to':
       return `scroll to ${input.to ?? '?'}`;
     case 'drag':
-      return `${with_}drag ${at.trim() || 'from somewhere'} to ${input.toX},${input.toY}`;
+      return `${with_}drag ${about || `${at.trim() || 'from somewhere'} to ${input.toX},${input.toY}`}`;
     case 'clipboard_read':
       return 'read the clipboard';
     case 'clipboard_write': {

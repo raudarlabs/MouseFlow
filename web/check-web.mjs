@@ -516,6 +516,25 @@ group('Create: a computer to pick, no small print under the field, short suggest
   check('у машины без имени - своё имя, а не «This computer»', /`Computer \$\{machines\.indexOf\(m\) \+ 1\}`/.test(pick));
 }
 
+group('A run on another computer reads as what it does: its screen, the point it clicks, steps in words');
+{
+  const create = read('src/features/create/CreateView.tsx');
+  const screen = read('src/features/create/LiveScreen.tsx');
+  const words = read('src/features/create/describe.ts');
+  const worker = read('../api/_mcp-worker.mjs');
+  const brain = read('../api/_brain.mjs');
+  /* Владелец, 2026-10-17: «click at 812,54 - ничего непонятно, что было нажато, чтобы мониторить удалённо». */
+  check('у работы из очереди в карточке - экран той машины', /<LiveScreen runId=\{turn\.id\.slice\(2\)\}/.test(create));
+  check('снимок едет только новый', /liveFrameOf\(runId, have\.current\)/.test(screen) && /got\.same/.test(screen));
+  check('и только пока смотрят, а с концом прогона его нет',
+    /key = 'web\.seen' and updated_at > now\(\) - interval '2 minutes'/.test(worker)
+      && /liveFrame\(sql, who\.id, id, out\.done \? null : body\.shot, turnFrom\)/.test(worker));
+  check('точка - там, куда нажимает этот ход', /feed\.slice\(frame\.stepNo\)/.test(screen) && /<circle cx=\{m\.x\}/.test(screen));
+  check('у клика, наведения, прокрутки и перетаскивания есть «что это» словами',
+    (brain.match(/about: ABOUT,/g) || []).length === 4);
+  check('и журнал пишет его вместо точки', /const what = label \|\| about;/.test(words));
+}
+
 group('папки одного продукта не импортируют папки другого');
 {
   /* Шаг 0 плана разделения (docs/SEPARATION-PLAN.md): продукты разойдутся по аккаунтам, и код экрана P1,

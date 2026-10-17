@@ -577,6 +577,31 @@ const ENROLL_CODES: { id: string; uses: number; expiresAt: string; madeAt: strin
 const FLEET_JOBS: { id: string; device: string; name: string; goal: string | null; at: string }[] = [];
 const MACHINE_LABELS: Record<string, string> = { dev_a1: 'Office-1', dev_a2: 'Vics-MacBook-Air', dev_a3: 'This computer #3' };
 
+/* ИДУЩАЯ РАБОТА НА ДРУГОЙ МАШИНЕ - для живого экрана в Create. Через три секунды после постановки она
+ * «взята», и раз в четыре секунды прибавляется шаг; снимок - нарисованный экран с кнопками там, куда шаги
+ * нажимают. Настоящего экрана у мока нет, и картинка честно выглядит как макет. */
+const MOCK_STEPS = [
+  { tool: 'open_app', input: { name: 'Chess' } },
+  { tool: 'click', input: { x: 640, y: 420, about: 'the New Game button' } },
+  { tool: 'click', input: { x: 520, y: 300, label: 'Unlimited' } },
+  { tool: 'click', input: { x: 640, y: 520, label: 'Start game' } },
+  { tool: 'drag', input: { x: 600, y: 600, toX: 600, toY: 470, about: 'the white pawn from e2 to e4' } },
+  { tool: 'wait', input: { ms: 2000, reason: 'the computer moves' } },
+  { tool: 'click', input: { x: 760, y: 610, about: 'the knight on g1' } },
+];
+const mockAge = (at: string) => Math.max(0, Date.now() - new Date(at).getTime());
+const mockStepsOf = (at: string) => MOCK_STEPS.slice(0, Math.min(MOCK_STEPS.length, Math.floor(Math.max(0, mockAge(at) - 3000) / 4000) + 1));
+const mockScreen = (n: number) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+<rect width="1280" height="800" fill="#1e293b"/><rect width="1280" height="36" fill="#0f172a"/>
+<text x="20" y="24" fill="#cbd5e1" font-family="Segoe UI, sans-serif" font-size="16">Chess - Windows (mock screen, step ${n + 1})</text>
+<rect x="540" y="395" width="200" height="50" rx="8" fill="#334155"/><text x="640" y="427" fill="#fff" font-size="20" text-anchor="middle" font-family="sans-serif">New Game</text>
+<rect x="440" y="280" width="160" height="40" rx="8" fill="#334155"/><text x="520" y="306" fill="#fff" font-size="18" text-anchor="middle" font-family="sans-serif">Unlimited</text>
+<rect x="540" y="495" width="200" height="50" rx="8" fill="#16a34a"/><text x="640" y="527" fill="#fff" font-size="20" text-anchor="middle" font-family="sans-serif">Start game</text>
+</svg>`;
+  return Buffer.from(svg).toString('base64');
+};
+
 export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
   const url = req.url ?? '';
   const method = (req.method ?? 'GET').toUpperCase();
@@ -1171,6 +1196,16 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
    * показывала бы работающий экран сломанным - та же ошибка, что однажды сделал мок выхода из аккаунта. */
   /* Кадры прогонов. У фикстуры их нет: картинки берутся с настоящего экрана, а его у мока нет вовсе -
    * и полоска миниатюр честно не рисуется. POST принимается, чтобы прогон на моке не ловил отказ. */
+  if (url.startsWith('/api/artifacts?live=')) {
+    const id = decodeURIComponent((url.match(/live=([^&]+)/) || [])[1] || '');
+    const job = FLEET_JOBS.find((one) => one.id === id);
+    if (!job || mockAge(job.at) < 3000) return json(res, 200, { ok: true, frame: null });
+    const n = mockStepsOf(job.at).length - 1;
+    const since = (url.match(/since=(\d+)/) || [])[1];
+    const head = { stepNo: n, mime: 'image/svg+xml', w: 1280, h: 800, at: new Date().toISOString() };
+    if (since !== undefined && Number(since) === n) return json(res, 200, { ok: true, frame: head, same: true });
+    return json(res, 200, { ok: true, frame: { ...head, bytes: mockScreen(n) } });
+  }
   if (url.startsWith('/api/artifacts')) {
     if (method === 'POST') return json(res, 200, { ok: true, kept: false, why: 'the mock keeps no frames' });
     return json(res, 200, { ok: true, artifacts: [] });
@@ -1263,8 +1298,8 @@ export const mockApi: Connect.NextHandleFunction = (req, res, next) => {
         name: 'Weekly Jira export', goal: null,
         scheduleId: 'sch_dev_2', startedAt: '2026-08-30T15:00:00.000Z', finishedAt: '2026-08-30T15:00:02.000Z', steps: [],
       }] : FLEET_JOBS.slice(0, 5).map((one) => ({
-        id: one.id, state: 'queued', ok: null, said: null, name: one.name, goal: one.goal, scheduleId: null,
-        source: 'you', startedAt: one.at, finishedAt: null, steps: [],
+        id: one.id, state: mockAge(one.at) < 3000 ? 'queued' : 'claimed', ok: null, said: null, name: one.name, goal: one.goal, scheduleId: null,
+        source: 'you', startedAt: one.at, finishedAt: null, steps: mockAge(one.at) < 3000 ? [] : mockStepsOf(one.at),
         machine: { id: one.device, name: MACHINE_NAMES[one.device] || MACHINE_LABELS[one.device] || null },
       })),
     });
