@@ -5817,7 +5817,12 @@ group('якорь: клик помнит, где были его окно и е�
   check('и читает числа агента, которые до этого никто не читал',
     /retargeted\?: number;/.test(client) && /Number\(status\.retargeted\)/.test(view));
   check('приложение просит сборку, которая не сворачивает окно, которое хотела показать, и не кончает повтор меню',
-    /AGENT_WANTS = '0\.29\.0'/.test(client));
+    /AGENT_WANTS = '0\.29\.[1-9]'/.test(client));
+  /* 0.29.1: open_app находит установленное по словам названия - на обоих агентах одним правилом. */
+  check('open_app ищет среди установленных приложений, на Windows и на маке',
+    /InstalledApps\(\)/.test(readFileSync(new URL('../agent/mouseflow-agent.ps1', import.meta.url), 'utf8'))
+      && /shell:AppsFolder/.test(readFileSync(new URL('../agent/mouseflow-agent.ps1', import.meta.url), 'utf8'))
+      && /func installedApps\(\)/.test(readFileSync(new URL('../agent/mouseflow-agent.swift', import.meta.url), 'utf8')));
 }
 
 group('префикс хода кешируется - самое дорогое место в цикле');

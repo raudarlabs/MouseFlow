@@ -473,7 +473,12 @@ export const TOOLS = [
     name: 'open_app',
     description: 'Start an application by name - "notepad", "excel", "Google Chrome". Read the "Already '
       + 'open" list FIRST: if it is there, use activate_window instead, because a second copy is a mess the '
-      + 'user has to clean up. A name only - no paths, no arguments, and no way to pass either.',
+      + 'user has to clean up. It looks among the applications INSTALLED on this computer (the Start menu, '
+      + 'Store apps included; /Applications on a Mac), so a word of the name is enough - "chess" opens '
+      + '"The Chess Lv.100" - and when several match it lists them for you to pick. This is the FIRST way '
+      + 'to reach an application that is not open: never look for an installed application on the web, in '
+      + 'a browser or by browsing folders before asking open_app. A name only - no paths, no arguments, and '
+      + 'no way to pass either.',
     input_schema: {
       type: 'object',
       properties: { name: { type: 'string' } },

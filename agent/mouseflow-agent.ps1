@@ -548,7 +548,7 @@ namespace MouseFlow
 
     public static class Agent
     {
-        public const string Version = "0.29.0";
+        public const string Version = "0.29.1";
 
         static readonly object Gate = new object();
         static Native.HookProc _proc;   // must outlive the hook or the GC eats it
@@ -4332,6 +4332,17 @@ namespace MouseFlow
                         + "application and cannot pass it arguments";
                 }
             }
+            /* УСТАНОВЛЕННОЕ - ПЕРВЫМ (владелец, 2026-10-17). Process.Start знает только то, что Windows
+             * запускает по имени - PATH и App Paths: notepad, excel, chrome. Игру из Microsoft Store («The
+             * Chess Lv.100») так не найти, и прогон, получив отказ, пошёл искать её в интернете, в истории
+             * браузера и в проводнике - две минуты до первого хода. Список приложений - тот же, что в меню
+             * «Пуск» (shell:AppsFolder): и обычные программы, и приложения из Store. */
+            List<App> installed = InstalledApps();
+            string want = AppWords(name);
+            foreach (App one in installed)
+            {
+                if (AppWords(one.Name) == want) return LaunchInstalled(one, name);
+            }
             try
             {
                 Process.Start(new ProcessStartInfo(name) { UseShellExecute = true });
@@ -4341,8 +4352,156 @@ namespace MouseFlow
             }
             catch (Exception e)
             {
-                return "Windows would not open \"" + name + "\": " + e.Message
-                    + " - if it is already running, activate_window is the way to it";
+                /* По словам названия: «chess» находит «The Chess Lv.100», «chrome» - «Google Chrome». Слово,
+                 * совпавшее целиком, сильнее начала слова: «word» - это Word, а не WordPad. */
+                List<App> whole = new List<App>();
+                List<App> start = new List<App>();
+                foreach (App one in installed)
+                {
+                    int tier = AppMatch(want, AppWords(one.Name));
+                    if (tier == 2) whole.Add(one); else if (tier == 1) start.Add(one);
+                }
+                List<App> best = whole.Count > 0 ? whole : start;
+                if (best.Count == 1) return LaunchInstalled(best[0], name);
+                if (best.Count > 1)
+                {
+                    StringBuilder names = new StringBuilder();
+                    for (int i = 0; i < best.Count && i < 12; i++) names.Append(i == 0 ? "" : "; ").Append(best[i].Name);
+                    return "several installed applications match \"" + name + "\": " + names
+                        + (best.Count > 12 ? " (and " + (best.Count - 12) + " more)" : "")
+                        + " - call open_app again with the exact name of the one you mean";
+                }
+                return "nothing installed on this computer is called \"" + name + "\" or has those words in its "
+                    + "name (" + installed.Count + " applications looked at; Windows also said: " + e.Message + "). "
+                    + "Try one distinctive word of its name. If it is already running, activate_window is the way to it";
+            }
+        }
+
+        /* Название словами: строчные буквы и цифры, остальное - пробел. «The Chess Lv.100» -> «the chess lv 100». */
+        static string AppWords(string s)
+        {
+            StringBuilder b = new StringBuilder();
+            foreach (char c in (s ?? "").ToLowerInvariant()) b.Append(char.IsLetterOrDigit(c) ? c : ' ');
+            return string.Join(" ", b.ToString().Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        /* 2 - каждое искомое слово есть в названии целиком, 1 - каждое хотя бы началом слова, 0 - нет. */
+        static int AppMatch(string want, string have)
+        {
+            string[] wanted = want.Split(' ');
+            string[] words = have.Split(' ');
+            if (wanted.Length == 0 || want.Length == 0) return 0;
+            int tier = 2;
+            foreach (string w in wanted)
+            {
+                bool exact = false, prefix = false;
+                foreach (string h in words)
+                {
+                    if (h == w) { exact = true; break; }
+                    if (h.StartsWith(w, StringComparison.Ordinal)) prefix = true;
+                }
+                if (exact) continue;
+                if (prefix) { tier = 1; continue; }
+                return 0;
+            }
+            return tier;
+        }
+
+        static string LaunchInstalled(App one, string asked)
+        {
+            try
+            {
+                /* Приложение из меню «Пуск» - через explorer: так его запускает и сам «Пуск», включая Store,
+                 * у которых нет exe, который можно было бы назвать. Ярлык - как двойной щелчок по нему. */
+                if (one.Launch.StartsWith("shell:AppsFolder\\", StringComparison.OrdinalIgnoreCase))
+                    Process.Start(new ProcessStartInfo("explorer.exe", "\"" + one.Launch + "\"") { UseShellExecute = true });
+                else
+                    Process.Start(new ProcessStartInfo(one.Launch) { UseShellExecute = true });
+                Say("asked Windows to open \"" + one.Name + "\" (installed; asked for \"" + asked + "\") - it may take a "
+                    + "few seconds to appear, and a fresh screenshot is how to tell whether it did");
+                return null;
+            }
+            catch (Exception e) { return "Windows would not open \"" + one.Name + "\": " + e.Message; }
+        }
+
+        /* Установленное приложение: как его зовут в «Пуске» - и чем его запустить. */
+        class App
+        {
+            public string Name;
+            public string Launch;
+            public App(string name, string launch) { Name = name; Launch = launch; }
+        }
+
+        static List<App> _apps;
+        static DateTime _appsAt = DateTime.MinValue;
+        static readonly object _appsLock = new object();
+
+        /* Что установлено: имя - и чем запустить. Минуту из памяти: прогон зовёт open_app раз-другой, а
+         * перечисление «Пуска» - это пара сотен вызовов COM. В своём STA-потоке, потому что Shell.Application
+         * живёт в квартире, а запрос пришёл с потока сервера. Не вышло - ярлыки меню «Пуск» с диска. */
+        static List<App> InstalledApps()
+        {
+            lock (_appsLock)
+            {
+                if (_apps != null && (DateTime.UtcNow - _appsAt).TotalSeconds < 60) return _apps;
+                List<App> found = new List<App>();
+                List<App> fromShell = null;
+                Thread worker = new Thread(() =>
+                {
+                    List<App> mine = new List<App>();
+                    try
+                    {
+                        System.Reflection.BindingFlags call = System.Reflection.BindingFlags.InvokeMethod;
+                        System.Reflection.BindingFlags get = System.Reflection.BindingFlags.GetProperty;
+                        Type t = Type.GetTypeFromProgID("Shell.Application");
+                        object shell = Activator.CreateInstance(t);
+                        object folder = t.InvokeMember("NameSpace", call, null, shell, new object[] { "shell:AppsFolder" });
+                        if (folder == null) return;
+                        object items = folder.GetType().InvokeMember("Items", call, null, folder, null);
+                        int count = (int)items.GetType().InvokeMember("Count", get, null, items, null);
+                        for (int i = 0; i < count && i < 3000; i++)
+                        {
+                            object item = items.GetType().InvokeMember("Item", call, null, items, new object[] { i });
+                            if (item == null) continue;
+                            string label = item.GetType().InvokeMember("Name", get, null, item, null) as string;
+                            string path = item.GetType().InvokeMember("Path", get, null, item, null) as string;
+                            if (!string.IsNullOrEmpty(label) && !string.IsNullOrEmpty(path))
+                                mine.Add(new App(label, "shell:AppsFolder\\" + path));
+                        }
+                    }
+                    catch { /* no shell here - the shortcuts below */ }
+                    /* Отдано целиком и только в конце: поток, не уложившийся в ожидание, не дописывает в
+                     * список, который уже читают. */
+                    Interlocked.Exchange(ref fromShell, mine);
+                });
+                worker.IsBackground = true;
+                try
+                {
+                    worker.SetApartmentState(ApartmentState.STA);
+                    worker.Start();
+                    worker.Join(8000);
+                }
+                catch { /* no apartment to be had - the shortcuts below */ }
+                List<App> got = Interlocked.CompareExchange(ref fromShell, null, null);
+                if (got != null) found.AddRange(got);
+                if (found.Count == 0)
+                {
+                    foreach (Environment.SpecialFolder where in new Environment.SpecialFolder[] {
+                        Environment.SpecialFolder.CommonStartMenu, Environment.SpecialFolder.StartMenu })
+                    {
+                        try
+                        {
+                            string root = Environment.GetFolderPath(where);
+                            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
+                            foreach (string lnk in Directory.GetFiles(root, "*.lnk", SearchOption.AllDirectories))
+                                found.Add(new App(Path.GetFileNameWithoutExtension(lnk), lnk));
+                        }
+                        catch { }
+                    }
+                }
+                _apps = found;
+                _appsAt = DateTime.UtcNow;
+                return _apps;
             }
         }
 

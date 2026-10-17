@@ -772,7 +772,9 @@ export const autostartEnable = (port: number) =>
  * переключает, и записанный «поднять» на уже поднятом окне сворачивал его. Какое окно - говорит сама
  * запись, пометкой Focus за нажатием. Старый агент делает и то и другое по-старому, и сказать об этом
  * человеку может только этот нудж. */
-export const AGENT_WANTS = '0.29.0';
+/* 0.29.1 (2026-10-17): open_app ищет среди УСТАНОВЛЕННЫХ приложений по словам названия - «chess» открывает
+ * «The Chess Lv.100» из Store, - вместо того чтобы прогон шёл искать приложение в интернете. */
+export const AGENT_WANTS = '0.29.1';
 
 /** Numeric, part by part: "0.10.0" is not behind "0.5.0", which a string comparison gets wrong. */
 export function olderThan(running: string | null | undefined, wanted = AGENT_WANTS): boolean {

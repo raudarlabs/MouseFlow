@@ -44,7 +44,7 @@ import ScreenCaptureKit
 import Security
 import WebKit
 
-let VERSION = "0.29.0"
+let VERSION = "0.29.1"
 
 // ---------------------------------------------------------------- arguments
 
@@ -3904,6 +3904,51 @@ func doOpenUrl(_ url: String) -> String? {
  * которого выросла эта волна. Линию держат границы промпта, смотрящий человек и отказ выше трогать
  * собственное окно агента. Это действие здесь для того, чтобы модель не импровизировала, и оно узкое,
  * чтобы импровизировать ЧЕРЕЗ него было не легче, чем мимо. */
+/* Название словами: строчные буквы и цифры, остальное - пробел. */
+func appWords(_ s: String) -> String {
+    let mapped = s.lowercased().map { $0.isLetter || $0.isNumber ? $0 : " " }
+    return String(mapped).split(separator: " ").joined(separator: " ")
+}
+
+/* 2 - каждое искомое слово есть в названии целиком, 1 - каждое хотя бы началом слова, 0 - нет. */
+func appMatch(_ want: String, _ have: String) -> Int {
+    let wanted = want.split(separator: " ")
+    let words = have.split(separator: " ")
+    if wanted.isEmpty { return 0 }
+    var tier = 2
+    for w in wanted {
+        if words.contains(w) { continue }
+        if words.contains(where: { $0.hasPrefix(w) }) { tier = 1; continue }
+        return 0
+    }
+    return tier
+}
+
+/* Что установлено там, где живут приложения, - и на уровень глубже: «Microsoft Office/…», «Adobe …/». */
+func installedApps() -> [(name: String, url: URL)] {
+    let places = ["/Applications", "/System/Applications", "/System/Applications/Utilities",
+                  "/Applications/Utilities", NSHomeDirectory() + "/Applications"]
+    var out: [(name: String, url: URL)] = []
+    let fm = FileManager.default
+    for place in places {
+        guard let entries = try? fm.contentsOfDirectory(atPath: place) else { continue }
+        for entry in entries {
+            if entry.hasSuffix(".app") {
+                out.append((String(entry.dropLast(4)), URL(fileURLWithPath: place + "/" + entry)))
+                continue
+            }
+            var folder: ObjCBool = false
+            let inner = place + "/" + entry
+            guard fm.fileExists(atPath: inner, isDirectory: &folder), folder.boolValue,
+                  let deeper = try? fm.contentsOfDirectory(atPath: inner) else { continue }
+            for one in deeper where one.hasSuffix(".app") {
+                out.append((String(one.dropLast(4)), URL(fileURLWithPath: inner + "/" + one)))
+            }
+        }
+    }
+    return out
+}
+
 func doOpenApp(_ app: String) -> String? {
     let name = app.trimmingCharacters(in: .whitespacesAndNewlines)
     if name.isEmpty || name.count > 80 { return "an application name, up to 80 characters" }
@@ -3925,22 +3970,32 @@ func doOpenApp(_ app: String) -> String? {
     if name.contains(".") {
         found = NSWorkspace.shared.urlForApplication(withBundleIdentifier: name)
     }
+    /* ПО СЛОВАМ НАЗВАНИЯ, а не только целиком (владелец, 2026-10-17): «chess» - это «Chess», «chrome» -
+     * «Google Chrome». Прогон, получивший «не установлено» на неточное имя, шёл искать приложение в
+     * интернете. Целое совпавшее слово сильнее начала слова: «word» - Word, а не WordPad. Несколько равных -
+     * названы, и модель выбирает сама. Та же логика, что у OpenApp в агенте Windows. */
+    var several: [String] = []
     if found == nil {
-        let places = ["/Applications", "/System/Applications", "/System/Applications/Utilities",
-                      "/Applications/Utilities",
-                      NSHomeDirectory() + "/Applications"]
-        let want = name.lowercased()
-        outer: for place in places {
-            guard let entries = try? FileManager.default.contentsOfDirectory(atPath: place) else { continue }
-            for entry in entries where entry.lowercased() == want + ".app" {
-                found = URL(fileURLWithPath: place + "/" + entry)
-                break outer
-            }
+        let installed = installedApps()
+        let want = appWords(name)
+        if let exact = installed.first(where: { appWords($0.name) == want }) {
+            found = exact.url
+        } else {
+            let whole = installed.filter { appMatch(want, appWords($0.name)) == 2 }
+            let start = installed.filter { appMatch(want, appWords($0.name)) == 1 }
+            let best = whole.isEmpty ? start : whole
+            if best.count == 1 { found = best[0].url } else { several = best.map { $0.name } }
         }
     }
+    if found == nil && !several.isEmpty {
+        return "several installed applications match \"\(name)\": "
+            + several.prefix(12).joined(separator: "; ")
+            + (several.count > 12 ? " (and \(several.count - 12) more)" : "")
+            + " - call open_app again with the exact name of the one you mean"
+    }
     guard let target = found else {
-        return "no application called \"\(name)\" is installed where applications live. If it is already "
-            + "running, activate_window reaches it by name"
+        return "nothing installed on this computer is called \"\(name)\" or has those words in its name. Try one "
+            + "distinctive word of its name. If it is already running, activate_window reaches it by name"
     }
 
     NSWorkspace.shared.openApplication(at: target, configuration: NSWorkspace.OpenConfiguration())
