@@ -110,7 +110,7 @@ const PROPS: Prop[] = [
   {
     num: '03',
     title: 'Every bee brings back proof',
-    body: 'Logs show what was asked, what the bee actually did and how it ended, with Stop and Relaunch. A run that worked turns into honey, a Skill: run it again, schedule it, or add Checks so it tests itself.',
+    body: 'Logs show what was asked, what the bee did and how it ended. A run that worked turns into honey, a Skill: run it again, schedule it, or let Checks test it.',
     chip: (
       <>
         <span className="landing-chip-p">●</span> ok <span className="landing-chip-k">·</span> could not finish{' '}
