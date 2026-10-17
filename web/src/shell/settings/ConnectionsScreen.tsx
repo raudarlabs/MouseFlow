@@ -18,7 +18,7 @@ import { Typography } from '@insightis/ui/Typography';
 import { cn } from '@insightis/ui/cn';
 import {
   AGENT_WANTS, MAC_STOP_COMMAND, MAC_TOOLS_COMMAND, localFileCommand, macInstallCommand, macRestartCommand,
-  startCommand,
+  windowsInstallCommand,
 } from '@/lib/agent';
 import { useAgent, useConsole } from '@/lib/store';
 import { agentKey, linkAccount, setAgentKey, unlinkAccount } from '@/lib/agent';
@@ -143,7 +143,7 @@ export const ConnectionsScreen = ({ say, onClose }: { say: Say; onClose: () => v
         label="Start command"
         note={mac
           ? 'It fetches the agent, builds it on your machine and starts it in the background — building locally is what keeps Gatekeeper out of the way, and running as an app rather than a loose binary is what lets it hold a permission of its own.'
-          : 'Nothing is installed: it fetches the agent and runs it in one go. Leave the window open — closing it is how you stop the agent.'}
+          : 'Installs the agent for you, starts it in the background and at every logon — and, run again, replaces a running one with the current version. No admin rights. The PowerShell window can be closed afterwards.'}
       >
         {/* The switch sits on the command, which is the thing it changes. Guessed from the browser and
           * corrected by a running agent, but always switchable - and on this panel that matters more than on
@@ -152,7 +152,7 @@ export const ConnectionsScreen = ({ say, onClose }: { say: Say; onClose: () => v
       </Row>
 
       {mac && <div className="mb-2"><MacDownload /></div>}
-      <Command text={mac ? macInstallCommand(console_.port) : startCommand(console_.port)} onCopy={copy} />
+      <Command text={mac ? macInstallCommand(console_.port) : windowsInstallCommand(console_.port)} onCopy={copy} />
 
       {mac && (
         <div className="mt-3">

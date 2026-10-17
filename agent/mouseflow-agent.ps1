@@ -7761,6 +7761,35 @@ if ($Enroll) {
     if ($EnrollOnly) { if ($enrolled) { exit 0 } else { exit 1 } }
 }
 
+# ONE AGENT PER PORT - asked BEFORE the hook, the tray and the account poll start (2026-10-17). The owner
+# pasted the start line on a PC where the installer's agent was already running hidden: the new copy hooked
+# the mouse, started taking work from the account, and only THEN failed to listen - leaving two agents
+# claiming jobs on one machine, one of them deaf. -EnrollOnly is above this on purpose: the installer
+# enrols while the old agent is still running.
+$portFree = $false
+try {
+    $probe = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, $Port)
+    $probe.Start(); $probe.Stop(); $portFree = $true
+} catch { }
+if (-not $portFree) {
+    $there = $null
+    try { $there = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 2 } catch { }
+    $from = 'https://mouseflowapp.vercel.app'
+    if ($AllowOrigin -match '^https?://') { $from = $AllowOrigin.TrimEnd('/') }
+    Write-Host ""
+    if ($there -and $there.version) {
+        Write-Host ("  A MouseFlow agent (" + $there.version + ") is already running on 127.0.0.1:" + $Port + ", so this one did not start.") -ForegroundColor Yellow
+        Write-Host "  To replace it with this version, run the installer - it stops the old agent and starts the new one:"
+        Write-Host ""
+        Write-Host ("  & ([scriptblock]::Create((irm " + $from + "/agent/install-windows.ps1))) -Origin " + $from) -ForegroundColor Cyan
+    } else {
+        Write-Host ("  Port " + $Port + " is taken by another program, so the agent cannot listen there.") -ForegroundColor Yellow
+        Write-Host "  Start it on another one with -Port 8788, and pick the same port in the app's Connections."
+    }
+    Write-Host ""
+    return
+}
+
 [MouseFlow.Agent]::Configure($MoveThrottleMs, $MoveMinPx)
 [MouseFlow.Agent]::AllowOrigin = $AllowOrigin
 [MouseFlow.Agent]::Port = $Port

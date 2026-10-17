@@ -28,7 +28,7 @@ import { cn } from '@insightis/ui/cn';
 import { Said } from '@/components/Said';
 import {
   AGENT_WANTS, MAC_STOP_COMMAND, MAC_TOOLS_COMMAND, autostartEnable, localFileCommand, macInstallCommand,
-  macRestartCommand, olderThan, startCommand,
+  macRestartCommand, olderThan, windowsInstallCommand,
 } from '@/lib/agent';
 import { askAgent, refreshAgent, useAgent, useConsole } from '@/lib/store';
 /* Общее с панелью настроек: определение платформы, переключатель, строка с командой и ссылка на скачивание.
@@ -59,7 +59,7 @@ export const ConnectView = () => {
   const platform = usePlatform(health ?? null);
   const { mac, unknown, terminal } = platform;
   const stale = olderThan(health?.version);
-  const command = mac ? macInstallCommand(state.port) : startCommand(state.port);
+  const command = mac ? macInstallCommand(state.port) : windowsInstallCommand(state.port);
 
   const copy = useCallback(async (text: string) => {
     try {
@@ -164,7 +164,7 @@ export const ConnectView = () => {
     done: !!health,
     note: mac
       ? 'Press ⌘ Space, type “Terminal”, press Enter. In that window press ⌘V to paste, then Enter. It prints a line or two, then sits quietly for ten to thirty seconds while it compiles — that silence is the compiler, not a hang. It then starts the agent in the background and tells you whether it answered, so the window can be closed afterwards.'
-      : 'Press Win+X then I for a PowerShell window. Leave it open afterwards — closing it is how you stop the agent, and there is no other off switch.',
+      : 'Press Win+X then I for a PowerShell window and paste this. It installs the agent and starts it in the background and at every logon; the window can be closed afterwards. Run it again to update.',
     /* THE PROMPT IS EXPLAINED BEFORE IT APPEARS, and it appears because of a press.
      *
      * A spinner here used to say "Watching 127.0.0.1 for the agent…" from the moment the page loaded. On

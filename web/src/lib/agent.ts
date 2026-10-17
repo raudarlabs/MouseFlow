@@ -848,9 +848,12 @@ export function macEnrollCommand(code: string, name: string): string {
 /* WINDOWS - ЧЕРЕЗ УСТАНОВЩИК (Hivelink H4), а не одной строкой в память: агент на диске, стартует при входе
  * и обновляется с развёртывания перед каждым стартом. Одной строкой машина выпадала из аккаунта при первой
  * же перезагрузке, а для парка машин это не крайний случай, а вторник. */
-export function windowsInstallCommand(): string {
+/* ЗАПУСК И ОБНОВЛЕНИЕ НА WINDOWS - установщиком, а не голым агентом (2026-10-17). Голый агент поверх уже
+ * работающего упирался в занятый порт; установщик останавливает старого, кладёт свежего на диск и ставит
+ * запуск при входе - то есть делает и первое подключение, и обновление одной строкой. */
+export function windowsInstallCommand(port = 8787): string {
   const origin = location.origin;
-  return `& ([scriptblock]::Create((irm ${origin}/agent/install-windows.ps1))) -Origin ${origin}`;
+  return `& ([scriptblock]::Create((irm ${origin}/agent/install-windows.ps1))) -Origin ${origin}${port !== 8787 ? ` -Port ${port}` : ''}`;
 }
 export function windowsEnrollCommand(code: string, name: string): string {
   const named = shellName(name);
